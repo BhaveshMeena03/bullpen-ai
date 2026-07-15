@@ -58,14 +58,14 @@
   .eps{margin-top:44px}
   .eps h2{font-size:18px;margin-bottom:4px}
   .eps .sub2{color:var(--muted);font-size:13px;margin-bottom:16px}
-  details.ep{background:var(--panel);border:1px solid var(--line);
+  details.epcard{background:var(--panel);border:1px solid var(--line);
     border-radius:12px;margin-bottom:10px;overflow:hidden}
-  details.ep summary{cursor:pointer;padding:14px 16px;font-weight:600;
+  details.epcard summary{cursor:pointer;padding:14px 16px;font-weight:600;
     list-style:none;display:flex;align-items:center;gap:10px}
-  details.ep summary::-webkit-details-marker{display:none}
-  details.ep summary .tw{color:var(--green);font-size:12px;transition:transform .15s}
-  details.ep[open] summary .tw{transform:rotate(90deg)}
-  .ep-body{padding:0 16px 16px;font-size:14px;color:#c7ccd2}
+  details.epcard summary::-webkit-details-marker{display:none}
+  details.epcard summary .tw{color:var(--green);font-size:12px;transition:transform .15s}
+  details.epcard[open] summary .tw{transform:rotate(90deg)}
+  .ep-body{padding:0 16px 16px;font-size:14px;color:#c7ccd2;white-space:normal;overflow-wrap:break-word}
   .ep-body h3,.ep-body strong{color:var(--text)}
   .ep-body ul{padding-left:18px;margin:8px 0}
   .ep-body li{margin:4px 0}
@@ -76,8 +76,8 @@
 </head>
 <body>
 <div class="banner">
-  Demo — sample transcripts with generic "Host / Co-host" lines, not real
-  Market Bubble quotes. Swap in real episode captions to make it live.
+  Searches auto-generated captions from public Market Bubble episodes ·
+  informational, not financial advice · an independent project, not affiliated.
 </div>
 
 <div class="wrap">
@@ -162,7 +162,7 @@
         var wrap=document.getElementById("eps-list");
         eps.forEach(function(ep){
           var d=document.createElement("details");
-          d.className="ep";
+          d.className="epcard";
           d.innerHTML='<summary><span class="tw">▶</span>'+esc(ep.title)+
             '</summary><div class="ep-body">'+md(ep.summary||"")+
             '<a class="ep-link" href="'+esc(ep.url)+'" target="_blank" '+
