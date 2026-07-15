@@ -7,11 +7,43 @@ through the same code path with fewer, larger batches.
 
 import asyncio
 import logging
+from collections import OrderedDict
 
 import voyageai
 from voyageai import error as voyage_error
 
 logger = logging.getLogger(__name__)
+
+# Small LRU cache for single-text query embeddings. Query embeddings are
+# deterministic per (text, model, dimension), and demo chips / popular
+# questions repeat heavily — caching them dodges the free-tier 3 RPM limit
+# for the common case. Ingestion (many unique texts) does not use this.
+_QUERY_CACHE: "OrderedDict[tuple, list[float]]" = OrderedDict()
+_QUERY_CACHE_MAX = 512
+
+
+async def embed_query(
+    client: voyageai.AsyncClient,
+    text: str,
+    *,
+    model: str,
+    dimension: int,
+) -> list[float]:
+    """Embed a single query string, cached. Falls back to embed_texts."""
+    key = (text.strip(), model, dimension)
+    cached = _QUERY_CACHE.get(key)
+    if cached is not None:
+        _QUERY_CACHE.move_to_end(key)
+        return cached
+    vector = (
+        await embed_texts(
+            client, [text], model=model, dimension=dimension, input_type="query"
+        )
+    )[0]
+    _QUERY_CACHE[key] = vector
+    if len(_QUERY_CACHE) > _QUERY_CACHE_MAX:
+        _QUERY_CACHE.popitem(last=False)
+    return vector
 
 # ~24K chars ≈ 6-7K tokens — safely under the free tier's 10K TPM per call.
 BATCH_CHAR_BUDGET = 24_000

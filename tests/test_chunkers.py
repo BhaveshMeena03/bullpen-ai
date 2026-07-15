@@ -111,3 +111,32 @@ class TestMetadataTagging:
     def test_settings_defaults_sane(self):
         s = get_settings()
         assert s.chunk_overlap_chars < s.chunk_max_chars
+
+
+class TestQueryEmbeddingCache:
+    def test_repeat_query_hits_cache(self):
+        import asyncio
+
+        from app import embeddings
+
+        embeddings._QUERY_CACHE.clear()
+        calls = {"n": 0}
+
+        class FakeVoyage:
+            async def embed(self, texts, **k):
+                calls["n"] += 1
+
+                class R:
+                    embeddings = [[0.1] * 8 for _ in texts]
+                return R()
+
+        async def run():
+            fv = FakeVoyage()
+            a = await embeddings.embed_query(fv, "same q", model="m", dimension=8)
+            b = await embeddings.embed_query(fv, "same q", model="m", dimension=8)
+            return a, b
+
+        a, b = asyncio.run(run())
+        assert a == b
+        assert calls["n"] == 1, "second identical query must be served from cache"
+        embeddings._QUERY_CACHE.clear()

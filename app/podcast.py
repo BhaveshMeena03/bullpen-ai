@@ -19,7 +19,7 @@ from anthropic import AsyncAnthropic
 from pinecone import Pinecone
 
 from .config import get_settings
-from .embeddings import embed_texts
+from .embeddings import embed_query, embed_texts
 from .schemas import (
     Episode,
     PodcastHit,
@@ -168,17 +168,14 @@ class PodcastIndex:
 
     # -- search -------------------------------------------------------------
     async def _retrieve(self, query: str, top_k: int) -> list[PodcastHit]:
-        # Route through embed_texts so a rate-limited query embedding backs
-        # off and retries, same as ingestion — not a hard failure.
-        vector = (
-            await embed_texts(
-                self._voyage,
-                [query],
-                model=self._settings.voyage_model,
-                dimension=self._settings.embedding_dimension,
-                input_type="query",
-            )
-        )[0]
+        # Cached, retry-on-rate-limit query embedding — repeat queries are
+        # free and a rate-limited one backs off instead of hard-failing.
+        vector = await embed_query(
+            self._voyage,
+            query,
+            model=self._settings.voyage_model,
+            dimension=self._settings.embedding_dimension,
+        )
 
         def _query():
             return self.index.query(
@@ -226,10 +223,12 @@ class PodcastIndex:
         top_k = top_k or self._settings.retrieval_top_k
         hits = await self._retrieve(query, top_k)
 
-        model = self._settings.anthropic_model
+        # A search answer is short and grounded — use a fast, low-effort,
+        # small-output call with a hard timeout, not the heavy chat config.
+        model = self._settings.search_model
         request: dict = {
             "model": model,
-            "max_tokens": self._settings.max_tokens,
+            "max_tokens": self._settings.search_max_tokens,
             "system": [
                 {"type": "text", "text": SYSTEM_PROMPT,
                  "cache_control": {"type": "ephemeral"}}
@@ -244,7 +243,7 @@ class PodcastIndex:
                     ],
                 }
             ],
-            "output_config": {"effort": self._settings.effort},
+            "output_config": {"effort": self._settings.search_effort},
         }
         if model.startswith("claude-fable"):
             request["betas"] = ["server-side-fallback-2026-06-01"]
@@ -252,9 +251,14 @@ class PodcastIndex:
                 {"model": self._settings.anthropic_fallback_model}
             ]
         else:
-            request["thinking"] = {"type": "adaptive"}
+            # Grounded summarization needs no deep reasoning — thinking off
+            # keeps it fast and predictable for an interactive search.
+            request["thinking"] = {"type": "disabled"}
 
-        response = await self._anthropic.beta.messages.create(**request)
+        client = self._anthropic.with_options(
+            timeout=self._settings.search_timeout_seconds
+        )
+        response = await client.beta.messages.create(**request)
         if response.stop_reason == "refusal":
             return PodcastSearchResponse(
                 answer="I can't help with that one — try asking about "
