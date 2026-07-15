@@ -15,8 +15,9 @@ from pathlib import Path
 import anthropic
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from voyageai import error as voyage_error
 
 from .agent import REFUSAL_MESSAGE, ConciergeAgent
 from .ingest import IngestionPipeline
@@ -89,6 +90,25 @@ def get_podcast(request: Request) -> PodcastIndex:
 
 def get_summaries(request: Request) -> SummaryStore:
     return request.app.state.summaries
+
+
+@app.exception_handler(voyage_error.RateLimitError)
+async def _voyage_rate_limit(request: Request, exc: voyage_error.RateLimitError):
+    # Embedding quota exhausted (free-tier 3 RPM, or a spike). Fail soft.
+    logger.warning("Voyage rate limit on %s", request.url.path)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Search is busy right now — try again in a moment."},
+        headers={"Retry-After": "10"},
+    )
+
+
+@app.exception_handler(voyage_error.VoyageError)
+async def _voyage_error(request: Request, exc: voyage_error.VoyageError):
+    logger.error("Voyage error on %s: %s", request.url.path, exc)
+    return JSONResponse(
+        status_code=502, content={"detail": "Embedding provider error."}
+    )
 
 
 @app.get("/healthz")

@@ -158,3 +158,29 @@ class TestIngest:
             "source_type": "reddit", "source_id": "t1", "text": "gm",
         }])
         assert r.status_code == 422
+
+
+class TestVoyageErrorHandling:
+    """Embedding-provider errors must fail soft (503/502), never leak a 500.
+    This regressed live: the podcast search 500'd when Voyage rate-limited."""
+
+    def test_voyage_rate_limit_returns_503(self, client, monkeypatch):
+        from voyageai import error as voyage_error
+
+        async def boom(*a, **k):
+            raise voyage_error.RateLimitError("quota")
+
+        monkeypatch.setattr(StubRetriever, "search", boom)
+        r = client.post("/v1/chat", json={"message": "hi"})
+        assert r.status_code == 503
+        assert "busy" in r.json()["detail"].lower()
+
+    def test_voyage_generic_error_returns_502(self, client, monkeypatch):
+        from voyageai import error as voyage_error
+
+        async def boom(*a, **k):
+            raise voyage_error.ServerError("upstream")
+
+        monkeypatch.setattr(StubRetriever, "search", boom)
+        r = client.post("/v1/chat", json={"message": "hi"})
+        assert r.status_code == 502
