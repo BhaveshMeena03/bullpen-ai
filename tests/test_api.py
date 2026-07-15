@@ -184,3 +184,10 @@ class TestVoyageErrorHandling:
         monkeypatch.setattr(StubRetriever, "search", boom)
         r = client.post("/v1/chat", json={"message": "hi"})
         assert r.status_code == 502
+
+
+class TestRootRedirect:
+    def test_root_redirects_to_search(self, client):
+        r = client.get("/", follow_redirects=False)
+        assert r.status_code in (307, 302)
+        assert r.headers["location"] == "/demo/podcast.html"

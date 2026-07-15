@@ -15,7 +15,7 @@ from pathlib import Path
 import anthropic
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from voyageai import error as voyage_error
 
@@ -109,6 +109,12 @@ async def _voyage_error(request: Request, exc: voyage_error.VoyageError):
     return JSONResponse(
         status_code=502, content={"detail": "Embedding provider error."}
     )
+
+
+@app.get("/", include_in_schema=False)
+async def root() -> RedirectResponse:
+    # Bare domain -> the Market Bubble search page (the public entry point).
+    return RedirectResponse(url="/demo/podcast.html")
 
 
 @app.get("/healthz")
