@@ -6,6 +6,7 @@ All secrets and tunables are sourced from the environment (or a local
 
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -58,6 +59,18 @@ class Settings(BaseSettings):
     # When set, /v1/ingest and /v1/podcast/ingest require this value in the
     # X-Admin-Token header. Leave unset only for local development.
     admin_token: str | None = None
+
+
+    @field_validator(
+        "anthropic_api_key", "voyage_api_key", "pinecone_api_key",
+        "admin_token", mode="before",
+    )
+    @classmethod
+    def _strip_secret(cls, v):
+        # A pasted key with a trailing newline/space raises a cryptic
+        # ValueError ("control character in headers") deep in the HTTP client.
+        # Strip defensively so a mis-pasted env var can never cause it.
+        return v.strip() if isinstance(v, str) else v
 
 
 @lru_cache

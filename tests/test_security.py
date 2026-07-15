@@ -82,3 +82,16 @@ class TestAdminAuth:
     def test_podcast_ingest_also_guarded(self, admin_client):
         r = admin_client.post("/v1/podcast/ingest", json=[])
         assert r.status_code == 401
+
+
+class TestSecretStripping:
+    def test_keys_are_stripped(self, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "  sk-ant-abc\n")
+        monkeypatch.setenv("VOYAGE_API_KEY", "pa-xyz\n")
+        monkeypatch.setenv("PINECONE_API_KEY", "\tpcsk-123 ")
+        get_settings.cache_clear()
+        s = get_settings()
+        assert s.anthropic_api_key == "sk-ant-abc"
+        assert s.voyage_api_key == "pa-xyz"
+        assert s.pinecone_api_key == "pcsk-123"
+        get_settings.cache_clear()

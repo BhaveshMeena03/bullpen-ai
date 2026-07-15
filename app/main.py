@@ -111,6 +111,16 @@ async def _voyage_error(request: Request, exc: voyage_error.VoyageError):
     )
 
 
+@app.exception_handler(Exception)
+async def _unhandled(request: Request, exc: Exception):
+    # Last-resort net: an unexpected error returns a clean JSON 500, never
+    # a raw stack-trace page. Logged with the path for debugging.
+    logger.exception("Unhandled error on %s", request.url.path)
+    return JSONResponse(
+        status_code=500, content={"detail": "Something went wrong. Please retry."}
+    )
+
+
 @app.get("/", include_in_schema=False)
 async def root() -> RedirectResponse:
     # Bare domain -> the Market Bubble search page (the public entry point).
