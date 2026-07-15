@@ -3,7 +3,7 @@
 # live in the repo.
 services:
   - type: web
-    name: bullpen-ai
+    name: marketbubble-search
     runtime: docker
     plan: free
     healthCheckPath: /healthz
