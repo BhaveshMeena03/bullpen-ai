@@ -31,9 +31,9 @@ class Settings(BaseSettings):
     # excellent at summarization at 60% less cost than Opus.
     summary_model: str = "claude-sonnet-5"
     # Podcast search answers are 2-3 sentences over a few excerpts — a light
-    # task. Right-size it: fast model, low effort, small output, hard
-    # timeout. Heavy Opus/high-effort calls time out on constrained hosts.
-    search_model: str = "claude-sonnet-5"
+    # task. Haiku 4.5 handles grounded summarization well at ~1/5 the cost
+    # of Sonnet, which stretches a small budget across far more queries.
+    search_model: str = "claude-haiku-4-5"
     search_effort: str = "low"
     search_max_tokens: int = 1024
     search_timeout_seconds: float = 45.0

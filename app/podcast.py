@@ -223,8 +223,11 @@ class PodcastIndex:
         top_k = top_k or self._settings.retrieval_top_k
         hits = await self._retrieve(query, top_k)
 
-        # A search answer is short and grounded — use a fast, low-effort,
-        # small-output call with a hard timeout, not the heavy chat config.
+        # A search answer is short and grounded — keep the request minimal
+        # and fast. Config knobs are model-specific, so add them per family:
+        #  - Haiku 4.5: no `effort` (400s) and no thinking → cheapest/fastest
+        #  - Sonnet 5 / Opus 4.6+: effort + thinking disabled
+        #  - Fable 5: thinking always on (omit), plus refusal fallback
         model = self._settings.search_model
         request: dict = {
             "model": model,
@@ -243,16 +246,16 @@ class PodcastIndex:
                     ],
                 }
             ],
-            "output_config": {"effort": self._settings.search_effort},
         }
         if model.startswith("claude-fable"):
             request["betas"] = ["server-side-fallback-2026-06-01"]
             request["fallbacks"] = [
                 {"model": self._settings.anthropic_fallback_model}
             ]
-        else:
-            # Grounded summarization needs no deep reasoning — thinking off
-            # keeps it fast and predictable for an interactive search.
+        elif "haiku" not in model:
+            # Opus 4.6+ / Sonnet 5 support effort + adaptive thinking; a
+            # grounded summary needs no reasoning, so thinking off + low.
+            request["output_config"] = {"effort": self._settings.search_effort}
             request["thinking"] = {"type": "disabled"}
 
         client = self._anthropic.with_options(
