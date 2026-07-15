@@ -22,7 +22,6 @@ from .agent import REFUSAL_MESSAGE, ConciergeAgent
 from .ingest import IngestionPipeline
 from .podcast import PodcastIndex
 from .retriever import Retriever
-from .summaries import SummaryStore
 from .schemas import (
     ChatRequest,
     ChatResponse,
@@ -32,6 +31,7 @@ from .schemas import (
     PodcastSearchResponse,
 )
 from .security import global_rate_limit, public_rate_limit, require_admin
+from .summaries import SummaryStore
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
