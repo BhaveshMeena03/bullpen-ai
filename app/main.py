@@ -215,14 +215,9 @@ async def podcast_search(
             status_code=429, detail="Rate limited; retry shortly."
         ) from exc
     except anthropic.APIError as exc:
-        # TEMP debug: surface the Anthropic error class + status so a live
-        # 502 is diagnosable (no message body → no secret leak).
         status = getattr(exc, "status_code", None)
         logger.error("Anthropic error on search: %s (%s)", type(exc).__name__, status)
-        raise HTTPException(
-            status_code=502,
-            detail=f"Model provider error [{type(exc).__name__}:{status}]",
-        ) from exc
+        raise HTTPException(status_code=502, detail="Model provider error.") from exc
 
 
 @app.post("/v1/podcast/ingest", dependencies=[Depends(require_admin)])
