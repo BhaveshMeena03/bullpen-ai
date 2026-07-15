@@ -117,7 +117,12 @@ async def _unhandled(request: Request, exc: Exception):
     # a raw stack-trace page. Logged with the path for debugging.
     logger.exception("Unhandled error on %s", request.url.path)
     return JSONResponse(
-        status_code=500, content={"detail": "Something went wrong. Please retry."}
+        status_code=500,
+        content={
+            "detail": "Something went wrong. Please retry.",
+            # TEMP debug: exception class only (no message → no secret leak).
+            "debug_type": type(exc).__name__,
+        },
     )
 
 

@@ -12,6 +12,7 @@ import voyageai
 from pinecone import Pinecone
 
 from .config import get_settings
+from .embeddings import embed_texts
 from .schemas import RetrievedChunk, SourceType
 
 logger = logging.getLogger(__name__)
@@ -50,13 +51,15 @@ class Retriever:
     ) -> list[RetrievedChunk]:
         top_k = top_k or self._settings.retrieval_top_k
 
-        result = await self._voyage.embed(
-            texts=[query],
-            model=self._settings.voyage_model,
-            input_type="query",
-            output_dimension=self._settings.embedding_dimension,
-        )
-        query_vector = result.embeddings[0]
+        query_vector = (
+            await embed_texts(
+                self._voyage,
+                [query],
+                model=self._settings.voyage_model,
+                dimension=self._settings.embedding_dimension,
+                input_type="query",
+            )
+        )[0]
 
         def _query():
             return self.index.query(

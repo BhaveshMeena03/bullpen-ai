@@ -168,14 +168,17 @@ class PodcastIndex:
 
     # -- search -------------------------------------------------------------
     async def _retrieve(self, query: str, top_k: int) -> list[PodcastHit]:
+        # Route through embed_texts so a rate-limited query embedding backs
+        # off and retries, same as ingestion — not a hard failure.
         vector = (
-            await self._voyage.embed(
-                texts=[query],
+            await embed_texts(
+                self._voyage,
+                [query],
                 model=self._settings.voyage_model,
+                dimension=self._settings.embedding_dimension,
                 input_type="query",
-                output_dimension=self._settings.embedding_dimension,
             )
-        ).embeddings[0]
+        )[0]
 
         def _query():
             return self.index.query(
