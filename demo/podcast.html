@@ -55,6 +55,23 @@
   .spin.show{display:block}
   .foot{color:var(--muted);font-size:12px;margin-top:40px;border-top:1px solid
     var(--line);padding-top:16px}
+  .eps{margin-top:44px}
+  .eps h2{font-size:18px;margin-bottom:4px}
+  .eps .sub2{color:var(--muted);font-size:13px;margin-bottom:16px}
+  details.ep{background:var(--panel);border:1px solid var(--line);
+    border-radius:12px;margin-bottom:10px;overflow:hidden}
+  details.ep summary{cursor:pointer;padding:14px 16px;font-weight:600;
+    list-style:none;display:flex;align-items:center;gap:10px}
+  details.ep summary::-webkit-details-marker{display:none}
+  details.ep summary .tw{color:var(--green);font-size:12px;transition:transform .15s}
+  details.ep[open] summary .tw{transform:rotate(90deg)}
+  .ep-body{padding:0 16px 16px;font-size:14px;color:#c7ccd2}
+  .ep-body h3,.ep-body strong{color:var(--text)}
+  .ep-body ul{padding-left:18px;margin:8px 0}
+  .ep-body li{margin:4px 0}
+  .ep-link{display:inline-block;margin-top:10px;color:var(--green);
+    font-size:13px;text-decoration:none}
+  .ep-link:hover{text-decoration:underline}
 </style>
 </head>
 <body>
@@ -90,6 +107,13 @@
 
   <div class="hits" id="hits"></div>
 
+  <div class="eps" id="eps" hidden>
+    <h2>Episode summaries</h2>
+    <p class="sub2">Every episode condensed to a 2-minute read, with
+    timestamps. Click to expand.</p>
+    <div id="eps-list"></div>
+  </div>
+
   <div class="foot">
     Semantic search over podcast transcripts · informational only, not
     financial advice · built as an independent concept, not affiliated.
@@ -110,6 +134,46 @@
   f.addEventListener("submit",function(e){ e.preventDefault(); search(); });
 
   function esc(s){var d=document.createElement("div");d.textContent=s;return d.innerHTML;}
+
+  // Minimal, XSS-safe markdown: escape everything first, then allow only
+  // **bold** and bullet lists that WE reconstruct from the escaped text.
+  function md(s){
+    var safe=esc(s);
+    safe=safe.replace(/\*\*([^*]+)\*\*/g,"<strong>$1</strong>");
+    var lines=safe.split("\n"), out=[], inList=false;
+    lines.forEach(function(ln){
+      if(/^\s*[-•]\s+/.test(ln)){
+        if(!inList){out.push("<ul>");inList=true;}
+        out.push("<li>"+ln.replace(/^\s*[-•]\s+/,"")+"</li>");
+      }else{
+        if(inList){out.push("</ul>");inList=false;}
+        if(ln.trim()) out.push("<p>"+ln+"</p>");
+      }
+    });
+    if(inList) out.push("</ul>");
+    return out.join("");
+  }
+
+  function loadEpisodes(){
+    fetch(API+"/v1/podcast/episodes")
+      .then(function(r){ if(!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function(eps){
+        if(!eps.length) return;
+        var wrap=document.getElementById("eps-list");
+        eps.forEach(function(ep){
+          var d=document.createElement("details");
+          d.className="ep";
+          d.innerHTML='<summary><span class="tw">▶</span>'+esc(ep.title)+
+            '</summary><div class="ep-body">'+md(ep.summary||"")+
+            '<a class="ep-link" href="'+esc(ep.url)+'" target="_blank" '+
+            'rel="noopener">Watch the full episode →</a></div>';
+          wrap.appendChild(d);
+        });
+        document.getElementById("eps").hidden=false;
+      })
+      .catch(function(){ /* summaries are optional — page works without */ });
+  }
+  loadEpisodes();
 
   function search(){
     var query=q.value.trim();

@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     # the Opus fallback are model-specific).
     anthropic_model: str = "claude-opus-4-8"
     anthropic_fallback_model: str = "claude-opus-4-8"  # used on Fable 5 only
+    # Episode summaries are a one-time batch job per episode; Sonnet 5 is
+    # excellent at summarization at 60% less cost than Opus.
+    summary_model: str = "claude-sonnet-5"
     # Adaptive-thinking depth: low | medium | high | xhigh | max
     effort: str = "high"
     max_tokens: int = 16000

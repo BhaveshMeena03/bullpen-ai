@@ -22,6 +22,7 @@ from .agent import REFUSAL_MESSAGE, ConciergeAgent
 from .ingest import IngestionPipeline
 from .podcast import PodcastIndex
 from .retriever import Retriever
+from .summaries import SummaryStore
 from .schemas import (
     ChatRequest,
     ChatResponse,
@@ -43,6 +44,7 @@ async def lifespan(app: FastAPI):
     app.state.agent = ConciergeAgent()
     app.state.pipeline = IngestionPipeline()
     app.state.podcast = PodcastIndex()
+    app.state.summaries = SummaryStore()
     yield
 
 
@@ -83,6 +85,10 @@ def get_pipeline(request: Request) -> IngestionPipeline:
 
 def get_podcast(request: Request) -> PodcastIndex:
     return request.app.state.podcast
+
+
+def get_summaries(request: Request) -> SummaryStore:
+    return request.app.state.summaries
 
 
 @app.get("/healthz")
@@ -184,3 +190,11 @@ async def podcast_ingest(
     """Admin endpoint — requires X-Admin-Token when ADMIN_TOKEN is set."""
     count = await podcast.ingest(episodes)
     return {"windows_indexed": count}
+
+
+@app.get("/v1/podcast/episodes", dependencies=[Depends(public_rate_limit)])
+async def podcast_episodes(
+    summaries: SummaryStore = Depends(get_summaries),
+) -> list[dict]:
+    """Pre-computed episode summaries — a Pinecone fetch, no model call."""
+    return await summaries.list_all()
