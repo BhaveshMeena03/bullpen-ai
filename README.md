@@ -1,9 +1,20 @@
-# Bullpen Concierge
+# Bullpen AI
 
-AI support agent + podcast search for the BullpenFi trading terminal
-(Solana spot, Hyperliquid perps, Polymarket prediction markets, and the
-$ANSEM airdrop claim flow). Async FastAPI backend, RAG over Pinecone,
-Claude for reasoning, and an embeddable one-script-tag chat widget.
+Two AI tools for the Bullpen / Market Bubble ecosystem, on shared
+infrastructure (async FastAPI, RAG over Pinecone, Claude for reasoning):
+
+1. **Bullpen Concierge** — a support agent for the BullpenFi trading
+   terminal (Solana spot, Hyperliquid perps, Polymarket prediction
+   markets, the $ANSEM airdrop claim flow). Ships as an embeddable
+   one-script-tag chat widget. Hard guardrails: no financial advice, no
+   price predictions, never touches seed phrases. → `/demo/`
+2. **Market Bubble Search** — a semantic search engine over every
+   episode of the "Market Bubble" podcast. Ask a question in plain
+   English, get an answer grounded in the transcripts plus citations
+   that deep-link to the exact timestamp in the video. → `/demo/podcast.html`
+
+Both share one backend and one deploy; they're separate products with
+separate pages. Built independently — not affiliated with BullpenFi.
 
 ## Project layout
 

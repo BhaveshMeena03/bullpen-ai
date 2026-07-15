@@ -3,7 +3,7 @@
 # live in the repo.
 services:
   - type: web
-    name: bullpen-concierge
+    name: bullpen-ai
     runtime: docker
     plan: free
     healthCheckPath: /healthz
