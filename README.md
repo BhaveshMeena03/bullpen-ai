@@ -1,5 +1,7 @@
 # Bullpen AI
 
+![Market Bubble Search demo](market-bubble-search.gif)
+
 Two AI tools for the Bullpen / Market Bubble ecosystem, on shared
 infrastructure (async FastAPI, RAG over Pinecone, Claude for reasoning):
 
