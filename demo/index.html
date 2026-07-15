@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BTC-PERP · Bullpen (Demo)</title>
+<style>
+  :root {
+    --bg: #0b0e11; --panel: #12161c; --line: #232a33;
+    --text: #e6e8ea; --muted: #8a939e; --green: #16c784; --red: #ea3943;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text); min-height: 100vh;
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .banner {
+    background: #2b2410; color: #e8c157; font-size: 12px;
+    text-align: center; padding: 6px 12px;
+  }
+  nav {
+    display: flex; align-items: center; gap: 28px;
+    padding: 0 20px; height: 52px;
+    background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  .logo { font-weight: 800; letter-spacing: .5px; font-size: 16px; }
+  .logo span { color: var(--green); }
+  .tabs { display: flex; gap: 20px; font-size: 13px; color: var(--muted); }
+  .tabs a { color: inherit; text-decoration: none; padding: 15px 2px; }
+  .tabs a.active { color: var(--text); border-bottom: 2px solid var(--green); }
+  .wallet {
+    margin-left: auto; background: var(--green); color: var(--bg);
+    border: none; border-radius: 8px; padding: 8px 14px;
+    font-weight: 600; cursor: pointer;
+  }
+  .ticker {
+    display: flex; gap: 32px; align-items: baseline;
+    padding: 12px 20px; border-bottom: 1px solid var(--line);
+    flex-wrap: wrap;
+  }
+  .pair { font-size: 17px; font-weight: 700; }
+  .price { font-size: 22px; font-weight: 700; color: var(--green); }
+  .stat { font-size: 12px; color: var(--muted); }
+  .stat b { display: block; color: var(--text); font-size: 13px; }
+  main {
+    display: grid; gap: 1px; background: var(--line);
+    grid-template-columns: 1fr 260px 300px;
+    min-height: calc(100vh - 140px);
+  }
+  section { background: var(--bg); padding: 16px; }
+  h3 { font-size: 12px; color: var(--muted); text-transform: uppercase;
+       letter-spacing: .8px; margin-bottom: 12px; }
+  .chart svg { width: 100%; height: 380px; display: block; }
+  .row { display: flex; justify-content: space-between; font-size: 12px;
+         padding: 3px 0; font-variant-numeric: tabular-nums; }
+  .ask { color: var(--red); } .bid { color: var(--green); }
+  .mid { text-align: center; font-size: 15px; font-weight: 700;
+         color: var(--green); padding: 8px 0; border-top: 1px solid var(--line);
+         border-bottom: 1px solid var(--line); margin: 6px 0; }
+  .side-btns { display: flex; gap: 8px; margin-bottom: 14px; }
+  .side-btns button {
+    flex: 1; padding: 10px; border: none; border-radius: 8px;
+    font-weight: 700; cursor: pointer;
+  }
+  .long { background: var(--green); color: var(--bg); }
+  .short { background: #1b2129; color: var(--red); border: 1px solid var(--line) !important; }
+  label { font-size: 11px; color: var(--muted); display: block; margin: 10px 0 4px; }
+  .field {
+    width: 100%; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 8px; color: var(--text); padding: 9px 12px; outline: none;
+  }
+  .lev { display: flex; gap: 6px; margin-top: 6px; }
+  .lev button {
+    flex: 1; background: var(--panel); color: var(--muted);
+    border: 1px solid var(--line); border-radius: 6px; padding: 6px 0;
+    cursor: pointer; font-size: 12px;
+  }
+  .lev button.on { color: var(--green); border-color: var(--green); }
+  .submit {
+    width: 100%; margin-top: 16px; padding: 12px; border: none;
+    border-radius: 8px; background: var(--green); color: var(--bg);
+    font-weight: 700; cursor: pointer; font-size: 14px;
+  }
+  .risk { font-size: 11px; color: var(--muted); margin-top: 10px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<div class="banner">
+  Demo environment — a mock of the Bullpen perps terminal for showcasing the
+  Concierge widget. Not affiliated with BullpenFi. No real trading.
+</div>
+
+<nav>
+  <div class="logo">BULL<span>PEN</span></div>
+  <div class="tabs">
+    <a href="#">Spot</a>
+    <a href="#" class="active">Perps</a>
+    <a href="#">Predictions</a>
+    <a href="#">$ANSEM Claim</a>
+  </div>
+  <button class="wallet">Connect Wallet</button>
+</nav>
+
+<div class="ticker">
+  <span class="pair">BTC-PERP</span>
+  <span class="price">$117,842.50</span>
+  <span class="stat">24h Change <b style="color:var(--green)">+2.34%</b></span>
+  <span class="stat">24h Volume <b>$1.92B</b></span>
+  <span class="stat">Open Interest <b>$684M</b></span>
+  <span class="stat">Funding / 8h <b>0.0041%</b></span>
+</div>
+
+<main>
+  <section class="chart">
+    <h3>BTC-PERP · 1H</h3>
+    <svg viewBox="0 0 800 380" preserveAspectRatio="none" aria-label="price chart">
+      <defs>
+        <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#16c784" stop-opacity=".25"/>
+          <stop offset="100%" stop-color="#16c784" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <path d="M0 300 L60 280 L120 290 L180 240 L240 255 L300 210 L360 225
+               L420 180 L480 200 L540 150 L600 165 L660 120 L720 140 L800 95"
+            fill="none" stroke="#16c784" stroke-width="2.5"/>
+      <path d="M0 300 L60 280 L120 290 L180 240 L240 255 L300 210 L360 225
+               L420 180 L480 200 L540 150 L600 165 L660 120 L720 140 L800 95
+               L800 380 L0 380 Z" fill="url(#g)"/>
+    </svg>
+  </section>
+
+  <section>
+    <h3>Order Book</h3>
+    <div class="row ask"><span>117,891.0</span><span>0.842</span></div>
+    <div class="row ask"><span>117,876.5</span><span>1.204</span></div>
+    <div class="row ask"><span>117,860.0</span><span>0.377</span></div>
+    <div class="row ask"><span>117,851.5</span><span>2.610</span></div>
+    <div class="mid">117,842.5</div>
+    <div class="row bid"><span>117,833.0</span><span>1.914</span></div>
+    <div class="row bid"><span>117,820.5</span><span>0.655</span></div>
+    <div class="row bid"><span>117,808.0</span><span>3.021</span></div>
+    <div class="row bid"><span>117,795.5</span><span>0.488</span></div>
+  </section>
+
+  <section>
+    <h3>Place Order</h3>
+    <div class="side-btns">
+      <button class="long">Long</button>
+      <button class="short">Short</button>
+    </div>
+    <label>Size (USDC)</label>
+    <input class="field" placeholder="0.00">
+    <label>Leverage</label>
+    <div class="lev">
+      <button>2x</button><button class="on">5x</button>
+      <button>10x</button><button>20x</button>
+    </div>
+    <button class="submit">Connect Wallet to Trade</button>
+    <p class="risk">Perpetual futures carry liquidation risk. New here? Ask
+    the Concierge in the corner. 🐂</p>
+  </section>
+</main>
+
+<!-- The entire integration: one script tag. -->
+<script src="/widget/bullpen-concierge.js" data-api-base="" defer></script>
+
+</body>
+</html>

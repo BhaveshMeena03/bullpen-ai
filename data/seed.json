@@ -1,0 +1,26 @@
+[
+  {
+    "source_type": "docs",
+    "source_id": "about-bullpen",
+    "title": "What is Bullpen?",
+    "text": "# What is Bullpen?\n\nBullpenFi (\"Bullpen\") is a non-custodial trading terminal. It brings three markets into one interface:\n\n- **Solana spot trading** — buy and sell Solana tokens directly.\n- **Perpetual futures (perps)** — leveraged contracts on assets like BTC, powered by Hyperliquid.\n- **Prediction markets** — trade the odds of real-world events, powered by Polymarket.\n\nNon-custodial means you hold your own keys. Bullpen never takes custody of your funds, and Bullpen staff will never ask for your seed phrase.\n\n# Who built Bullpen?\n\nBullpen was co-founded by Ansem (@blknoiz06), a well-known crypto trader. Ansem co-hosts the \"Market Bubble\" podcast with FaZe Banks, which is where many new users first hear about the terminal."
+  },
+  {
+    "source_type": "docs",
+    "source_id": "about-ansem-token",
+    "title": "What is $ANSEM (The Black Bull)?",
+    "text": "# What is $ANSEM?\n\n$ANSEM, nicknamed \"The Black Bull\", is a memecoin on the Solana blockchain.\n\n## Creator-fee airdrops\n\nTrading $ANSEM generates creator fees. Those fees are airdropped back to the community through a claim page on Bullpen. Eligibility is based on social engagement — the wallet you connect is matched with your X (Twitter) activity.\n\n## Claiming\n\n1. Open the $ANSEM Claim page on Bullpen.\n2. Connect your Solana wallet.\n3. If eligible, your claimable amount appears automatically; confirm the claim transaction.\n\nClaiming only ever requires a wallet connection and a transaction approval. Anyone who asks for your seed phrase to \"process a claim\" is running a scam."
+  },
+  {
+    "source_type": "docs",
+    "source_id": "people-faq",
+    "title": "Who is Ansem? Who is FaZe Banks?",
+    "text": "# Who is Ansem?\n\nAnsem (@blknoiz06) is a crypto trader and one of the best-known KOLs (key opinion leaders) in the Solana ecosystem. He is a co-founder of Bullpen and co-hosts the \"Market Bubble\" podcast. The $ANSEM memecoin (\"The Black Bull\") is named after him.\n\n# Who is FaZe Banks?\n\nFaZe Banks is a content creator and a co-founder of FaZe Clan, one of the biggest names in gaming and creator culture. He co-hosts \"Market Bubble\" with Ansem. The podcast drives much of Bullpen's retail audience — viewers coming from Twitch, Kick, and YouTube.\n\n# What is Market Bubble?\n\n\"Market Bubble\" is the podcast hosted by Ansem and FaZe Banks covering crypto markets, trading culture, and the Solana ecosystem."
+  },
+  {
+    "source_type": "docs",
+    "source_id": "crypto-basics",
+    "title": "Crypto basics for new Bullpen users",
+    "text": "# Crypto basics\n\n## What is a wallet?\n\nA crypto wallet is an app that holds the keys to your funds on a blockchain. On Solana, popular wallets include Phantom, Solflare, and Backpack. Your wallet has a public address (safe to share, like an account number) and a seed phrase (never share — it IS your money).\n\n## What is a seed phrase?\n\nA seed phrase (or recovery phrase) is a list of 12–24 words that can restore your entire wallet. Anyone who has it controls your funds. Never type it into a website, DM, or chat — Bullpen staff will never ask for it.\n\n## What is bridging?\n\nBridging moves assets from one blockchain to another — for example moving USDC from Ethereum to Solana so you can trade on Bullpen. You use a bridge app, pay a small fee, and receive the asset on the destination chain.\n\n## What is gas?\n\nGas is the network fee paid to process a transaction. Solana fees are typically fractions of a cent.\n\n## What is slippage?\n\nSlippage is the difference between the price you expect and the price you get when a trade executes, common in fast-moving or low-liquidity markets.\n\n## What is a memecoin?\n\nA memecoin is a token whose value is driven mainly by community, culture, and attention rather than underlying cash flows. They are extremely volatile and can go to zero.\n\n## What is liquidation?\n\nWhen trading perps with leverage, liquidation happens if the price moves against your position far enough that your margin can no longer cover losses — the position is closed and the margin is lost."
+  }
+]

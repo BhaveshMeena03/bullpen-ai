@@ -1,0 +1,8 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+redteam_report.md
+data/episodes.json
+/tmp/
+PITCH_PREP.md

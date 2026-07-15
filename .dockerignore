@@ -1,0 +1,11 @@
+.venv/
+.env
+__pycache__/
+*.pyc
+*.gif
+node_modules/
+tests/
+scripts/
+data/
+redteam_report.md
+PITCH_PREP.md

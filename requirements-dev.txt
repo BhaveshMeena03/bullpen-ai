@@ -1,0 +1,6 @@
+# Development & tooling
+-r requirements.txt
+pytest==8.*
+httpx==0.*
+ruff==0.*
+yt-dlp==2026.7.4

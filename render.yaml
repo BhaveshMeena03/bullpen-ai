@@ -1,0 +1,27 @@
+# Render blueprint — deploy with "New > Blueprint" at dashboard.render.com.
+# Secrets (sync: false) are entered once in the Render dashboard; they never
+# live in the repo.
+services:
+  - type: web
+    name: bullpen-concierge
+    runtime: docker
+    plan: free
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: VOYAGE_API_KEY
+        sync: false
+      - key: PINECONE_API_KEY
+        sync: false
+      - key: ADMIN_TOKEN
+        sync: false
+      - key: ANTHROPIC_MODEL
+        value: claude-opus-4-8
+      - key: PINECONE_INDEX
+        value: bullpen-concierge
+      - key: RATE_LIMIT_RPM
+        value: "30"
+      - key: GLOBAL_RATE_LIMIT_RPM
+        value: "120"

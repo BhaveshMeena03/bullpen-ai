@@ -1,0 +1,24 @@
+[project]
+name = "bullpen-concierge"
+version = "1.0.0"
+description = "AI support agent and podcast search for the BullpenFi trading terminal"
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+extend-exclude = [".venv", "node_modules"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B"]
+ignore = [
+  "B008",  # FastAPI's Depends() in argument defaults is idiomatic
+  "E501",  # long lines in prompts/docstrings are deliberate
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E402"]        # sys.path bootstrap before imports
+"scripts/*" = ["E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

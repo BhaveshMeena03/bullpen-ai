@@ -1,0 +1,46 @@
+[
+  {
+    "episode_id": "sample-ep-01",
+    "title": "SAMPLE — Wallets & Getting Started",
+    "url": "https://www.youtube.com/watch?v=SAMPLE0001",
+    "platform": "youtube",
+    "published_at": "2026-06-01",
+    "segments": [
+      {"t": 0, "speaker": "Host", "text": "Welcome back to the show. Today we're keeping it beginner-friendly, because a lot of new people just showed up from the stream."},
+      {"t": 22, "speaker": "Co-host", "text": "Yeah, the number one question in the comments is always the same: I have money on an app like Cash App, how do I actually get into crypto and start trading."},
+      {"t": 41, "speaker": "Host", "text": "So step zero is a wallet. A wallet is just an app that holds the keys to your funds on a blockchain. On Solana the popular ones are Phantom, Solflare, and Backpack."},
+      {"t": 68, "speaker": "Co-host", "text": "And the thing people get wrong: your wallet has a public address, which is safe to share like an account number, and a seed phrase, which is the twelve or twenty-four words that back it up. You never share the seed phrase. Ever."},
+      {"t": 95, "speaker": "Host", "text": "If anyone DMs you asking for your seed phrase to help with something, that's a scam a hundred percent of the time. No real support ever needs it."},
+      {"t": 118, "speaker": "Co-host", "text": "Write the words down on paper, keep them offline. Don't put them in a screenshot or a notes app in the cloud."}
+    ]
+  },
+  {
+    "episode_id": "sample-ep-02",
+    "title": "SAMPLE — Perps, Leverage & Liquidation",
+    "url": "https://www.youtube.com/watch?v=SAMPLE0002",
+    "platform": "youtube",
+    "published_at": "2026-06-15",
+    "segments": [
+      {"t": 0, "speaker": "Host", "text": "Let's talk perps, because people hear the word and they have no idea what it means."},
+      {"t": 14, "speaker": "Co-host", "text": "A perpetual future, a perp, is a contract that tracks the price of something like Bitcoin without an expiry date. You can go long if you think it goes up or short if you think it goes down."},
+      {"t": 39, "speaker": "Host", "text": "The part that gets people is leverage. Leverage multiplies your position. Ten x leverage means a one percent move is a ten percent move on your money, up or down."},
+      {"t": 64, "speaker": "Co-host", "text": "Which is exactly why liquidation matters. If the market moves against you far enough, your margin can't cover the losses and the position gets closed automatically. You lose what you put in."},
+      {"t": 92, "speaker": "Host", "text": "So higher leverage is not free money, it's a tighter liquidation. New people should understand that risk before they ever size a position."},
+      {"t": 116, "speaker": "Co-host", "text": "There's also funding, a small payment that flows between longs and shorts every few hours to keep the perp price tied to the real price."}
+    ]
+  },
+  {
+    "episode_id": "sample-ep-03",
+    "title": "SAMPLE — Bridging & Moving Funds",
+    "url": "https://www.youtube.com/watch?v=SAMPLE0003",
+    "platform": "youtube",
+    "published_at": "2026-06-29",
+    "segments": [
+      {"t": 0, "speaker": "Host", "text": "Big one that trips people up: bridging. You have funds on one chain and you need them on another."},
+      {"t": 18, "speaker": "Co-host", "text": "Right, say you have USDC on Ethereum but you want to trade on Solana. Bridging moves that asset across chains. You use a bridge app, pay a small fee, and receive it on the destination chain."},
+      {"t": 44, "speaker": "Host", "text": "Fees on Solana itself are tiny, usually fractions of a cent, so once you're on Solana moving around is cheap and fast."},
+      {"t": 66, "speaker": "Co-host", "text": "The mistake beginners make is sending to the wrong network. Always double-check the chain before you send, because a wrong-network transfer can be a pain to recover."},
+      {"t": 91, "speaker": "Host", "text": "And a reminder, bridging still just needs a wallet connection. Nobody legit ever needs your seed phrase to bridge for you."}
+    ]
+  }
+]
