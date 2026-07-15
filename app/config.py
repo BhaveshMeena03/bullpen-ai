@@ -66,11 +66,15 @@ class Settings(BaseSettings):
         "admin_token", mode="before",
     )
     @classmethod
-    def _strip_secret(cls, v):
-        # A pasted key with a trailing newline/space raises a cryptic
-        # ValueError ("control character in headers") deep in the HTTP client.
-        # Strip defensively so a mis-pasted env var can never cause it.
-        return v.strip() if isinstance(v, str) else v
+    def _sanitize_secret(cls, v):
+        # Keys pasted into dashboards pick up invisible junk: trailing
+        # newlines (-> ValueError: control character in headers) and
+        # zero-width spaces / NBSP (-> UnicodeEncodeError in the HTTP
+        # client). Real API keys are printable ASCII with no spaces, so
+        # keep exactly that and discard everything else.
+        if isinstance(v, str):
+            return "".join(ch for ch in v if 0x21 <= ord(ch) <= 0x7E)
+        return v
 
 
 @lru_cache

@@ -86,9 +86,11 @@ class TestAdminAuth:
 
 class TestSecretStripping:
     def test_keys_are_stripped(self, monkeypatch):
+        # Trailing newline, zero-width space (U+200B), and NBSP (U+00A0) —
+        # all observed corruptions from real dashboard pastes.
         monkeypatch.setenv("ANTHROPIC_API_KEY", "  sk-ant-abc\n")
-        monkeypatch.setenv("VOYAGE_API_KEY", "pa-xyz\n")
-        monkeypatch.setenv("PINECONE_API_KEY", "\tpcsk-123 ")
+        monkeypatch.setenv("VOYAGE_API_KEY", "pa-x\u200byz\n")
+        monkeypatch.setenv("PINECONE_API_KEY", "\u00a0pcsk-123 ")
         get_settings.cache_clear()
         s = get_settings()
         assert s.anthropic_api_key == "sk-ant-abc"
