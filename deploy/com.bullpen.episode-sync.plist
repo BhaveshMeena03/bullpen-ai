@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.bullpen.episode-sync</string>
+
+  <!-- Runs: .venv/bin/python scripts/sync_latest.py -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/akhileshmeena/bullpen-concierge/.venv/bin/python</string>
+    <string>/Users/akhileshmeena/bullpen-concierge/scripts/sync_latest.py</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/akhileshmeena/bullpen-concierge</string>
+
+  <!-- New episode airs Thu 1PM PT = Fri ~1:30 AM IST; captions ready ~6-8h
+       later. Run Friday 10:00 and Saturday 10:00 (local/IST) as a safety
+       net. The script is idempotent, so the Saturday run is a no-op if
+       Friday already caught it. -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict>
+      <key>Weekday</key><integer>5</integer>  <!-- Friday -->
+      <key>Hour</key><integer>10</integer>
+      <key>Minute</key><integer>0</integer>
+    </dict>
+    <dict>
+      <key>Weekday</key><integer>6</integer>  <!-- Saturday -->
+      <key>Hour</key><integer>10</integer>
+      <key>Minute</key><integer>0</integer>
+    </dict>
+  </array>
+
+  <!-- If the Mac was asleep at the scheduled time, run once on next wake. -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/akhileshmeena/bullpen-concierge/deploy/episode-sync.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/akhileshmeena/bullpen-concierge/deploy/episode-sync.log</string>
+</dict>
+</plist>
