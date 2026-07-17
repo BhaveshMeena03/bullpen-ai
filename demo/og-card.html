@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<!-- Source for the 1200x630 social preview image (og-image.png).
+     Re-render after edits: node scripts/make_og_image.mjs -->
+<html><head><meta charset="utf-8"><style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{width:1200px;height:630px;background:#0b0e11;color:#e6e8ea;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    display:flex;flex-direction:column;justify-content:center;padding:72px 80px;
+    position:relative;overflow:hidden}
+  .glow{position:absolute;right:-180px;top:-180px;width:560px;height:560px;
+    border-radius:50%;background:radial-gradient(circle,#16c78426,transparent 70%)}
+  .brand{font-weight:800;font-size:26px;letter-spacing:1px;margin-bottom:34px}
+  .brand span{color:#16c784}
+  h1{font-size:64px;font-weight:800;line-height:1.12;margin-bottom:20px}
+  h1 em{color:#16c784;font-style:normal}
+  .sub{font-size:28px;color:#8a939e;line-height:1.4;margin-bottom:44px}
+  .searchbox{display:flex;align-items:center;gap:16px;background:#12161c;
+    border:2px solid #16c784;border-radius:16px;padding:22px 26px;width:860px}
+  .searchbox .q{font-size:26px;color:#e6e8ea;flex:1}
+  .searchbox .btn{background:#16c784;color:#0b0e11;font-weight:700;
+    font-size:22px;border-radius:10px;padding:12px 26px}
+  .badges{display:flex;gap:14px;margin-top:34px}
+  .badge{font-size:20px;color:#16c784;border:1px solid #16c78455;
+    border-radius:20px;padding:8px 18px}
+</style></head><body>
+  <div class="glow"></div>
+  <div class="brand">MARKET <span>BUBBLE</span> · SEARCH</div>
+  <h1>Ask the podcast <em>anything.</em></h1>
+  <div class="sub">Search every episode by meaning — and jump to the exact
+  moment on YouTube.</div>
+  <div class="searchbox">
+    <div class="q">why do gamers make the best traders?</div>
+    <div class="btn">Search</div>
+  </div>
+  <div class="badges">
+    <div class="badge">▶ jumps to the timestamp</div>
+    <div class="badge">no login</div>
+    <div class="badge">open source</div>
+  </div>
+</body></html>

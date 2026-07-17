@@ -22,6 +22,31 @@ _QUERY_CACHE: "OrderedDict[tuple, list[float]]" = OrderedDict()
 _QUERY_CACHE_MAX = 512
 
 
+async def rerank_order(
+    client: voyageai.AsyncClient,
+    query: str,
+    documents: list[str],
+    *,
+    top_k: int,
+    model: str,
+) -> list[int] | None:
+    """Re-score retrieved documents for actual relevance to the query.
+
+    Returns the document indices in best-first order, or None on any
+    failure (rate limit, API change) — the caller falls back to the
+    original vector-similarity order. Reranking improves quality; it must
+    never break search.
+    """
+    try:
+        result = await client.rerank(
+            query=query, documents=documents, model=model, top_k=top_k
+        )
+        return [r.index for r in result.results]
+    except Exception as exc:  # noqa: BLE001 — quality upgrade, never fatal
+        logger.warning("rerank skipped (%s): %s", type(exc).__name__, exc)
+        return None
+
+
 async def embed_query(
     client: voyageai.AsyncClient,
     text: str,

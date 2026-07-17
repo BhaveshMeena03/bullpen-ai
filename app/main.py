@@ -10,6 +10,7 @@ Endpoints:
 import json
 import logging
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 
 import anthropic
@@ -21,6 +22,7 @@ from voyageai import error as voyage_error
 
 from .agent import REFUSAL_MESSAGE, ConciergeAgent
 from .ingest import IngestionPipeline
+from .podcast import REFUSAL_ANSWER as PODCAST_REFUSAL
 from .podcast import PodcastIndex
 from .retriever import Retriever
 from .schemas import (
@@ -36,6 +38,21 @@ from .summaries import SummaryStore
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Lightweight usage counters (in-memory: reset on restart/redeploy — good
+# enough for "is anyone using this?"). Structured log lines below are the
+# durable record; grep the host's logs for ANALYTICS.
+STATS: dict = {
+    "started_at": datetime.now(UTC).isoformat(timespec="seconds"),
+    "podcast_searches": 0,
+    "concierge_chats": 0,
+    "episode_summary_views": 0,
+}
+
+
+def _track(kind: str, **fields) -> None:
+    STATS[kind] = STATS.get(kind, 0) + 1
+    logger.info("ANALYTICS %s", json.dumps({"event": kind, **fields}))
 
 
 @asynccontextmanager
@@ -139,6 +156,7 @@ async def chat(
     retriever: Retriever = Depends(get_retriever),
     agent: ConciergeAgent = Depends(get_agent),
 ) -> ChatResponse:
+    _track("concierge_chats")
     chunks = await retriever.search(body.message, filters=body.filters)
     try:
         return await agent.answer(body.message, body.history, chunks)
@@ -161,6 +179,7 @@ async def chat_stream(
     retriever: Retriever = Depends(get_retriever),
     agent: ConciergeAgent = Depends(get_agent),
 ) -> StreamingResponse:
+    _track("concierge_chats", stream=True)
     chunks = await retriever.search(body.message, filters=body.filters)
 
     async def event_source():
@@ -208,6 +227,7 @@ async def podcast_search(
     body: PodcastSearchRequest,
     podcast: PodcastIndex = Depends(get_podcast),
 ) -> PodcastSearchResponse:
+    _track("podcast_searches", q=body.query[:120])
     try:
         return await podcast.search(body.query, top_k=body.top_k)
     except anthropic.RateLimitError as exc:
@@ -218,6 +238,44 @@ async def podcast_search(
         status = getattr(exc, "status_code", None)
         logger.error("Anthropic error on search: %s (%s)", type(exc).__name__, status)
         raise HTTPException(status_code=502, detail="Model provider error.") from exc
+
+
+@app.post("/v1/podcast/search/stream",
+          dependencies=[Depends(public_rate_limit), Depends(global_rate_limit)])
+async def podcast_search_stream(
+    body: PodcastSearchRequest,
+    podcast: PodcastIndex = Depends(get_podcast),
+) -> StreamingResponse:
+    """SSE variant: hits render immediately, the answer streams in."""
+    _track("podcast_searches", q=body.query[:120], stream=True)
+    hits = await podcast.retrieve(body.query, body.top_k)
+
+    async def event_source():
+        payload = json.dumps([h.model_dump() for h in hits])
+        yield f"event: hits\ndata: {payload}\n\n"
+        try:
+            async for delta in podcast.answer_stream(body.query, hits):
+                if delta == "\x00REFUSAL\x00":
+                    refusal = json.dumps({"text": PODCAST_REFUSAL})
+                    yield f"event: refusal\ndata: {refusal}\n\n"
+                    return
+                yield f"data: {json.dumps({'text': delta})}\n\n"
+            yield "event: done\ndata: {}\n\n"
+        except anthropic.APIError as exc:
+            logger.error("Podcast stream failure: %s", exc)
+            yield f"event: error\ndata: {json.dumps({'detail': 'stream failed'})}\n\n"
+
+    return StreamingResponse(
+        event_source(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.get("/v1/stats")
+async def stats() -> dict:
+    """Usage counters since last restart (durable record: ANALYTICS log lines)."""
+    return STATS
 
 
 @app.post("/v1/podcast/ingest", dependencies=[Depends(require_admin)])
@@ -235,4 +293,5 @@ async def podcast_episodes(
     summaries: SummaryStore = Depends(get_summaries),
 ) -> list[dict]:
     """Pre-computed episode summaries — a Pinecone fetch, no model call."""
+    _track("episode_summary_views")
     return await summaries.list_all()

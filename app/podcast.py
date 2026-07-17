@@ -19,7 +19,7 @@ from anthropic import AsyncAnthropic
 from pinecone import Pinecone
 
 from .config import get_settings
-from .embeddings import embed_query, embed_texts
+from .embeddings import embed_query, embed_texts, rerank_order
 from .schemas import (
     Episode,
     PodcastHit,
@@ -30,6 +30,9 @@ from .schemas import (
 logger = logging.getLogger(__name__)
 
 NAMESPACE = "podcast"
+
+REFUSAL_ANSWER = ("I can't help with that one — try asking about "
+                  "something discussed on the show.")
 
 SYSTEM_PROMPT = """\
 You answer questions about the "Market Bubble" podcast (hosted by Ansem and \
@@ -177,10 +180,18 @@ class PodcastIndex:
             dimension=self._settings.embedding_dimension,
         )
 
+        # Pull a wider candidate set when reranking is on; the reranker
+        # narrows it back down to top_k by actual relevance.
+        fetch_k = (
+            max(self._settings.rerank_candidates, top_k)
+            if self._settings.rerank_model
+            else top_k
+        )
+
         def _query():
             return self.index.query(
                 vector=vector,
-                top_k=top_k,
+                top_k=fetch_k,
                 namespace=NAMESPACE,
                 include_metadata=True,
             )
@@ -205,7 +216,19 @@ class PodcastIndex:
                     score=match.score,
                 )
             )
-        return hits
+
+        # Rerank by actual relevance (falls back to vector order on failure).
+        if self._settings.rerank_model and len(hits) > top_k:
+            order = await rerank_order(
+                self._voyage,
+                query,
+                [h.text for h in hits],
+                top_k=top_k,
+                model=self._settings.rerank_model,
+            )
+            if order is not None:
+                hits = [hits[i] for i in order]
+        return hits[:top_k]
 
     @staticmethod
     def _format(hits: list[PodcastHit]) -> str:
@@ -217,12 +240,9 @@ class PodcastIndex:
         ]
         return "<excerpts>\n" + "\n\n".join(blocks) + "\n</excerpts>"
 
-    async def search(
-        self, query: str, top_k: int | None = None
-    ) -> PodcastSearchResponse:
-        top_k = top_k or self._settings.retrieval_top_k
-        hits = await self._retrieve(query, top_k)
+    REFUSAL_ANSWER = REFUSAL_ANSWER  # class alias for callers
 
+    def _build_request(self, query: str, hits: list[PodcastHit]) -> dict:
         # A search answer is short and grounded — keep the request minimal
         # and fast. Config knobs are model-specific, so add them per family:
         #  - Haiku 4.5: no `effort` (400s) and no thinking → cheapest/fastest
@@ -257,18 +277,41 @@ class PodcastIndex:
             # grounded summary needs no reasoning, so thinking off + low.
             request["output_config"] = {"effort": self._settings.search_effort}
             request["thinking"] = {"type": "disabled"}
+        return request
 
+    async def retrieve(self, query: str, top_k: int | None = None) -> list[PodcastHit]:
+        return await self._retrieve(query, top_k or self._settings.retrieval_top_k)
+
+    async def search(
+        self, query: str, top_k: int | None = None
+    ) -> PodcastSearchResponse:
+        hits = await self.retrieve(query, top_k)
         client = self._anthropic.with_options(
             timeout=self._settings.search_timeout_seconds
         )
-        response = await client.beta.messages.create(**request)
+        response = await client.beta.messages.create(
+            **self._build_request(query, hits)
+        )
         if response.stop_reason == "refusal":
             return PodcastSearchResponse(
-                answer="I can't help with that one — try asking about "
-                       "something discussed on the show.",
-                hits=[], model=response.model, refused=True,
+                answer=self.REFUSAL_ANSWER, hits=[],
+                model=response.model, refused=True,
             )
         answer = "".join(
             b.text for b in response.content if b.type == "text"
         )
         return PodcastSearchResponse(answer=answer, hits=hits, model=response.model)
+
+    async def answer_stream(self, query: str, hits: list[PodcastHit]):
+        """Yield answer text deltas for already-retrieved hits (SSE path)."""
+        client = self._anthropic.with_options(
+            timeout=self._settings.search_timeout_seconds
+        )
+        async with client.beta.messages.stream(
+            **self._build_request(query, hits)
+        ) as stream:
+            async for text in stream.text_stream:
+                yield text
+            final = await stream.get_final_message()
+        if final.stop_reason == "refusal":
+            yield "\x00REFUSAL\x00"

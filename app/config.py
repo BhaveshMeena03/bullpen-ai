@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     # --- Retrieval ----------------------------------------------------------
     retrieval_top_k: int = 6
     retrieval_min_score: float = 0.30
+    # Rerank: pull a wider candidate set from Pinecone, then re-score with
+    # Voyage's reranker for actual relevance. Unset RERANK_MODEL to disable.
+    rerank_model: str | None = "rerank-2.5-lite"
+    rerank_candidates: int = 12
 
     # --- Ingestion ----------------------------------------------------------
     chunk_max_chars: int = 2400
