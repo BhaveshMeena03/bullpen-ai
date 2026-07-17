@@ -83,6 +83,9 @@
   .ep-body h3,.ep-body strong{color:var(--text)}
   .ep-body ul{padding-left:18px;margin:8px 0}
   .ep-body li{margin:4px 0}
+  .ts{color:var(--green);text-decoration:none;font-variant-numeric:tabular-nums;
+    font-weight:600}
+  .ts:hover{text-decoration:underline}
   .ep-link{display:inline-block;margin-top:10px;color:var(--green);
     font-size:13px;text-decoration:none}
   .ep-link:hover{text-decoration:underline}
@@ -180,6 +183,19 @@
     return out.join("");
   }
 
+  // Turn [h:mm:ss] / [m:ss] markers in a summary into links that open the
+  // episode at that second on YouTube. Runs on md()'s escaped HTML, so the
+  // bracketed timestamps are plain literal text we can safely replace.
+  function linkifyTimestamps(html, url){
+    return html.replace(/\[(?:(\d+):)?(\d{1,2}):(\d{2})\]/g,
+      function(m, h, mm, ss){
+        var sec=(parseInt(h||0,10)*3600)+(parseInt(mm,10)*60)+parseInt(ss,10);
+        var link=url+(url.indexOf("?")>-1?"&":"?")+"t="+sec+"s";
+        return '<a class="ts" href="'+esc(link)+'" target="_blank" '+
+               'rel="noopener">'+m+'</a>';
+      });
+  }
+
   function loadEpisodes(){
     fetch(API+"/v1/podcast/episodes")
       .then(function(r){ if(!r.ok) throw new Error(r.status); return r.json(); })
@@ -189,8 +205,9 @@
         eps.forEach(function(ep){
           var d=document.createElement("details");
           d.className="epcard";
+          var bodyHtml=linkifyTimestamps(md(ep.summary||""), ep.url||"");
           d.innerHTML='<summary><span class="tw">▶</span>'+esc(ep.title)+
-            '</summary><div class="ep-body">'+md(ep.summary||"")+
+            '</summary><div class="ep-body">'+bodyHtml+
             '<a class="ep-link" href="'+esc(ep.url)+'" target="_blank" '+
             'rel="noopener">Watch the full episode →</a></div>';
           wrap.appendChild(d);
