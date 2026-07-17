@@ -23,11 +23,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from scripts.fetch_episodes import OUT, fetch, latest_ids  # noqa: E402
-
 from app.podcast import PodcastIndex  # noqa: E402
 from app.schemas import Episode  # noqa: E402
 from app.summaries import SummaryStore  # noqa: E402
+from scripts.fetch_episodes import OUT, fetch, latest_ids  # noqa: E402
 
 
 def log(msg: str) -> None:
