@@ -18,6 +18,47 @@ infrastructure (async FastAPI, RAG over Pinecone, Claude for reasoning):
 Both share one backend and one deploy; they're separate products with
 separate pages. Built independently — not affiliated with BullpenFi.
 
+## How it works
+
+The search is a RAG (retrieval-augmented generation) pipeline. The short
+version: instead of asking the model a question and hoping it remembers the
+answer, I first pull the relevant passages from the actual transcripts, then
+ask the model to answer *only* from those. That's what keeps it from making
+things up — if it isn't in the episodes, the answer is "I don't have that."
+
+There are two halves.
+
+**Ingesting an episode** (done once, ahead of time):
+
+1. Pull the auto-generated captions from YouTube (`fetch_episodes.py`). These
+   come back as a mess — the same words repeat in a rolling window, there's
+   HTML noise — so the parser dedupes them at word granularity and keeps the
+   **timestamp** on every line. That timestamp is the whole trick; it's what
+   later lets an answer link to the exact second in the video.
+2. Split each episode into ~2,400-character windows of consecutive lines,
+   each carrying its start time (`podcast.py`).
+3. Turn each window into an embedding — a vector that captures its meaning —
+   with Voyage AI, and store it in Pinecone with its metadata.
+
+**Answering a question** (every search):
+
+1. Embed the question the same way (cached, so popular questions are free).
+2. Ask Pinecone for the closest windows by meaning — this is semantic search,
+   so "ETH is finished" still finds "Ethereum is done."
+3. Rerank those candidates for actual relevance (Voyage's reranker), then hand
+   the top few to Claude with a strict instruction: answer only from these
+   excerpts, cite the timestamp, don't invent quotes, no financial advice.
+4. Return the answer plus the matching windows as clickable cards — each
+   deep-linked to `youtube.com/watch?v=…&t=<seconds>s`.
+
+Episode **summaries** are pre-computed once per episode (one model call over
+the full transcript) and stored, so viewing one is a database read — instant
+and free — with every timestamp in the summary clickable too.
+
+The concierge chat widget uses the same retrieval core over a different corpus
+(product docs + a crypto-basics knowledge base) with support-specific
+guardrails.
+
 ## Project layout
 
 ```
@@ -31,9 +72,10 @@ app/                    backend package
   config.py             pydantic-settings (all secrets via env / .env)
   schemas.py            request/response models
 widget/                 embeddable chat widget (vanilla JS, no build step)
+discord_bot/            /search Discord bot (thin client to the backend)
 demo/                   demo terminal page, podcast search page, mock server
-scripts/                redteam.py, fetch_episodes.py, ingest_episodes.py, GIF makers
-tests/                  61 offline tests (no API keys needed)
+scripts/                fetch/ingest/summarize episodes, weekly sync, red-team harness
+tests/                  96 tests (no API keys needed)
 data/                   seed knowledge + fetched episode transcripts
 .github/workflows/      CI: ruff + pytest on every push
 Dockerfile              non-root container with healthcheck
