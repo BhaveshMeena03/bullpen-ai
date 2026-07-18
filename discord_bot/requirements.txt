@@ -1,0 +1,3 @@
+# Discord bot — thin client to the search backend
+discord.py>=2.4,<3
+httpx>=0.27
