@@ -83,10 +83,14 @@ def parse_vtt(vtt: str) -> list[dict]:
         if not m:
             continue
         start = _seconds(*m.groups())
+        # The cue body is the lines AFTER the timestamp. (A WebVTT cue
+        # identifier, if present, precedes the timestamp — never after it.)
+        # Taking post-timestamp lines preserves fully-numeric spoken lines
+        # like "2026" or "100" that a blanket isdigit() filter would drop —
+        # which matters a lot for a finance podcast full of years and prices.
+        ts_idx = lines.index(ts_line)
         body = _clean(" ".join(
-            _TAG.sub("", ln)
-            for ln in lines
-            if "-->" not in ln and not ln.strip().isdigit() and ln.strip()
+            _TAG.sub("", ln) for ln in lines[ts_idx + 1:] if ln.strip()
         ))
         if not body:
             continue

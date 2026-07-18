@@ -7,6 +7,7 @@ Endpoints:
     GET  /healthz         -> liveness probe
 """
 
+import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager
@@ -200,8 +201,13 @@ async def chat_stream(
                     return
                 yield f"data: {json.dumps({'text': delta})}\n\n"
             yield "event: done\ndata: {}\n\n"
-        except anthropic.APIError as exc:
-            logger.error("Streaming failure: %s", exc)
+        except asyncio.CancelledError:
+            raise  # client disconnected — let it propagate, don't swallow
+        except Exception as exc:  # noqa: BLE001
+            # Headers + earlier events are already flushed, so an uncaught
+            # error here would leave the client hanging with no terminal
+            # event. Always emit event:error so the UI can recover.
+            logger.exception("Chat stream failure: %s", exc)
             yield f"event: error\ndata: {json.dumps({'detail': 'stream failed'})}\n\n"
 
     return StreamingResponse(
@@ -261,8 +267,10 @@ async def podcast_search_stream(
                     return
                 yield f"data: {json.dumps({'text': delta})}\n\n"
             yield "event: done\ndata: {}\n\n"
-        except anthropic.APIError as exc:
-            logger.error("Podcast stream failure: %s", exc)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Podcast stream failure: %s", exc)
             yield f"event: error\ndata: {json.dumps({'detail': 'stream failed'})}\n\n"
 
     return StreamingResponse(

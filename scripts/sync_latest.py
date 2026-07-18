@@ -80,20 +80,27 @@ async def main(argv: list[str]) -> int:
             continue
         episode = Episode(**raw)
 
-        # 1. append to the local record (source of truth for 'what's indexed')
+        # 1. ingest into Pinecone (append — does NOT clear existing episodes).
+        #    Do this BEFORE recording the episode as indexed: if ingest fails,
+        #    the episode stays out of episodes.json and is retried next run,
+        #    rather than being marked done-but-absent forever.
+        try:
+            windows = await podcast.ingest([episode])
+        except Exception as exc:  # noqa: BLE001 — don't abort the whole batch
+            log(f"  {vid}: ingest FAILED ({exc}) — will retry next run")
+            continue
+        log(f"  {vid}: ingested {windows} windows — {episode.title[:55]}")
+
+        # 2. persist to the local record only after a successful ingest.
         indexed.append(raw)
         OUT.write_text(json.dumps(indexed, indent=2, ensure_ascii=False))
 
-        # 2. ingest into Pinecone (append — does NOT clear existing episodes)
-        windows = await podcast.ingest([episode])
-        log(f"  {vid}: ingested {windows} windows — {episode.title[:55]}")
-
-        # 3. summarize (idempotent)
+        # 3. summarize (idempotent; a summary failure must not lose the ingest)
         try:
             summary = await summaries.summarize(episode)
             await summaries.store(episode, summary)
             log(f"  {vid}: summary stored ({len(summary)} chars)")
-        except Exception as exc:  # summary failure shouldn't lose the ingest
+        except Exception as exc:  # noqa: BLE001
             log(f"  {vid}: summary FAILED ({exc}) — search still works, "
                 f"re-run summarize_episodes.py later")
         added += 1

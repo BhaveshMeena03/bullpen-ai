@@ -97,3 +97,48 @@ class TestSecretStripping:
         assert s.voyage_api_key == "pa-xyz"
         assert s.pinecone_api_key == "pcsk-123"
         get_settings.cache_clear()
+
+
+class TestProxyIPAndBuckets:
+    def test_forwarded_for_is_used(self):
+        from starlette.requests import Request as SReq
+        limiter = RateLimiter(rpm=60, burst=1)
+
+        def req(xff):
+            scope = {"type": "http", "headers": [(b"x-forwarded-for", xff.encode())],
+                     "client": ("10.0.0.1", 0)}
+            return SReq(scope)
+
+        assert limiter._client_ip(req("1.1.1.1, 10.0.0.1")) == "1.1.1.1"
+        # Two different real clients behind the same proxy get separate buckets
+        assert limiter.check("1.1.1.1")
+        assert limiter.check("2.2.2.2"), "distinct XFF clients must not share a bucket"
+
+    def test_bucket_eviction_preserves_recent_throttled(self, monkeypatch):
+        # Deterministic, monotonically-increasing clock so "oldest" is
+        # unambiguous.
+        # Tiny increment: preserves ordering (oldest < newest) without
+        # refilling a meaningful fraction of a token between calls.
+        clock = [1000.0]
+        monkeypatch.setattr("app.security.time.monotonic",
+                            lambda: clock.__setitem__(0, clock[0] + 0.001) or clock[0])
+        limiter = RateLimiter(rpm=60, burst=1)
+        limiter.MAX_BUCKETS = 2
+        limiter.check("old")               # oldest bucket
+        limiter.check("victim")            # newer; consumes its 1 token
+        assert limiter.check("victim") is False   # victim now throttled
+        limiter.check("newcomer")          # at cap -> evicts the OLDEST ("old")
+        # victim (more recent) survived and is still throttled; a full clear()
+        # would have wiped it and let it burst again.
+        assert limiter.check("victim") is False
+
+
+class TestAdminTokenFailClosed:
+    def test_blank_admin_token_refuses_to_start(self, monkeypatch):
+        import pytest
+        from pydantic import ValidationError
+        monkeypatch.setenv("ADMIN_TOKEN", "​ \n")  # invisible-only
+        get_settings.cache_clear()
+        with pytest.raises(ValidationError):
+            get_settings()
+        get_settings.cache_clear()

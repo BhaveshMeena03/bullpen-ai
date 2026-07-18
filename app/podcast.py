@@ -13,6 +13,7 @@ plumbing as the rest of the app.
 import asyncio
 import hashlib
 import logging
+from xml.sax.saxutils import escape, quoteattr
 
 import voyageai
 from anthropic import AsyncAnthropic
@@ -234,8 +235,12 @@ class PodcastIndex:
     def _format(hits: list[PodcastHit]) -> str:
         if not hits:
             return "<excerpts>\n(nothing indexed matched this query)\n</excerpts>"
+        # Transcript text/titles are untrusted third-party captions. XML-escape
+        # them so a crafted window can't forge a closing </excerpt> tag and
+        # break out of the data region the system prompt treats as grounding.
         blocks = [
-            f'<excerpt episode="{h.title}" at="{h.timestamp}">\n{h.text}\n</excerpt>'
+            f"<excerpt episode={quoteattr(h.title)} at={quoteattr(h.timestamp)}>"
+            f"\n{escape(h.text)}\n</excerpt>"
             for h in hits
         ]
         return "<excerpts>\n" + "\n\n".join(blocks) + "\n</excerpts>"

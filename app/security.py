@@ -42,13 +42,26 @@ class RateLimiter:
             self._buckets[key] = (tokens, now)
             return False
         if len(self._buckets) >= self.MAX_BUCKETS and key not in self._buckets:
-            self._buckets.clear()  # crude but bounded; Redis in multi-replica
+            # Evict the single least-recently-seen bucket instead of wiping
+            # them all (a full clear would momentarily reset everyone's limit
+            # under IP churn). Bounds memory without lifting active throttles.
+            oldest = min(self._buckets, key=lambda k: self._buckets[k][1])
+            del self._buckets[oldest]
         self._buckets[key] = (tokens - 1.0, now)
         return True
 
+    @staticmethod
+    def _client_ip(request: Request) -> str:
+        # Behind Render's proxy, request.client.host is the proxy's IP for
+        # every user — which would collapse all clients into one bucket. Use
+        # the left-most X-Forwarded-For hop (the real client) when present.
+        xff = request.headers.get("x-forwarded-for")
+        if xff:
+            return xff.split(",")[0].strip()
+        return request.client.host if request.client else "unknown"
+
     async def __call__(self, request: Request) -> None:
-        ip = request.client.host if request.client else "unknown"
-        if not self.check(ip):
+        if not self.check(self._client_ip(request)):
             raise HTTPException(
                 status_code=429,
                 detail="Too many requests — please slow down.",
@@ -92,5 +105,11 @@ async def require_admin(request: Request) -> None:
     if not expected:
         return
     provided = request.headers.get("x-admin-token", "")
-    if not secrets.compare_digest(provided, expected):
+    # Compare bytes, not str: Starlette decodes headers as latin-1, so a
+    # non-ASCII header byte would make compare_digest(str, str) raise a
+    # TypeError (surfacing as a 500). Encoding both sides avoids that and
+    # still runs in constant time.
+    if not secrets.compare_digest(
+        provided.encode("utf-8", "ignore"), expected.encode("utf-8")
+    ):
         raise HTTPException(status_code=401, detail="Invalid or missing admin token.")

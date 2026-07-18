@@ -164,6 +164,15 @@
 
   function esc(s){var d=document.createElement("div");d.textContent=s;return d.innerHTML;}
 
+  // esc() only neutralizes & < > — fine for text content, but NOT for an
+  // attribute value (a " or ' would break out and inject attributes).
+  // escAttr() escapes quotes too; safeUrl() blocks javascript:/data: URLs so
+  // a malformed link field can't become a clickable script.
+  function escAttr(s){return String(s).replace(/[&<>"']/g,function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
+  function safeUrl(u){u=String(u).trim();
+    return /^(https?:|\/|#|\?)/i.test(u)?u:"#";}
+
   // Minimal, XSS-safe markdown: escape everything first, then allow only
   // **bold** and bullet lists that WE reconstruct from the escaped text.
   function md(s){
@@ -191,7 +200,7 @@
       function(m, h, mm, ss){
         var sec=(parseInt(h||0,10)*3600)+(parseInt(mm,10)*60)+parseInt(ss,10);
         var link=url+(url.indexOf("?")>-1?"&":"?")+"t="+sec+"s";
-        return '<a class="ts" href="'+esc(link)+'" target="_blank" '+
+        return '<a class="ts" href="'+escAttr(safeUrl(link))+'" target="_blank" '+
                'rel="noopener">'+m+'</a>';
       });
   }
@@ -208,8 +217,8 @@
           var bodyHtml=linkifyTimestamps(md(ep.summary||""), ep.url||"");
           d.innerHTML='<summary><span class="tw">▶</span>'+esc(ep.title)+
             '</summary><div class="ep-body">'+bodyHtml+
-            '<a class="ep-link" href="'+esc(ep.url)+'" target="_blank" '+
-            'rel="noopener">Watch the full episode →</a></div>';
+            '<a class="ep-link" href="'+escAttr(safeUrl(ep.url||""))+'" '+
+            'target="_blank" rel="noopener">Watch the full episode →</a></div>';
           wrap.appendChild(d);
         });
         document.getElementById("eps").hidden=false;
@@ -225,7 +234,11 @@
        .replace(/\b(um+|uh+|like,)\s/gi," ")
        .replace(/\b([\w']+)(\s+\1\b)+/gi,"$1")   // collapse stutter repeats
        .replace(/\s+/g," ").trim();
-    if(s.length>150){ s=s.slice(0,150); s=s.slice(0,s.lastIndexOf(" "))+"…"; }
+    if(s.length>150){
+      s=s.slice(0,150);
+      var sp=s.lastIndexOf(" ");
+      s=(sp>0?s.slice(0,sp):s)+"…";  // only trim to a space if one exists
+    }
     return s;
   }
 
@@ -233,7 +246,7 @@
     if(list && list.length){
       var html='<h3>Jump to the moment</h3>';
       list.forEach(function(h){
-        html+='<a class="hit" href="'+esc(h.deep_link)+'" target="_blank" rel="noopener">'
+        html+='<a class="hit" href="'+escAttr(safeUrl(h.deep_link))+'" target="_blank" rel="noopener">'
           +'<div class="hit-top"><span class="play">▶ '+esc(h.timestamp)+'</span>'
           +'<span class="ep">'+esc(h.title)+'</span>'
           +'<span class="watch">watch on YouTube →</span></div>'
@@ -265,24 +278,34 @@
     addShareButton();
   }
 
+  // A new search cancels any in-flight one and bumps a token, so a stale
+  // stream (e.g. a chip clicked mid-answer) can't keep writing to the shared
+  // answer/hits elements after a newer search has started.
+  var inflight=null, runToken=0;
+
   // Streaming search: hits render immediately, the answer types itself in.
   // Falls back to the non-streaming endpoint if the stream fails.
   function search(){
     var query=q.value.trim();
     if(!query) return;
     lastQuery=query;
+    if(inflight) inflight.abort();
+    inflight=new AbortController();
+    var myToken=++runToken, mySignal=inflight.signal;
+    var stale=function(){ return myToken!==runToken; };
     go.disabled=true; spin.classList.add("show");
     answer.classList.remove("show"); hits.innerHTML="";
 
     fetch(API+"/v1/podcast/search/stream",{
       method:"POST",headers:{"content-type":"application/json"},
-      body:JSON.stringify({query:query})
+      body:JSON.stringify({query:query}),signal:mySignal
     }).then(function(res){
       if(!res.ok||!res.body) throw new Error("stream "+res.status);
       var reader=res.body.getReader(), dec=new TextDecoder(), buf="", text="";
       answer.classList.add("show"); body.textContent="";
       function pump(){
         return reader.read().then(function(step){
+          if(stale()) return;  // a newer search superseded this one
           if(step.done){ body.innerHTML=md(text); finishSearch(); return; }
           buf+=dec.decode(step.value,{stream:true});
           var frames=buf.split("\n\n"); buf=frames.pop();
@@ -304,19 +327,22 @@
         });
       }
       return pump();
-    }).catch(function(){
+    }).catch(function(err){
+      if(stale()||(err&&err.name==="AbortError")) return;  // superseded
       // Fallback: plain (non-streaming) search.
       fetch(API+"/v1/podcast/search",{
         method:"POST",headers:{"content-type":"application/json"},
-        body:JSON.stringify({query:query})
+        body:JSON.stringify({query:query}),signal:mySignal
       }).then(function(r){ if(!r.ok) throw new Error(r.status); return r.json(); })
       .then(function(data){
+        if(stale()) return;
         body.innerHTML=md(data.answer); answer.classList.add("show");
         renderHits(data.hits);
-      }).catch(function(){
+      }).catch(function(e){
+        if(stale()||(e&&e.name==="AbortError")) return;
         body.textContent="Search is unavailable right now — please try again.";
         answer.classList.add("show");
-      }).finally(finishSearch);
+      }).finally(function(){ if(!stale()) finishSearch(); });
     });
   }
 

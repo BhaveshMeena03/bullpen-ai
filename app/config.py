@@ -6,7 +6,7 @@ All secrets and tunables are sourced from the environment (or a local
 
 from functools import lru_cache
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -86,6 +86,20 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return "".join(ch for ch in v if 0x21 <= ord(ch) <= 0x7E)
         return v
+
+    @model_validator(mode="after")
+    def _admin_token_not_blank(self):
+        # A whitespace/invisible-only ADMIN_TOKEN sanitizes to "" above, which
+        # require_admin would treat as "auth disabled" — silently unguarding
+        # the ingest endpoints. Fail closed: a *provided-but-empty* token is
+        # a misconfiguration, so refuse to start rather than run open.
+        if self.admin_token is not None and self.admin_token == "":
+            raise ValueError(
+                "ADMIN_TOKEN was set but contains no printable characters "
+                "after sanitization. Unset it for local dev, or provide a "
+                "real token."
+            )
+        return self
 
 
 @lru_cache
