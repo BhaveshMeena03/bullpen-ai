@@ -99,7 +99,7 @@ class MBBot(discord.Client):
         return embed
 
 
-# --- cooldown ---------------------------------------------------------------
+# --- rate limiting ----------------------------------------------------------
 class Cooldown:
     """Per-user cooldown. Discord has its own limits, but this specifically
     guards the backend's model spend from a single user spamming /search."""
@@ -120,12 +120,36 @@ class Cooldown:
             del self._last[oldest]
 
 
+class GlobalThrottle:
+    """A hard ceiling on searches/minute across the ENTIRE bot — the budget
+    backstop. Per-user cooldowns don't stop a coordinated spam raid in a big
+    server; this caps total model spend regardless of how many users pile on.
+    Token bucket: `per_min` tokens, refilled continuously."""
+
+    def __init__(self, per_min: float):
+        self._rate = per_min / 60.0
+        self._burst = max(1.0, per_min)
+        self._tokens = self._burst
+        self._last = 0.0
+
+    def allow(self, now: float) -> bool:
+        if self._last == 0.0:
+            self._last = now
+        self._tokens = min(self._burst, self._tokens + (now - self._last) * self._rate)
+        self._last = now
+        if self._tokens < 1.0:
+            return False
+        self._tokens -= 1.0
+        return True
+
+
 def build_bot() -> MBBot:
     token = _env("DISCORD_TOKEN", required=True)
     backend = _env("BACKEND_URL", required=True)
     guild_id = _env("GUILD_ID")
     cooldown_s = float(_env("COOLDOWN_SECONDS", "8"))
     timeout = float(_env("SEARCH_TIMEOUT", "60"))
+    max_per_min = float(_env("MAX_SEARCHES_PER_MIN", "20"))
 
     bot = MBBot(
         backend_url=backend,
@@ -133,6 +157,10 @@ def build_bot() -> MBBot:
         guild_id=int(guild_id) if guild_id else None,
     )
     cooldown = Cooldown(cooldown_s)
+    throttle = GlobalThrottle(max_per_min)
+    # Only reply to mentions/roles the model can't manufacture — never let a
+    # model-generated answer @everyone/@here/@role the channel.
+    no_mentions = discord.AllowedMentions.none()
     bot._token = token  # stashed for run()
 
     @bot.tree.command(
@@ -145,17 +173,26 @@ def build_bot() -> MBBot:
     ) -> None:
         import time
         now = time.monotonic()
+
+        # Validate BEFORE consuming any limiter slot.
+        question = " ".join(question.split())  # collapse whitespace/control chars
+        if not (2 <= len(question) <= 300):
+            await interaction.response.send_message(
+                "Ask a question between 2 and 300 characters.", ephemeral=True
+            )
+            return
+
         wait = cooldown.retry_after(interaction.user.id, now)
         if wait > 0:
             await interaction.response.send_message(
                 f"⏳ one sec — try again in {wait:.0f}s.", ephemeral=True
             )
             return
-
-        question = question.strip()
-        if not (2 <= len(question) <= 300):
+        # Bot-wide budget backstop: a coordinated raid can't blow past this.
+        if not throttle.allow(now):
             await interaction.response.send_message(
-                "Ask a question between 2 and 300 characters.", ephemeral=True
+                "🌊 The bot is at capacity right now — try again shortly.",
+                ephemeral=True,
             )
             return
 
@@ -164,13 +201,16 @@ def build_bot() -> MBBot:
         await interaction.response.defer(thinking=True)
         try:
             embed = await bot.run_search(question)
-            await interaction.followup.send(embed=embed)
+            await interaction.followup.send(embed=embed, allowed_mentions=no_mentions)
         except SearchError as exc:
-            await interaction.followup.send(f"⚠️ {exc.message}", ephemeral=True)
+            await interaction.followup.send(
+                f"⚠️ {exc.message}", ephemeral=True, allowed_mentions=no_mentions
+            )
         except Exception:  # noqa: BLE001 — never crash a command
             logger.exception("Unhandled error in /search")
             await interaction.followup.send(
-                "⚠️ Something went wrong — please try again.", ephemeral=True
+                "⚠️ Something went wrong — please try again.",
+                ephemeral=True, allowed_mentions=no_mentions,
             )
 
     @bot.tree.error

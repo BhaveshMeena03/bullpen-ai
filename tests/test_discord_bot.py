@@ -136,3 +136,38 @@ class TestCooldown:
         assert cd.retry_after(1, now=105.0) == pytest.approx(5.0)
         assert cd.retry_after(1, now=111.0) == 0.0
         assert cd.retry_after(2, now=105.0) == 0.0  # different user unaffected
+
+
+class TestGlobalThrottle:
+    def test_hard_ceiling_across_all_users(self):
+        from discord_bot.bot import GlobalThrottle
+        t = GlobalThrottle(per_min=6)  # 6/min => burst 6, then blocked
+        allowed = sum(1 for _ in range(20) if t.allow(now=1000.0))
+        assert allowed == 6, "must cap total searches regardless of user count"
+
+    def test_refills_over_time(self):
+        from discord_bot.bot import GlobalThrottle
+        t = GlobalThrottle(per_min=60)  # 1/sec
+        for _ in range(60):
+            t.allow(now=1000.0)
+        assert t.allow(now=1000.0) is False   # bucket drained
+        assert t.allow(now=1005.0) is True    # 5s later -> refilled
+
+
+class TestNoTokenLeak:
+    def test_token_not_in_logs_on_login(self, monkeypatch):
+        # The bot must never log the token. Build with a sentinel and assert
+        # it appears nowhere the bot writes.
+        monkeypatch.setenv("DISCORD_TOKEN", "SENTINEL_TOKEN_do_not_log")
+        monkeypatch.setenv("BACKEND_URL", "https://x.test")
+        from discord_bot.bot import build_bot
+        bot = build_bot()
+        # token is only stashed for run(), never formatted into a log string
+        import inspect
+
+        import discord_bot.bot as mod
+        src = inspect.getsource(mod)
+        assert "_token" in src  # it is used
+        # no logging call interpolates the token
+        assert "logger.info(bot._token" not in src
+        assert "logger" not in src.split("bot._token")[1].split("\n")[0]

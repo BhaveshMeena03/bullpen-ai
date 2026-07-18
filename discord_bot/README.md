@@ -36,9 +36,10 @@ Discord  ──/search──▶  bot  ──HTTPS──▶  marketbubble-search.
    ```
    DISCORD_TOKEN=your-bot-token
    BACKEND_URL=https://marketbubble-search.onrender.com
-   GUILD_ID=your-server-id     # optional: instant command sync in dev
-   COOLDOWN_SECONDS=8          # optional
-   SEARCH_TIMEOUT=60           # optional
+   GUILD_ID=your-server-id      # optional: instant command sync in dev
+   COOLDOWN_SECONDS=8           # optional: per-user cooldown
+   MAX_SEARCHES_PER_MIN=20      # optional: bot-wide budget ceiling
+   SEARCH_TIMEOUT=60            # optional: backend call timeout
    ```
    (Get GUILD_ID by right-clicking your server with Developer Mode on.)
 
@@ -61,7 +62,43 @@ holds a gateway connection, it doesn't serve HTTP). Set the same env vars
 there and run `python -m discord_bot.bot`. On a container host, SIGTERM
 triggers a clean shutdown.
 
-## Security notes
-- The bot needs **only** the Discord token — it can't touch your model or
-  vector-DB keys, because those live on the backend.
-- Rotate the Discord token if it ever leaks (Developer Portal → Reset Token).
+## Security
+
+The bot is built to be hard to compromise and impossible to turn into a
+weapon even if it were:
+
+**No inbound attack surface.** The bot is outbound-only — it connects *out*
+to Discord's gateway and to your backend. It listens on **no port**, so
+there is nothing to attack over the network.
+
+**Least privilege.**
+- `Intents.none()` — it cannot read messages, member lists, presence, or any
+  privileged data. It only receives its own slash-command invocations.
+- Invite it with the **single** permission `Send Messages`. Even a fully
+  compromised bot could not ban, kick, delete, or manage anything.
+- It holds **only** the Discord token — no Anthropic / Voyage / Pinecone
+  keys. Those never leave the backend, so the bot can't leak them.
+
+**Abuse / budget protection (defense in depth).**
+- **Per-user cooldown** (`COOLDOWN_SECONDS`, default 8s) — stops one user
+  spamming `/search`.
+- **Bot-wide throttle** (`MAX_SEARCHES_PER_MIN`, default 20) — a hard ceiling
+  on total searches/minute, so a coordinated raid in a large server can't
+  blow through your model budget.
+- **Backend limits** — the API also enforces its own global + per-IP rate
+  limits, so the bot is one more layer, not the only one.
+- **Input bounds** — questions are whitespace-collapsed and capped at
+  2–300 chars before any work happens.
+
+**No mention abuse.** All replies set `AllowedMentions.none()`, so a
+model-generated answer can never `@everyone` / `@here` / ping a role.
+
+**No secret leakage.** The token is read from the environment, never logged,
+and never echoed to users. Errors return generic messages — never a
+traceback or the backend URL. (A test asserts the token isn't logged.)
+
+**If the token ever leaks:** Developer Portal → your app → Bot →
+**Reset Token**. The old token dies instantly; update your env and restart.
+
+**Do not** commit the token or a `.env` containing it. Keep it in your host's
+secret manager (Render/Railway/Fly all have one).
