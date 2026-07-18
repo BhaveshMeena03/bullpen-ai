@@ -97,8 +97,46 @@ model-generated answer can never `@everyone` / `@here` / ping a role.
 and never echoed to users. Errors return generic messages — never a
 traceback or the backend URL. (A test asserts the token isn't logged.)
 
-**If the token ever leaks:** Developer Portal → your app → Bot →
-**Reset Token**. The old token dies instantly; update your env and restart.
+### The "compromised bot posts a wallet-drainer link" scenario
+
+This is the nightmare in crypto Discords, so it's worth being precise. There
+are two distinct paths, with different defenses:
+
+**Path 1 — backend or model manipulation (structurally blocked).** Even if
+the search backend were compromised, or a poisoned transcript tricked the
+model into producing "launch now, claim $ANSEM 👉 scam.link", the bot
+**cannot post that link.** Two hard rules enforce it:
+- The bot only ever posts links whose host is a **YouTube domain**
+  (`ALLOWED_LINK_HOSTS`). Any other domain in a result is dropped, always.
+- The answer text is **URL-stripped** before posting (`defang_urls`), so a
+  link can't ride in through the answer body either — and the echoed
+  question is stripped too.
+
+  So: whatever the backend returns, the only clickable thing this bot will
+  ever post is a `youtube.com` / `youtu.be` link. (Tests enforce this.)
+
+**Path 2 — Discord token theft (must be prevented operationally).** If an
+attacker steals the `DISCORD_TOKEN`, they control the bot's identity via
+Discord's API directly — they don't run this code, so none of the above
+applies. This is true of *every* Discord bot in existence; the defenses are:
+- **Never let the token leak.** Store it in your host's secret manager, never
+  in a committed file. Rotate it if a laptop/host is ever exposed.
+- **Least privilege limits the blast radius.** The bot has only *Send
+  Messages* and `Intents.none()`, so even a hijacked token can only post
+  messages in channels it can already see — it cannot ban, edit others,
+  manage roles, or touch announcement channels it wasn't given.
+- **Server-side backstops (recommend to the server admins):** don't grant the
+  bot access to announcement/@everyone channels; enable Discord **AutoMod**
+  link filtering; the moment anything looks off, **kick the bot** (instantly
+  stops it) and reset the token.
+
+**Incident response (if the bot is ever posting bad content):**
+1. In the server: **kick/ban the bot** — this stops it immediately, no matter
+   what's controlling it.
+2. Developer Portal → your app → Bot → **Reset Token** — the stolen token
+   dies instantly.
+3. Update the token in your host and restart. Re-invite with the same
+   least-privilege scope.
 
 **Do not** commit the token or a `.env` containing it. Keep it in your host's
 secret manager (Render/Railway/Fly all have one).

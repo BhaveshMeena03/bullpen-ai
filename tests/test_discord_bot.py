@@ -98,21 +98,21 @@ class TestFormatting:
 
     def test_format_hits_dedupes_and_limits(self):
         hits = [
-            Hit("1:00", "A", "https://y/1"),
-            Hit("1:00", "A", "https://y/1"),   # dup link
-            Hit("2:00", "B", "https://y/2"),
-            Hit("3:00", "C", "https://y/3"),
-            Hit("4:00", "D", "https://y/4"),
-            Hit("5:00", "E", "https://y/5"),
+            Hit("1:00", "A", "https://youtu.be/1"),
+            Hit("1:00", "A", "https://youtu.be/1"),   # dup link
+            Hit("2:00", "B", "https://youtu.be/2"),
+            Hit("3:00", "C", "https://youtu.be/3"),
+            Hit("4:00", "D", "https://youtu.be/4"),
+            Hit("5:00", "E", "https://youtu.be/5"),
         ]
         out = format_hits(hits, limit=3)
         assert out.count("\n") == 2       # 3 lines
-        assert out.count("https://y/1") == 1  # deduped
-        assert "https://y/5" not in out       # limited
+        assert out.count("https://youtu.be/1") == 1  # deduped
+        assert "youtu.be/5" not in out       # limited
 
     def test_hits_are_markdown_links(self):
-        out = format_hits([Hit("1:00", "Ep", "https://y/1")])
-        assert "](https://y/1)" in out and "`1:00`" in out
+        out = format_hits([Hit("1:00", "Ep", "https://youtu.be/1")])
+        assert "](https://youtu.be/1)" in out and "`1:00`" in out
 
     def test_empty_result_payload(self):
         payload = build_answer_payload("q", SearchResult(answer="", refused=True))
@@ -121,11 +121,11 @@ class TestFormatting:
 
     def test_answer_payload_shape(self):
         res = SearchResult(answer="Real answer",
-                           hits=[Hit("1:00", "Ep", "https://y/1")])
+                           hits=[Hit("1:00", "Ep", "https://youtu.be/1")])
         payload = build_answer_payload("why?", res)
         assert payload["empty"] is False
         assert payload["title"] == "why?"
-        assert "https://y/1" in payload["hits"]
+        assert "https://youtu.be/1" in payload["hits"]
 
 
 class TestCooldown:
@@ -171,3 +171,44 @@ class TestNoTokenLeak:
         # no logging call interpolates the token
         assert "logger.info(bot._token" not in src
         assert "logger" not in src.split("bot._token")[1].split("\n")[0]
+
+
+class TestLinkSafety:
+    """The bot must NEVER post a non-YouTube link — the core defense against
+    being turned into a wallet-drainer link poster."""
+
+    def test_only_youtube_links_posted(self):
+        from discord_bot.format import format_hits
+        hits = [
+            Hit("1:00", "real", "https://www.youtube.com/watch?v=x&t=60s"),
+            Hit("2:00", "scam", "https://ansem-airdrop.xyz/claim"),
+            Hit("3:00", "scam2", "http://evil.link/drain"),
+            Hit("4:00", "yt2", "https://youtu.be/abc?t=5"),
+        ]
+        out = format_hits(hits)
+        assert "youtube.com/watch?v=x" in out
+        assert "youtu.be/abc" in out
+        assert "ansem-airdrop.xyz" not in out   # dropped
+        assert "evil.link" not in out           # dropped
+
+    def test_is_allowed_link(self):
+        from discord_bot.format import is_allowed_link
+        assert is_allowed_link("https://www.youtube.com/watch?v=x")
+        assert is_allowed_link("https://youtu.be/x")
+        assert not is_allowed_link("https://youtube.com.evil.xyz/x")  # not the host
+        assert not is_allowed_link("https://scam.link/claim")
+        assert not is_allowed_link("javascript:alert(1)")
+
+    def test_answer_urls_defanged(self):
+        from discord_bot.format import truncate_answer
+        out = truncate_answer(
+            "The hosts said buy now at https://ansem-drop.xyz/claim and www.scam.io")
+        assert "ansem-drop.xyz" not in out
+        assert "scam.io" not in out
+        assert "[link removed]" in out
+
+    def test_question_echo_defanged(self):
+        from discord_bot.format import build_answer_payload
+        p = build_answer_payload("launching $ANSEM claim at scam.link/x",
+                                 SearchResult(answer="ok", hits=[]))
+        assert "scam.link" not in p["title"]
