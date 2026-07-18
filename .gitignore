@@ -5,6 +5,5 @@ __pycache__/
 redteam_report.md
 data/episodes.json
 /tmp/
-PITCH_PREP.md
 
 deploy/*.log
