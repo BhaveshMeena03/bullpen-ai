@@ -243,6 +243,7 @@
   }
 
   function renderHits(list){
+    lastHits=list||[];  // for the shareable card's top-timestamp line
     if(list && list.length){
       var html='<h3>Jump to the moment</h3>';
       list.forEach(function(h){
@@ -258,19 +259,86 @@
     }
   }
 
-  var lastQuery="";
+  var lastQuery="", lastHits=[];
+
+  // Render the current answer into a branded 1080x1080 PNG the user can
+  // download and attach to a tweet. Pure client-side canvas — no backend,
+  // no external library, works offline.
+  function wrapText(ctx,text,maxW){
+    var words=text.split(" "), lines=[], line="";
+    for(var i=0;i<words.length;i++){
+      var test=line?line+" "+words[i]:words[i];
+      if(ctx.measureText(test).width>maxW && line){ lines.push(line); line=words[i]; }
+      else line=test;
+    }
+    if(line) lines.push(line);
+    return lines;
+  }
+  function downloadCard(){
+    var C=document.createElement("canvas"); C.width=1080; C.height=1080;
+    var x=C.getContext("2d"), PAD=72, W=C.width-PAD*2;
+    x.fillStyle="#0b0e11"; x.fillRect(0,0,C.width,C.height);
+    x.fillStyle="#16c784"; x.fillRect(0,0,C.width,10);
+    // brand
+    x.font="700 30px -apple-system,Segoe UI,Roboto,sans-serif";
+    x.fillStyle="#e6e8ea"; x.fillText("MARKET ",PAD,110);
+    var mw=x.measureText("MARKET ").width;
+    x.fillStyle="#16c784"; x.fillText("BUBBLE",PAD+mw,110);
+    x.fillStyle="#8a939e"; x.fillText(" · search",PAD+mw+x.measureText("BUBBLE").width,110);
+    // question
+    var y=200;
+    x.fillStyle="#16c784"; x.font="700 46px -apple-system,Segoe UI,Roboto,sans-serif";
+    wrapText(x,lastQuery,W).slice(0,3).forEach(function(l){ x.fillText(l,PAD,y); y+=58; });
+    // answer (plain text, bold markers stripped, truncated to fit)
+    y+=30;
+    var ans=(document.getElementById("answer-body").textContent||"")
+      .replace(/\*\*/g,"").replace(/\s+/g," ").trim();
+    x.fillStyle="#c7ccd2"; x.font="400 34px -apple-system,Segoe UI,Roboto,sans-serif";
+    var lines=wrapText(x,ans,W), max=13;
+    lines.slice(0,max).forEach(function(l,i){
+      if(i===max-1 && lines.length>max) l=l.replace(/\s\S*$/,"")+" …";
+      x.fillText(l,PAD,y); y+=48;
+    });
+    // top timestamp
+    if(lastHits[0]){
+      y+=14; x.fillStyle="#16c784"; x.font="600 30px -apple-system,Segoe UI,Roboto,sans-serif";
+      var h=lastHits[0];
+      x.fillText("▶ "+h.timestamp+"  "+(h.title||"").slice(0,42),PAD,y);
+    }
+    // footer
+    x.fillStyle="#8a939e"; x.font="400 26px -apple-system,Segoe UI,Roboto,sans-serif";
+    x.fillText("marketbubble-search.onrender.com — ask anything, jump to the moment",
+               PAD,C.height-PAD);
+    C.toBlob(function(blob){
+      var a=document.createElement("a");
+      a.href=URL.createObjectURL(blob);
+      a.download="market-bubble-answer.png"; a.click();
+      setTimeout(function(){ URL.revokeObjectURL(a.href); },5000);
+    },"image/png");
+  }
+
   function addShareButton(){
-    if(document.getElementById("share-btn")) return;
-    var btn=document.createElement("button");
-    btn.id="share-btn"; btn.className="share"; btn.textContent="share this answer";
-    btn.addEventListener("click",function(){
+    if(document.getElementById("share-actions")) return;
+    var wrap=document.createElement("span");
+    wrap.id="share-actions";
+
+    var copy=document.createElement("button");
+    copy.className="share"; copy.textContent="share link";
+    copy.addEventListener("click",function(){
       var url=location.origin+location.pathname+"?q="+encodeURIComponent(lastQuery);
       (navigator.clipboard?navigator.clipboard.writeText(url):Promise.reject())
-        .then(function(){ btn.textContent="link copied ✓"; })
+        .then(function(){ copy.textContent="copied ✓"; })
         .catch(function(){ prompt("Copy this link:",url); });
-      setTimeout(function(){ btn.textContent="share this answer"; },2000);
+      setTimeout(function(){ copy.textContent="share link"; },2000);
     });
-    answer.querySelector("h3").appendChild(btn);
+
+    var img=document.createElement("button");
+    img.className="share"; img.textContent="📸 save image";
+    img.style.marginLeft="8px";
+    img.addEventListener("click",downloadCard);
+
+    wrap.appendChild(copy); wrap.appendChild(img);
+    answer.querySelector("h3").appendChild(wrap);
   }
 
   function finishSearch(){
