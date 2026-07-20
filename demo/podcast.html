@@ -27,11 +27,22 @@
   .banner{width:100%;background:#2b2410;color:#e8c157;font-size:12px;
     text-align:center;padding:6px 12px;margin:0 -16px}
   .wrap{width:100%;max-width:680px;padding:40px 0 80px}
-  .brand{font-weight:800;font-size:15px;letter-spacing:.5px;margin-bottom:22px}
+  .topbar{display:flex;align-items:center;justify-content:space-between;
+    gap:14px;margin-bottom:22px;flex-wrap:wrap}
+  .brand{font-weight:800;font-size:15px;letter-spacing:.5px}
   .brand span{color:var(--green)}
-  .brand a{color:var(--muted);text-decoration:none;font-weight:400;
-    font-size:14px;margin-left:12px}
-  .brand a:hover{color:var(--green)}
+  /* Reads as a feature, not a footnote: filled, green, on the right. */
+  .navbtn{display:inline-flex;align-items:center;gap:8px;background:#16c78418;
+    border:1px solid #16c78466;color:var(--green);border-radius:10px;
+    padding:10px 18px;font-size:15px;font-weight:700;text-decoration:none;
+    white-space:nowrap;transition:background .15s,border-color .15s}
+  .navbtn:hover{background:#16c78430;border-color:var(--green)}
+  .navbtn .arrow{transition:transform .15s}
+  .navbtn:hover .arrow{transform:translateX(3px)}
+  @media(max-width:560px){
+    .topbar{flex-direction:column;align-items:flex-start;gap:10px}
+    .navbtn{width:100%;justify-content:center}
+  }
   h1{font-size:30px;font-weight:800;line-height:1.2;margin-bottom:8px}
   h1 em{color:var(--green);font-style:normal}
   .sub{color:var(--muted);margin-bottom:26px}
@@ -113,7 +124,11 @@
 </div>
 
 <div class="wrap">
-  <div class="brand">MARKET <span>BUBBLE</span> · search<a href="/demo/assets.html">every token they've analyzed →</a></div>
+  <div class="topbar">
+    <div class="brand">MARKET <span>BUBBLE</span> · search</div>
+    <a class="navbtn" href="/demo/assets.html">📊 Every token they've analyzed
+      <span class="arrow">→</span></a>
+  </div>
   <h1>Ask the <em>Market Bubble</em> podcast anything.</h1>
   <p class="sub">Search every episode by meaning, not keywords — and jump
   straight to the moment they said it.</p>
