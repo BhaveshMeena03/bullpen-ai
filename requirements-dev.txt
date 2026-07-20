@@ -1,5 +1,9 @@
 # Development & tooling
 -r requirements.txt
+# The bot ships its own deps, but tests/test_discord_bot.py imports
+# discord_bot.bot — without this, CI collects those tests and errors on
+# `import discord` while they pass on any machine that has run the bot.
+-r discord_bot/requirements.txt
 pytest==8.*
 httpx==0.*
 ruff==0.*
