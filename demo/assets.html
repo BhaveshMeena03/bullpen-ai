@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Market Bubble · every token they've analyzed</title>
+<meta name="description" content="Every crypto token discussed on the Market Bubble podcast, ranked by how deeply it was analyzed — with links to the exact moment.">
+<meta property="og:title" content="Every token analyzed on Market Bubble">
+<meta property="og:description" content="Ranked by real analysis, not name-drops. Jump to the exact moment.">
+<meta property="og:type" content="website">
+<style>
+  :root{
+    --bg:#0b0e11;--panel:#12161c;--line:#232a33;--text:#e6e8ea;
+    --muted:#8a939e;--green:#16c784;--amber:#e8c157;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);min-height:100vh;
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    padding:28px 20px 60px}
+  .wrap{max-width:940px;margin:0 auto}
+  .brand{font-weight:700;letter-spacing:.5px;margin-bottom:18px;font-size:14px}
+  .brand span{color:var(--green)}
+  .brand a{color:var(--muted);text-decoration:none;font-weight:400;margin-left:10px}
+  .brand a:hover{color:var(--green)}
+  h1{font-size:30px;line-height:1.2;margin-bottom:8px}
+  h1 em{color:var(--green);font-style:normal}
+  .sub{color:var(--muted);margin-bottom:22px;max-width:640px}
+
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+    gap:12px;margin-bottom:26px}
+  .tile{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:14px 16px}
+  .tile b{display:block;font-size:26px;line-height:1.1;margin-bottom:2px}
+  .tile span{color:var(--muted);font-size:12px;text-transform:uppercase;
+    letter-spacing:.6px}
+
+  .chartbox{background:var(--panel);border:1px solid var(--line);
+    border-radius:14px;padding:18px 20px;margin-bottom:26px;overflow-x:auto}
+  .chartbox h2{font-size:13px;text-transform:uppercase;letter-spacing:1px;
+    color:var(--muted);font-weight:600;margin-bottom:14px}
+
+  .controls{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+  #q{flex:1;min-width:200px;background:var(--panel);border:1px solid var(--line);
+    border-radius:12px;color:var(--text);padding:11px 14px;font-size:15px;outline:none}
+  #q:focus{border-color:var(--green)}
+  .chip{font-size:13px;background:transparent;color:var(--muted);
+    border:1px solid var(--line);border-radius:16px;padding:7px 14px;cursor:pointer}
+  .chip:hover{border-color:var(--green);color:var(--green)}
+  .chip.on{background:#16c78418;border-color:#16c78455;color:var(--green)}
+
+  .row{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    margin-bottom:8px;overflow:hidden}
+  .head{display:flex;align-items:center;gap:12px;padding:13px 16px;cursor:pointer;
+    transition:border-color .15s}
+  .head:hover{background:#161b22}
+  .sym{font-weight:700;font-size:15px;min-width:74px}
+  .nm{color:var(--muted);font-size:14px;overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap;flex:1}
+  .cls{font-size:11px;color:var(--muted);border:1px solid var(--line);
+    border-radius:10px;padding:2px 8px;text-transform:uppercase;letter-spacing:.5px}
+  .num{font-size:13px;color:var(--muted);white-space:nowrap}
+  .num b{color:var(--green);font-size:15px}
+  .caret{color:var(--muted);font-size:12px;width:12px}
+
+  .moments{display:none;border-top:1px solid var(--line);padding:6px 16px 12px}
+  .row.open .moments{display:block}
+  .mo{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid #1b212a;
+    align-items:flex-start}
+  .mo:last-child{border-bottom:none}
+  .ts{color:var(--green);font-weight:700;font-size:13px;white-space:nowrap;
+    text-decoration:none;min-width:64px}
+  .ts:hover{text-decoration:underline}
+  .mtext{font-size:13.5px;color:#c8cdd3}
+  .mep{display:block;color:var(--muted);font-size:12px;margin-top:3px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tag{font-size:10px;letter-spacing:.5px;text-transform:uppercase;
+    border-radius:8px;padding:1px 6px;margin-left:6px;vertical-align:1px}
+  .tag.analysis{background:#16c78420;color:var(--green)}
+  .tag.mention{background:#232a33;color:var(--muted)}
+
+  .note{background:#1a1509;border:1px solid #3a2f12;color:#d9bd6a;
+    border-radius:12px;padding:13px 16px;font-size:13px;margin-bottom:22px}
+  .foot{color:var(--muted);font-size:12.5px;margin-top:28px;line-height:1.7}
+  .empty{color:var(--muted);padding:20px 0}
+  @media(max-width:620px){
+    h1{font-size:24px}
+    .nm{display:none}
+    .sym{min-width:62px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">MARKET <span>BUBBLE</span> · tokens
+    <a href="/demo/podcast.html">← back to search</a></div>
+
+  <h1>Every token they've <em>actually analyzed</em>.</h1>
+  <p class="sub">Pulled from every Market Bubble episode. Ranked by how much the
+    hosts genuinely dug in — charts, theses, price action — not just how often a
+    name got dropped. Every row links to the exact moment.</p>
+
+  <div class="note" id="note">
+    Built from YouTube's auto-generated captions, which mis-hear ticker names.
+    Counts are <b>approximate</b>, and this describes only what was said on the
+    show — it is not financial advice or a signal of any kind.
+  </div>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="chartbox">
+    <h2>Most analyzed</h2>
+    <div id="chart"></div>
+  </div>
+
+  <div class="controls">
+    <input id="q" placeholder="Filter by ticker or name…" autocomplete="off">
+    <button class="chip" id="tail" title="Tokens mentioned only once across all
+      episodes — mostly caption errors">+ single mentions</button>
+  </div>
+
+  <div id="list"><p class="empty">Loading…</p></div>
+
+  <p class="foot">
+    Tokens are extracted from the transcripts by a language model, then
+    normalized (caption manglings merged, non-assets like platforms and
+    categories filtered out). Low-confidence hits are dropped. Some error
+    remains — treat the tail of the list with more suspicion than the top.
+  </p>
+</div>
+
+<script>
+var API = "";
+// Crypto only for now. Stocks/indices stay in the JSON (already extracted), so
+// re-enabling them later is a one-line change here.
+var CLASSES = ["crypto"];
+var DATA = [], SHOW_TAIL = false;
+
+function esc(s){ return String(s == null ? "" : s)
+  .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+  .replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
+
+/* Only ever emit http(s) links — never javascript:/data: from data. */
+function safeUrl(u){
+  try{ var p = new URL(u, location.href);
+       return (p.protocol === "http:" || p.protocol === "https:") ? p.href : "";
+  }catch(e){ return ""; }
+}
+
+function tiles(assets, episodes){
+  var analysis = 0, refs = 0;
+  assets.forEach(function(a){ analysis += a.analysis; refs += a.mentions; });
+  document.getElementById("tiles").innerHTML =
+    tile(assets.length, "tokens discussed") +
+    tile(analysis, "analysis segments") +
+    tile(episodes, "episodes covered") +
+    tile(refs, "total references");
+}
+function tile(n, label){
+  return '<div class="tile"><b>' + esc(n) + '</b><span>' + esc(label) + '</span></div>';
+}
+
+function chart(assets){
+  var top = assets.slice(0, 10);
+  if(!top.length){ document.getElementById("chart").innerHTML = ""; return; }
+  var max = Math.max.apply(null, top.map(function(a){ return a.analysis; })) || 1;
+  var rowH = 26, w = 620, labelW = 92, barW = w - labelW - 46;
+  var h = top.length * rowH;
+  var svg = '<svg viewBox="0 0 ' + w + ' ' + h + '" width="100%" height="' + h +
+            '" role="img" aria-label="Most analyzed assets">';
+  top.forEach(function(a, i){
+    var y = i * rowH, bw = Math.max(2, (a.analysis / max) * barW);
+    svg += '<text x="0" y="' + (y + 15) + '" fill="#e6e8ea" font-size="12.5" ' +
+           'font-weight="700">' + esc(a.symbol) + '</text>';
+    svg += '<rect x="' + labelW + '" y="' + (y + 4) + '" width="' + bw +
+           '" height="14" rx="3" fill="#16c784" opacity="' +
+           (0.45 + 0.55 * (a.analysis / max)).toFixed(2) + '"/>';
+    svg += '<text x="' + (labelW + bw + 8) + '" y="' + (y + 15) +
+           '" fill="#8a939e" font-size="12">' + esc(a.analysis) + '</text>';
+  });
+  document.getElementById("chart").innerHTML = svg + '</svg>';
+}
+
+function render(){
+  var term = document.getElementById("q").value.trim().toLowerCase();
+  var rows = DATA.filter(function(a){
+    if(!SHOW_TAIL && a.single_reference) return false;
+    if(!term) return true;
+    return (a.symbol + " " + a.name).toLowerCase().indexOf(term) !== -1;
+  });
+  if(!rows.length){
+    document.getElementById("list").innerHTML =
+      '<p class="empty">Nothing matches that.</p>';
+    return;
+  }
+  document.getElementById("list").innerHTML = rows.map(function(a, i){
+    return '<div class="row" data-i="' + i + '">' +
+      '<div class="head">' +
+        '<span class="caret">▸</span>' +
+        '<span class="sym">' + esc(a.symbol) + '</span>' +
+        '<span class="nm">' + esc(a.name) + '</span>' +
+        '<span class="cls">' + esc(a.asset_class) + '</span>' +
+        '<span class="num"><b>' + esc(a.analysis) + '</b> analysis</span>' +
+        '<span class="num">' + esc(a.mentions) + ' refs</span>' +
+      '</div>' +
+      '<div class="moments">' + moments(a.moments) + '</div>' +
+    '</div>';
+  }).join("");
+
+  [].forEach.call(document.querySelectorAll(".row"), function(row){
+    row.querySelector(".head").addEventListener("click", function(){
+      row.classList.toggle("open");
+      row.querySelector(".caret").textContent =
+        row.classList.contains("open") ? "▾" : "▸";
+    });
+  });
+}
+
+/* Top tokens have 100+ moments — dumping them all makes the page unusable.
+   Lead with the substantive analysis, cap the list, and say what's hidden. */
+var MOMENT_CAP = 12;
+function moments(ms){
+  if(!ms || !ms.length) return '<p class="empty">No moments recorded.</p>';
+  var ordered = ms.slice().sort(function(a, b){
+    if(a.kind === b.kind) return 0;
+    return a.kind === "analysis" ? -1 : 1;   // analysis first
+  });
+  var shown = ordered.slice(0, MOMENT_CAP);
+  var hidden = ordered.length - shown.length;
+  var more = hidden > 0
+    ? '<p class="empty" style="padding:10px 0 2px;font-size:12.5px">+ ' +
+      hidden + ' more reference' + (hidden === 1 ? '' : 's') +
+      ' — search the full transcript on the <a href="/demo/podcast.html" ' +
+      'style="color:#16c784">search page</a>.</p>'
+    : '';
+  return shown.map(function(m){
+    var url = safeUrl(m.deep_link || "");
+    var ts = url
+      ? '<a class="ts" href="' + esc(url) + '" target="_blank" rel="noopener">' +
+        esc(m.timestamp) + '</a>'
+      : '<span class="ts">' + esc(m.timestamp) + '</span>';
+    return '<div class="mo">' + ts +
+      '<div><span class="mtext">' + esc(m.note) +
+      '<span class="tag ' + (m.kind === "analysis" ? "analysis" : "mention") +
+      '">' + esc(m.kind) + '</span></span>' +
+      '<span class="mep">' + esc(m.episode_title) + '</span></div></div>';
+  }).join("") + more;
+}
+
+document.getElementById("q").addEventListener("input", render);
+document.getElementById("tail").addEventListener("click", function(){
+  SHOW_TAIL = !SHOW_TAIL;
+  this.classList.toggle("on", SHOW_TAIL);
+  render();
+});
+
+fetch(API + "/v1/assets")
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    DATA = (d.assets || []).filter(function(a){
+      return CLASSES.indexOf(a.asset_class) !== -1;
+    });
+    if(!DATA.length){
+      document.getElementById("list").innerHTML =
+        '<p class="empty">No asset data yet — run scripts/extract_assets.py.</p>';
+      return;
+    }
+    var solid = DATA.filter(function(a){ return !a.single_reference; });
+    tiles(solid, d.episodes_processed || 0);
+    chart(solid);
+    render();
+  })
+  .catch(function(){
+    document.getElementById("list").innerHTML =
+      '<p class="empty">Couldn\'t load asset data. Try again shortly.</p>';
+  });
+</script>
+</body>
+</html>

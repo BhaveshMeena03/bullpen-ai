@@ -23,10 +23,18 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from anthropic import AsyncAnthropic  # noqa: E402
+
+from app.assets_store import AssetStore  # noqa: E402
+from app.config import get_settings  # noqa: E402
 from app.podcast import PodcastIndex  # noqa: E402
 from app.schemas import Episode  # noqa: E402
 from app.summaries import SummaryStore  # noqa: E402
+from scripts.extract_assets import extract_episode  # noqa: E402
 from scripts.fetch_episodes import OUT, fetch, latest_ids  # noqa: E402
+
+# Cheapest model that reliably does the structured extraction.
+ASSET_MODEL = "claude-haiku-4-5"
 
 
 def log(msg: str) -> None:
@@ -70,6 +78,8 @@ async def main(argv: list[str]) -> int:
     log(f"{len(new_ids)} new episode(s): {new_ids}")
     podcast = PodcastIndex()
     summaries = SummaryStore()
+    asset_store = AssetStore()
+    anthropic_client = AsyncAnthropic(api_key=get_settings().anthropic_api_key)
     added = 0
 
     for vid in new_ids:
@@ -103,6 +113,18 @@ async def main(argv: list[str]) -> int:
         except Exception as exc:  # noqa: BLE001
             log(f"  {vid}: summary FAILED ({exc}) — search still works, "
                 f"re-run summarize_episodes.py later")
+
+        # 4. extract the assets discussed, and store them where the DEPLOYED
+        #    app reads them. Without this the token dashboard silently goes
+        #    stale while search and summaries stay current.
+        try:
+            hits = await extract_episode(anthropic_client, ASSET_MODEL, raw, False)
+            stored = await asset_store.store(vid, episode.title, hits)
+            log(f"  {vid}: {stored} asset hits stored")
+        except Exception as exc:  # noqa: BLE001
+            log(f"  {vid}: asset extraction FAILED ({exc}) — search and "
+                f"summary are fine; re-run extract_assets.py --all --store")
+
         added += 1
 
     log(f"DONE: added {added} new episode(s).")

@@ -7,3 +7,4 @@ data/episodes.json
 /tmp/
 
 deploy/*.log
+data/.asset_cache/

@@ -23,6 +23,8 @@ from fastapi.staticfiles import StaticFiles
 from voyageai import error as voyage_error
 
 from .agent import REFUSAL_MESSAGE, ConciergeAgent
+from .assets import aggregate as aggregate_assets
+from .assets_store import AssetStore
 from .ingest import IngestionPipeline
 from .podcast import REFUSAL_ANSWER as PODCAST_REFUSAL
 from .podcast import PodcastIndex
@@ -122,6 +124,7 @@ async def lifespan(app: FastAPI):
     app.state.pipeline = IngestionPipeline()
     app.state.podcast = PodcastIndex()
     app.state.summaries = SummaryStore()
+    app.state.assets = AssetStore()
     yield
 
 
@@ -373,6 +376,43 @@ async def podcast_ingest(
     """Admin endpoint — requires X-Admin-Token when ADMIN_TOKEN is set."""
     count = await podcast.ingest(episodes)
     return {"windows_indexed": count}
+
+
+@app.get("/v1/assets", dependencies=[Depends(public_rate_limit)])
+async def assets(request: Request) -> dict:
+    """Assets discussed across the episodes.
+
+    Reads the per-episode hits stored in Pinecone by the weekly sync and
+    aggregates them here, so a new episode shows up without a redeploy.
+    Falls back to the committed data/assets.json when nothing is stored yet
+    (fresh install, or the store hasn't been populated).
+    """
+    _track("asset_dashboard_views")
+    store = request.app.state.assets
+
+    # Short TTL cache: aggregation is pure CPU but the Pinecone fetch isn't.
+    cached = getattr(app.state, "_assets_cache", None)
+    now = asyncio.get_event_loop().time()
+    if cached and now - cached[0] < 300:
+        return cached[1]
+
+    try:
+        hits = await store.all_hits()
+    except Exception as exc:  # noqa: BLE001 — dashboard must not 500
+        logger.warning("asset store unavailable (%s); using local file", exc)
+        hits = []
+
+    if hits:
+        report = aggregate_assets(hits)
+        report["episodes_processed"] = len({h.get("episode_id") for h in hits})
+    else:
+        path = _ROOT / "data" / "assets.json"
+        if not path.exists():
+            return {"assets": [], "total_hits": 0, "episodes_processed": 0}
+        report = json.loads(path.read_text())
+
+    app.state._assets_cache = (now, report)
+    return report
 
 
 @app.get("/v1/podcast/episodes", dependencies=[Depends(public_rate_limit)])
