@@ -191,3 +191,65 @@ class TestRootRedirect:
         r = client.get("/", follow_redirects=False)
         assert r.status_code in (307, 302)
         assert r.headers["location"] == "/demo/podcast.html"
+
+
+class TestConciergeAnalytics:
+    """The feedback loop: questions the KB couldn't answer are recorded as
+    gaps (docs to write), while safety refusals are counted separately and
+    are NOT treated as gaps."""
+
+    @pytest.fixture(autouse=True)
+    def _reset(self):
+        main_module.GAPS.clear()
+        main_module.STATS["unanswered_chats"] = 0
+        main_module.STATS["refusals"] = 0
+        yield
+
+    def test_no_retrieved_context_records_gap(self, client, monkeypatch):
+        async def empty(self, query, filters=None, top_k=None):
+            return []
+
+        monkeypatch.setattr(StubRetriever, "search", empty)
+        r = client.post("/v1/chat", json={"message": "what is the exact fee?"})
+        assert r.status_code == 200
+        assert main_module.STATS["unanswered_chats"] == 1
+        assert main_module.GAPS[-1]["reason"] == "no_context"
+
+    def test_ungrounded_answer_records_low_confidence(self, client, monkeypatch):
+        async def unsure(self, message, history, chunks):
+            return ChatResponse(
+                answer="I don't have that information — contact official "
+                       "Bullpen support.",
+                sources=chunks, model="m",
+            )
+
+        monkeypatch.setattr(StubAgent, "answer", unsure)
+        r = client.post("/v1/chat", json={"message": "claim deadline?"})
+        assert r.status_code == 200
+        assert main_module.GAPS[-1]["reason"] == "low_confidence"
+
+    def test_grounded_answer_is_not_a_gap(self, client):
+        r = client.post("/v1/chat", json={"message": "What is Bullpen?"})
+        assert r.status_code == 200
+        assert main_module.STATS["unanswered_chats"] == 0
+        assert len(main_module.GAPS) == 0
+
+    def test_refusal_counts_separately_not_as_gap(self, client):
+        StubAgent.mode = "refusal"
+        r = client.post("/v1/chat", json={"message": "should I buy?"})
+        assert r.status_code == 200
+        assert main_module.STATS["refusals"] == 1
+        assert main_module.STATS["unanswered_chats"] == 0
+
+    def test_gaps_endpoint_reports_recent_and_top(self, client, monkeypatch):
+        async def empty(self, query, filters=None, top_k=None):
+            return []
+
+        monkeypatch.setattr(StubRetriever, "search", empty)
+        client.post("/v1/chat", json={"message": "exact deposit minimum"})
+        r = client.get("/v1/gaps")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["total_unanswered"] == 1
+        assert body["recent"][-1]["query"] == "exact deposit minimum"
+        assert body["top_unanswered"][0]["query"] == "exact deposit minimum"

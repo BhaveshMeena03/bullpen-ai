@@ -161,7 +161,7 @@ class TestNoTokenLeak:
         monkeypatch.setenv("DISCORD_TOKEN", "SENTINEL_TOKEN_do_not_log")
         monkeypatch.setenv("BACKEND_URL", "https://x.test")
         from discord_bot.bot import build_bot
-        bot = build_bot()
+        build_bot()  # constructed for its side effects; source is inspected below
         # token is only stashed for run(), never formatted into a log string
         import inspect
 

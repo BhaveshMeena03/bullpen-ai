@@ -12,7 +12,7 @@ import voyageai
 from pinecone import Pinecone
 
 from .config import get_settings
-from .embeddings import embed_query
+from .embeddings import embed_query, rerank_order
 from .schemas import RetrievedChunk, SourceType
 
 logger = logging.getLogger(__name__)
@@ -58,10 +58,19 @@ class Retriever:
             dimension=self._settings.embedding_dimension,
         )
 
+        # Pull a wider candidate set when reranking is on; the reranker then
+        # narrows it back to top_k by actual relevance. Without reranking we
+        # fetch exactly top_k, as before.
+        fetch_k = (
+            max(self._settings.rerank_candidates, top_k)
+            if self._settings.rerank_model
+            else top_k
+        )
+
         def _query():
             return self.index.query(
                 vector=query_vector,
-                top_k=top_k,
+                top_k=fetch_k,
                 filter=self._build_filter(filters),
                 include_metadata=True,
             )
@@ -83,5 +92,20 @@ class Retriever:
                     metadata=metadata,
                 )
             )
+
+        # Rerank by actual relevance (falls back to vector order on any
+        # failure — reranking improves quality but must never break search).
+        if self._settings.rerank_model and len(chunks) > top_k:
+            order = await rerank_order(
+                self._voyage,
+                query,
+                [c.text for c in chunks],
+                top_k=top_k,
+                model=self._settings.rerank_model,
+            )
+            if order is not None:
+                chunks = [chunks[i] for i in order]
+
+        chunks = chunks[:top_k]
         logger.debug("Retrieved %d chunks for query %r", len(chunks), query[:80])
         return chunks

@@ -10,6 +10,7 @@ Endpoints:
 import asyncio
 import json
 import logging
+from collections import Counter, deque
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -48,12 +49,69 @@ STATS: dict = {
     "podcast_searches": 0,
     "concierge_chats": 0,
     "episode_summary_views": 0,
+    "unanswered_chats": 0,
+    "refusals": 0,
 }
 
 
 def _track(kind: str, **fields) -> None:
     STATS[kind] = STATS.get(kind, 0) + 1
     logger.info("ANALYTICS %s", json.dumps({"event": kind, **fields}))
+
+
+# Feedback loop: the questions the concierge could NOT answer from the
+# knowledge base. This is the list of docs to write next — the single most
+# useful signal for improving a support agent over time. Bounded ring buffer;
+# the durable record is the "ANALYTICS kb_gap" log lines.
+GAPS: deque = deque(maxlen=200)
+
+# Heuristic markers for the agent's tier-3 fallback — when it answers but
+# admits it can't ground an operational specific (see the system prompt's
+# "say you don't have that information" instruction). Kept deliberately narrow
+# to avoid flagging normal answers that happen to contain these words.
+_UNKNOWN_MARKERS = (
+    "don't have that information",
+    "do not have that information",
+    "don't have specific",
+    "don't have information on",
+    "couldn't find that",
+    "could not find that",
+    "i don't have details",
+    "contact official bullpen support",
+    "official bullpen support channels",
+    "reach out to official",
+)
+
+
+def _looks_unanswered(answer: str) -> bool:
+    a = answer.lower()
+    return any(marker in a for marker in _UNKNOWN_MARKERS)
+
+
+def _record_gap(query: str, reason: str) -> None:
+    """reason: 'no_context' (retriever found nothing) or 'low_confidence'
+    (answered but couldn't ground an operational specific)."""
+    STATS["unanswered_chats"] += 1
+    record = {
+        "ts": datetime.now(UTC).isoformat(timespec="seconds"),
+        "query": query[:300],
+        "reason": reason,
+    }
+    GAPS.append(record)
+    logger.info("ANALYTICS %s", json.dumps({"event": "kb_gap", **record}))
+
+
+def _classify_outcome(query: str, chunks: list, answer: str, refused: bool) -> None:
+    """Record a KB gap when the concierge couldn't help. A safety *refusal*
+    is the guardrail working, not a missing doc, so it's counted separately
+    and never treated as a gap."""
+    if refused:
+        STATS["refusals"] += 1
+        return
+    if not chunks:
+        _record_gap(query, "no_context")
+    elif _looks_unanswered(answer):
+        _record_gap(query, "low_confidence")
 
 
 @asynccontextmanager
@@ -160,7 +218,9 @@ async def chat(
     _track("concierge_chats")
     chunks = await retriever.search(body.message, filters=body.filters)
     try:
-        return await agent.answer(body.message, body.history, chunks)
+        response = await agent.answer(body.message, body.history, chunks)
+        _classify_outcome(body.message, chunks, response.answer, response.refused)
+        return response
     except anthropic.RateLimitError as exc:
         raise HTTPException(
             status_code=429, detail="Upstream rate limit; retry shortly."
@@ -191,15 +251,20 @@ async def chat_stream(
             for c in chunks
         ]
         yield f"event: sources\ndata: {json.dumps(sources)}\n\n"
+        parts: list[str] = []
         try:
             async for delta in agent.stream(body.message, body.history, chunks):
                 if delta == "\x00REFUSAL\x00":
                     # Whole fallback chain refused mid-stream: the partial
                     # text is invalid — tell the client to replace it.
+                    _classify_outcome(body.message, chunks, "", refused=True)
                     payload = json.dumps({"text": REFUSAL_MESSAGE})
                     yield f"event: refusal\ndata: {payload}\n\n"
                     return
+                parts.append(delta)
                 yield f"data: {json.dumps({'text': delta})}\n\n"
+            # Same feedback loop as /v1/chat, on the fully-streamed answer.
+            _classify_outcome(body.message, chunks, "".join(parts), refused=False)
             yield "event: done\ndata: {}\n\n"
         except asyncio.CancelledError:
             raise  # client disconnected — let it propagate, don't swallow
@@ -284,6 +349,20 @@ async def podcast_search_stream(
 async def stats() -> dict:
     """Usage counters since last restart (durable record: ANALYTICS log lines)."""
     return STATS
+
+
+@app.get("/v1/gaps", dependencies=[Depends(require_admin)])
+async def gaps() -> dict:
+    """Admin-only feedback loop: the questions the concierge couldn't answer,
+    so you know which knowledge-base docs to write next. Requires
+    X-Admin-Token when ADMIN_TOKEN is set."""
+    top = Counter(g["query"].strip().lower() for g in GAPS).most_common(25)
+    return {
+        "total_unanswered": STATS["unanswered_chats"],
+        "refusals": STATS["refusals"],
+        "top_unanswered": [{"query": q, "count": n} for q, n in top],
+        "recent": list(GAPS)[-50:],
+    }
 
 
 @app.post("/v1/podcast/ingest", dependencies=[Depends(require_admin)])
