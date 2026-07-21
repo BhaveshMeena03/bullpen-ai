@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bullpen Concierge — ask about wallets, trading, the $ANSEM claim</title>
+<meta name="description" content="An AI support assistant for the BullpenFi terminal — funding, wallets, perps, prediction markets, and the $ANSEM claim, answered from Bullpen's official docs.">
+<meta property="og:title" content="Bullpen Concierge">
+<meta property="og:description" content="Ask anything about using Bullpen — answered from the official docs, with sources. Never financial advice.">
+<meta property="og:type" content="website">
+<style>
+  :root{
+    --bg:#0b0e11;--panel:#12161c;--line:#232a33;--text:#e6e8ea;
+    --muted:#8a939e;--green:#16c784;--amber:#e8c157;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--text);
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    display:flex;flex-direction:column;min-height:100vh}
+  .banner{width:100%;background:#2b2410;color:#e8c157;font-size:12px;
+    text-align:center;padding:7px 14px;line-height:1.4}
+  .wrap{width:100%;max-width:840px;margin:0 auto;padding:22px 20px 0;
+    flex:1;display:flex;flex-direction:column;min-height:0}
+
+  .topbar{display:flex;align-items:center;justify-content:space-between;
+    gap:14px;margin-bottom:14px;flex-wrap:wrap}
+  .brand{font-weight:800;letter-spacing:.5px;font-size:15px}
+  .brand span{color:var(--green)}
+  .navbtn{display:inline-flex;align-items:center;gap:8px;background:#16c78418;
+    border:1px solid #16c78466;color:var(--green);border-radius:10px;
+    padding:9px 16px;font-size:14px;font-weight:700;text-decoration:none;
+    white-space:nowrap;transition:background .15s,border-color .15s}
+  .navbtn:hover{background:#16c78430;border-color:var(--green)}
+
+  h1{font-size:26px;line-height:1.2;margin-bottom:6px}
+  h1 em{color:var(--green);font-style:normal}
+  .sub{color:var(--muted);margin-bottom:16px;max-width:620px;font-size:14px}
+
+  /* chat */
+  .chat{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:12px;
+    padding:6px 2px 12px}
+  .msg{max-width:86%;padding:11px 14px;border-radius:13px;white-space:pre-wrap;
+    word-wrap:break-word;font-size:14.5px}
+  .user{align-self:flex-end;background:var(--green);color:#08210f;
+    border-bottom-right-radius:4px;font-weight:500}
+  .bot{align-self:flex-start;background:var(--panel);border:1px solid var(--line);
+    border-bottom-left-radius:4px}
+  .srcs{align-self:flex-start;display:flex;flex-wrap:wrap;gap:5px;margin-top:-6px}
+  .src{font-size:11px;color:var(--muted);background:var(--panel);
+    border:1px solid var(--line);border-radius:8px;padding:2px 8px}
+  .srcs .lbl{color:#5c6670;font-size:11px;align-self:center;margin-right:2px}
+
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+  .chip{font-size:13px;background:transparent;color:var(--green);
+    border:1px solid #16c78455;border-radius:16px;padding:7px 13px;cursor:pointer}
+  .chip:hover{background:#16c78418}
+
+  form{display:flex;gap:10px;padding:12px 0 10px;
+    border-top:1px solid var(--line);position:sticky;bottom:0;background:var(--bg)}
+  #q{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    color:var(--text);padding:13px 15px;font-size:15px;outline:none}
+  #q:focus{border-color:var(--green)}
+  #send{background:var(--green);color:#08210f;border:none;border-radius:12px;
+    font-weight:700;font-size:15px;padding:0 20px;cursor:pointer}
+  #send:disabled{opacity:.5;cursor:default}
+  .foot{color:#5c6670;font-size:11.5px;text-align:center;padding:0 0 14px}
+</style>
+</head>
+<body>
+<div class="banner">
+  AI support assistant for the BullpenFi terminal · answers from Bullpen's
+  official docs · informational, <b>never financial advice</b> · an independent
+  project, not affiliated with BullpenFi
+</div>
+
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand">BULLPEN <span>Concierge</span></div>
+    <a class="navbtn" href="/demo/podcast.html">🎧 Market Bubble search →</a>
+  </div>
+
+  <h1>Ask the <em>Bullpen Concierge</em>.</h1>
+  <p class="sub">Wallets, funding, perps, prediction markets, the $ANSEM claim —
+    answered from Bullpen's documentation, with sources. It never gives
+    financial advice and will never ask for your seed phrase.</p>
+
+  <div class="chips" id="chips"></div>
+
+  <div class="chat" id="chat"></div>
+
+  <form id="f">
+    <input id="q" placeholder="Ask about funding, order types, the claim…"
+      autocomplete="off" maxlength="2000">
+    <button id="send" type="submit">Send</button>
+  </form>
+  <div class="foot">Support assistant · Never share your seed phrase — with anyone.</div>
+</div>
+
+<script>
+var API = "";
+var GREETING = "Hey! I'm the Bullpen Concierge. I can walk you through setting " +
+  "up and funding a wallet, trading perps or prediction markets, and the " +
+  "$ANSEM claim — all answered from Bullpen's docs. What do you need?";
+var STARTERS = [
+  "How do I fund my Bullpen wallet?",
+  "What collateral do I need for Polymarket?",
+  "How does margin and leverage work?",
+  "How do I claim the $ANSEM airdrop?",
+  "Who is Ansem?"
+];
+
+var history = [], busy = false;
+var chat = document.getElementById("chat");
+var input = document.getElementById("q");
+var sendBtn = document.getElementById("send");
+
+function esc(s){ return String(s==null?"":s); }
+
+function bubble(kind, text){
+  var b = document.createElement("div");
+  b.className = "msg " + (kind === "user" ? "user" : "bot");
+  b.textContent = text;
+  chat.appendChild(b);
+  chat.scrollTop = chat.scrollHeight;
+  return b;
+}
+
+function sources(list){
+  if(!list || !list.length) return;
+  var seen = {}, wrap = document.createElement("div");
+  wrap.className = "srcs";
+  var lbl = document.createElement("span"); lbl.className = "lbl";
+  lbl.textContent = "sources:"; wrap.appendChild(lbl);
+  list.forEach(function(s){
+    var label = (s.metadata && (s.metadata.title || s.metadata.source_id)) || s.id;
+    if(seen[label]) return; seen[label] = true;
+    var tag = document.createElement("span");
+    tag.className = "src"; tag.textContent = label;
+    wrap.appendChild(tag);
+  });
+  if(Object.keys(seen).length){ chat.appendChild(wrap); chat.scrollTop = chat.scrollHeight; }
+}
+
+var chips = document.getElementById("chips");
+STARTERS.forEach(function(q){
+  var c = document.createElement("button");
+  c.className = "chip"; c.type = "button"; c.textContent = q;
+  c.addEventListener("click", function(){ send(q); });
+  chips.appendChild(c);
+});
+
+document.getElementById("f").addEventListener("submit", function(e){
+  e.preventDefault(); send(input.value);
+});
+
+bubble("bot", GREETING);
+
+function send(text){
+  text = (text || "").trim();
+  if(!text || busy) return;
+  busy = true; sendBtn.disabled = true; input.value = "";
+  chips.style.display = "none";
+
+  bubble("user", text);
+  var botBubble = bubble("bot", "…");
+  var answer = "", pending = null;
+
+  fetch(API + "/v1/chat/stream", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ message: text, history: history })
+  })
+  .then(function(res){
+    if(!res.ok || !res.body) throw new Error("HTTP " + res.status);
+    var reader = res.body.getReader(), decoder = new TextDecoder(), buffer = "";
+    function pump(){
+      return reader.read().then(function(step){
+        if(step.done) return finish();
+        buffer += decoder.decode(step.value, { stream: true });
+        var frames = buffer.split("\n\n");
+        buffer = frames.pop();
+        frames.forEach(handleFrame);
+        chat.scrollTop = chat.scrollHeight;
+        return pump();
+      });
+    }
+    function handleFrame(frame){
+      var event = "message", data = "";
+      frame.split("\n").forEach(function(line){
+        if(line.indexOf("event:") === 0) event = line.slice(6).trim();
+        else if(line.indexOf("data:") === 0) data += line.slice(5).trim();
+      });
+      if(!data) return;
+      var payload; try { payload = JSON.parse(data); } catch(e){ return; }
+      if(event === "sources") pending = payload;
+      else if(event === "refusal"){ answer = payload.text; botBubble.textContent = answer; }
+      else if(event === "error"){
+        answer = "Something went wrong on my end — please try again.";
+        botBubble.textContent = answer;
+      } else if(payload.text){ answer += payload.text; botBubble.textContent = answer; }
+    }
+    function finish(){
+      sources(pending);
+      history.push({ role: "user", content: text });
+      history.push({ role: "assistant", content: answer });
+      if(history.length > 20) history = history.slice(-20);
+    }
+    return pump();
+  })
+  .catch(function(){
+    botBubble.textContent =
+      "I couldn't reach support services. Check your connection and try again.";
+  })
+  .finally(function(){
+    busy = false; sendBtn.disabled = false; input.focus();
+  });
+}
+</script>
+</body>
+</html>
