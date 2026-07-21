@@ -46,6 +46,17 @@
     border-bottom-right-radius:4px;font-weight:500}
   .bot{align-self:flex-start;background:var(--panel);border:1px solid var(--line);
     border-bottom-left-radius:4px}
+  /* rendered markdown inside a bot bubble */
+  .bot .mdh{font-weight:700;margin:8px 0 3px}
+  .bot .mdli{margin:2px 0 2px 4px}
+  .bot .mdsp{height:8px}
+  .bot table.md{border-collapse:collapse;margin:8px 0;font-size:13.5px;
+    display:block;overflow-x:auto}
+  .bot table.md th,.bot table.md td{border:1px solid var(--line);
+    padding:6px 10px;text-align:left}
+  .bot table.md th{background:#1b2129;color:var(--text)}
+  .bot code{background:#0b0e11;border:1px solid var(--line);border-radius:4px;
+    padding:1px 5px;font-size:12.5px}
   .srcs{align-self:flex-start;display:flex;flex-wrap:wrap;gap:5px;margin-top:-6px}
   .src{font-size:11px;color:var(--muted);background:var(--panel);
     border:1px solid var(--line);border-radius:8px;padding:2px 8px}
@@ -110,12 +121,46 @@ var STARTERS = [
   "Who is Ansem?"
 ];
 
-var history = [], busy = false;
+var convo = [], busy = false;  // NOT `history` — collides with window.history
 var chat = document.getElementById("chat");
 var input = document.getElementById("q");
 var sendBtn = document.getElementById("send");
 
 function esc(s){ return String(s==null?"":s); }
+
+// Minimal, XSS-safe Markdown -> HTML for bot answers. Everything is
+// HTML-escaped FIRST, then only our own safe tags are added — so nothing the
+// model returns can inject markup. Handles bold, inline code, ## headings,
+// bullet lists, and GitHub-style tables (the concierge answers with those).
+function htmlEsc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
+  .replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function mdInline(s){ return s.replace(/\*\*([^*]+)\*\*/g,"<strong>$1</strong>")
+  .replace(/`([^`]+)`/g,"<code>$1</code>"); }
+function mdRow(line){ return line.replace(/^\s*\|/,"").replace(/\|\s*$/,"")
+  .split("|").map(function(c){ return c.trim(); }); }
+function renderMd(raw){
+  var lines = htmlEsc(raw).split("\n"), out = [], i = 0;
+  while(i < lines.length){
+    var line = lines[i];
+    if(/^\s*\|.*\|/.test(line) && i+1 < lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i+1])){
+      var head = mdRow(line); i += 2; var body = [];
+      while(i < lines.length && /^\s*\|.*\|/.test(lines[i])){ body.push(mdRow(lines[i])); i++; }
+      var t = '<table class="md"><thead><tr>' +
+        head.map(function(c){ return "<th>" + mdInline(c) + "</th>"; }).join("") +
+        "</tr></thead><tbody>";
+      body.forEach(function(r){ t += "<tr>" +
+        r.map(function(c){ return "<td>" + mdInline(c) + "</td>"; }).join("") + "</tr>"; });
+      out.push(t + "</tbody></table>"); continue;
+    }
+    var h = line.match(/^\s*#{1,4}\s+(.*)$/);
+    if(h){ out.push('<div class="mdh">' + mdInline(h[1]) + "</div>"); i++; continue; }
+    var b = line.match(/^\s*[-*]\s+(.*)$/);
+    if(b){ out.push('<div class="mdli">• ' + mdInline(b[1]) + "</div>"); i++; continue; }
+    if(!line.trim()){ out.push('<div class="mdsp"></div>'); i++; continue; }
+    out.push("<div>" + mdInline(line) + "</div>"); i++;
+  }
+  return out.join("");
+}
 
 function bubble(kind, text){
   var b = document.createElement("div");
@@ -169,7 +214,7 @@ function send(text){
   fetch(API + "/v1/chat/stream", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ message: text, history: history })
+    body: JSON.stringify({ message: text, history: convo })
   })
   .then(function(res){
     if(!res.ok || !res.body) throw new Error("HTTP " + res.status);
@@ -201,10 +246,12 @@ function send(text){
       } else if(payload.text){ answer += payload.text; botBubble.textContent = answer; }
     }
     function finish(){
+      // Swap the raw streamed text for rendered Markdown once complete.
+      if(answer) botBubble.innerHTML = renderMd(answer);
       sources(pending);
-      history.push({ role: "user", content: text });
-      history.push({ role: "assistant", content: answer });
-      if(history.length > 20) history = history.slice(-20);
+      convo.push({ role: "user", content: text });
+      convo.push({ role: "assistant", content: answer });
+      if(convo.length > 20) convo = convo.slice(-20);
     }
     return pump();
   })
