@@ -2,21 +2,28 @@
 
 ![Market Bubble Search demo](market-bubble-search.gif)
 
-Two AI tools for the Bullpen / Market Bubble ecosystem, on shared
+AI tooling for the Bullpen / Market Bubble ecosystem, on shared
 infrastructure (async FastAPI, RAG over Pinecone, Claude for reasoning):
 
 1. **Bullpen Concierge** — a support agent for the BullpenFi trading
    terminal (Solana spot, Hyperliquid perps, Polymarket prediction
-   markets, the $ANSEM airdrop claim flow). Ships as an embeddable
-   one-script-tag chat widget. Hard guardrails: no financial advice, no
-   price predictions, never touches seed phrases. → `/demo/`
+   markets, the $ANSEM airdrop claim flow), **grounded in Bullpen's own
+   official documentation** with sources on every answer. Hard guardrails:
+   no financial advice, no price predictions, never touches seed phrases.
+   Full-page chat + an embeddable one-script-tag widget. → `/demo/concierge.html`
 2. **Market Bubble Search** — a semantic search engine over every
    episode of the "Market Bubble" podcast. Ask a question in plain
    English, get an answer grounded in the transcripts plus citations
    that deep-link to the exact timestamp in the video. → `/demo/podcast.html`
+3. **Token Dashboard** — every token the hosts have *analyzed* across the
+   episodes, ranked by depth of discussion (real analysis vs a passing
+   mention), each linked to the exact moment. → `/demo/assets.html`
+4. **Discord bot** — a `/search` slash command that brings the episode
+   search into a Discord server (thin client to this backend). → `discord_bot/`
 
-Both share one backend and one deploy; they're separate products with
-separate pages. Built independently — not affiliated with BullpenFi.
+One backend, one vector database, one deploy; separate products with
+separate pages. It auto-updates when a new episode drops. Built
+independently — not affiliated with BullpenFi.
 
 ## How it works
 
@@ -55,9 +62,19 @@ Episode **summaries** are pre-computed once per episode (one model call over
 the full transcript) and stored, so viewing one is a database read — instant
 and free — with every timestamp in the summary clickable too.
 
-The concierge chat widget uses the same retrieval core over a different corpus
-(product docs + a crypto-basics knowledge base) with support-specific
-guardrails.
+The **token dashboard** runs a cheap model over every transcript window to
+extract each asset discussed, tagging it as substantive *analysis* vs a passing
+*mention*, then aggregates and ranks by analysis depth. The hard part is
+normalization — auto-captions mangle tickers, so a layer merges the manglings
+(matching on name, which survives a garbled ticker) and drops non-assets. It
+runs at aggregation time, so the alias map is free to iterate on. → `app/assets.py`
+
+The **concierge** uses the same retrieval core over a different corpus — the
+official Bullpen docs (fetched by `scripts/fetch_bullpen_docs.py`) plus an
+ecosystem knowledge base (Ansem/Banks/Market Bubble, $ANSEM, crypto basics,
+scam safety) — with support-specific guardrails and three knowledge tiers
+(general crypto from the model; people/platform from the KB; operational
+specifics *only* from the official docs, else it says it doesn't know).
 
 ## Project layout
 
@@ -65,18 +82,23 @@ guardrails.
 app/                    backend package
   main.py               API routes, CORS, static mounts
   agent.py              Claude integration, guardrail system prompt, caching
-  retriever.py          query embedding + Pinecone similarity search
+  retriever.py          query embedding + rerank + Pinecone search (concierge)
   ingest.py             chunkers (docs / transcripts / tweets) + upsert
   podcast.py            Market Bubble episode search (timestamped RAG)
+  summaries.py          pre-computed episode summaries (Pinecone-backed)
+  assets.py             token normalization + aggregation (shared logic)
+  assets_store.py       per-episode token data in Pinecone
   security.py           per-IP rate limiting + admin-token auth
   config.py             pydantic-settings (all secrets via env / .env)
   schemas.py            request/response models
 widget/                 embeddable chat widget (vanilla JS, no build step)
 discord_bot/            /search Discord bot (thin client to the backend)
-demo/                   demo terminal page, podcast search page, mock server
-scripts/                fetch/ingest/summarize episodes, weekly sync, red-team harness
-tests/                  96 tests (no API keys needed)
-data/                   seed knowledge + fetched episode transcripts
+demo/                   concierge.html · podcast.html · assets.html + mock server
+scripts/                episodes: fetch/ingest/summarize + weekly sync
+                        concierge: fetch_bullpen_docs, ingest_concierge
+                        tokens: extract_assets · red-team harness
+tests/                  130 tests (no API keys needed)
+data/                   seed + official Bullpen docs + fetched transcripts
 .github/workflows/      CI: ruff + pytest on every push
 Dockerfile              non-root container with healthcheck
 ```
@@ -277,7 +299,7 @@ Then ingest `data/episodes.json` via `/v1/podcast/ingest`.
 ## Testing
 
 ```bash
-.venv/bin/python -m pytest tests/            # 44 offline tests, no keys needed
+.venv/bin/python -m pytest tests/            # 130 offline tests, no keys needed
 ANTHROPIC_API_KEY=sk-ant-... .venv/bin/python scripts/redteam.py   # live red-team
 ```
 
