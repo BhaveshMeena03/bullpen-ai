@@ -164,17 +164,27 @@ uvicorn app.main:app --reload
 ```
 
 Create the Pinecone index once (dimension must match `EMBEDDING_DIMENSION`,
-metric `cosine`), then seed it with the starter knowledge base — who Ansem
-and FaZe Banks are, what Bullpen and $ANSEM are, and beginner crypto
-concepts (`data/seed.json`):
+metric `cosine`), then ground the concierge. The knowledge base is two
+layers:
+
+- **Official Bullpen docs** — the operational source of truth (funding,
+  wallets, order types, execution, fees). `scripts/fetch_bullpen_docs.py`
+  pulls the Markdown of each docs page and writes `data/bullpen_docs.json`;
+  re-run it to refresh when the docs change.
+- **Ecosystem knowledge** (`data/seed.json`) — the things the official docs
+  don't cover: who Ansem and FaZe Banks are, Market Bubble, $ANSEM, beginner
+  crypto concepts, and a user-facing scam-safety guide.
 
 ```bash
-curl -X POST localhost:8000/v1/ingest \
-  -H 'content-type: application/json' -d @data/seed.json
+python scripts/fetch_bullpen_docs.py          # refresh official docs
+python scripts/ingest_concierge.py --reset    # (re)ground the concierge
 ```
 
-Add your own docs/transcripts/tweets the same way (see `IngestDocument`
-in `app/schemas.py` for the shape).
+`--reset` clears the concierge's Pinecone namespace first, so removed or
+renamed docs don't linger as orphaned vectors (podcast / summaries / assets
+each use their own namespace and are untouched). Add your own
+docs/transcripts/tweets via `POST /v1/ingest` (see `IngestDocument` in
+`app/schemas.py` for the shape).
 
 ### How question types are answered
 
