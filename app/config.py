@@ -19,13 +19,18 @@ class Settings(BaseSettings):
 
     # --- Anthropic ---------------------------------------------------------
     anthropic_api_key: str
-    # Default: Opus 4.8 — strong answers at half the Fable 5 price.
     # Swap via env with no code changes:
-    #   ANTHROPIC_MODEL=claude-sonnet-5   cheapest good option ($3/$15)
+    #   ANTHROPIC_MODEL=claude-opus-4-8   stronger reasoning ($5/$25)
     #   ANTHROPIC_MODEL=claude-fable-5    max capability ($10/$50)
     # agent.py adapts the request shape per model (thinking config and
     # the Opus fallback are model-specific).
-    anthropic_model: str = "claude-opus-4-8"
+    # The concierge is RAG-grounded: retrieval does the heavy lifting, so the
+    # model's job is to synthesise the retrieved docs and hold the guardrails —
+    # not to reason from scratch. Sonnet 5 does that well at a fraction of
+    # Opus's cost. (Haiku would be cheaper still, but this bot is customer
+    # facing and safety-sensitive — no financial advice, never touch a seed
+    # phrase — so the extra guardrail margin is worth the small premium.)
+    anthropic_model: str = "claude-sonnet-5"
     anthropic_fallback_model: str = "claude-opus-4-8"  # used on Fable 5 only
     # Episode summaries are a one-time batch job per episode; Sonnet 5 is
     # excellent at summarization at 60% less cost than Opus.

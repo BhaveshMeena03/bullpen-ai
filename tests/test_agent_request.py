@@ -35,14 +35,19 @@ def build(message="How do I bridge?", history=None, chunks=None) -> dict:
 
 
 class TestDefaultModelContract:
-    """Default configuration: Opus 4.8 with explicit adaptive thinking."""
+    """Default configuration: Sonnet 5 with explicit adaptive thinking.
+
+    The concierge is RAG-grounded, so retrieval does the heavy lifting and a
+    mid-tier model is the right cost/quality trade — Opus is available via
+    ANTHROPIC_MODEL when stronger reasoning is wanted.
+    """
 
     def test_default_model(self):
-        assert build()["model"] == "claude-opus-4-8"
+        assert build()["model"] == "claude-sonnet-5"
 
     def test_adaptive_thinking_requested(self):
-        # Opus 4.8 runs WITHOUT thinking when the param is omitted — it
-        # must be requested explicitly, or answer quality drops.
+        # Sonnet 5 / Opus 4.8 run WITHOUT thinking when the param is omitted —
+        # it must be requested explicitly, or answer quality drops.
         assert build()["thinking"] == {"type": "adaptive"}
 
     def test_no_fallbacks_outside_fable(self):

@@ -121,10 +121,20 @@ ingest.py: docs / transcripts / tweets ──> chunk ──> embed ──> Pinec
 
 ## Key model-integration decisions
 
-- **Model**: `claude-opus-4-8` by default (strong quality at $5/$25 per
-  MTok). Swap via `ANTHROPIC_MODEL` — `claude-sonnet-5` to go cheaper,
-  `claude-fable-5` for max capability. The agent adapts the request
-  shape automatically per model.
+- **A model per job, matched to the work.** Retrieval does the heavy
+  lifting everywhere, so the generation step is sized to the task rather
+  than defaulting to the biggest model:
+  - **Concierge — `claude-sonnet-5`.** Grounded in retrieved docs, so its
+    job is synthesis + holding the guardrails, not reasoning from scratch.
+    Sonnet does that at a fraction of Opus's cost; the extra margin over
+    Haiku is worth it on a customer-facing, safety-sensitive support bot.
+  - **Podcast search — `claude-haiku-4-5`.** A 2–3 sentence grounded answer
+    is a light task; Haiku serves far more queries per dollar.
+  - **Episode summaries — `claude-sonnet-5`.** One-time batch per episode.
+
+  Swap any of them via env (`ANTHROPIC_MODEL` etc.) — `claude-opus-4-8` for
+  stronger reasoning, `claude-fable-5` for max capability. The agent adapts
+  the request shape automatically per model.
 - **Thinking**: on Opus 4.8 / Sonnet 5 the agent requests
   `thinking: {type: "adaptive"}` explicitly — this is what makes the
   model verify against retrieved context before answering. On Fable 5

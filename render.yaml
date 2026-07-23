@@ -18,7 +18,7 @@ services:
       - key: ADMIN_TOKEN
         sync: false
       - key: ANTHROPIC_MODEL
-        value: claude-opus-4-8
+        value: claude-sonnet-5
       - key: PINECONE_INDEX
         value: bullpen-concierge
       - key: RATE_LIMIT_RPM
