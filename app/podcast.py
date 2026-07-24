@@ -165,7 +165,14 @@ class PodcastIndex:
                     vectors=vectors[start:start + 100], namespace=NAMESPACE
                 )
 
-        await asyncio.to_thread(_upsert)
+        # Bound the write: the Pinecone client has no read timeout, so a dead
+        # socket would hang the whole ingest indefinitely. On timeout, raise so
+        # the caller's idempotent retry (deterministic chunk IDs = safe re-run)
+        # kicks in instead of blocking forever.
+        await asyncio.wait_for(
+            asyncio.to_thread(_upsert),
+            timeout=self._settings.pinecone_write_timeout_seconds,
+        )
         logger.info("Indexed %d transcript windows from %d episodes",
                     len(vectors), len(episodes))
         return len(vectors)

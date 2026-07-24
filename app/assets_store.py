@@ -103,7 +103,13 @@ class AssetStore:
                 logger.info("assets: removed %d stale record(s) for %s",
                             len(stale), episode_id)
 
-        await asyncio.to_thread(_write)
+        # Same no-read-timeout hazard as the podcast upsert: bound the write so
+        # a dead socket fails fast instead of hanging. Safe to retry — the store
+        # upserts by deterministic id and prunes stale records.
+        await asyncio.wait_for(
+            asyncio.to_thread(_write),
+            timeout=self._settings.pinecone_write_timeout_seconds,
+        )
         return len(hits)
 
     def _ids_for_episode(self, episode_id: str) -> list[str]:

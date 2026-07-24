@@ -108,3 +108,24 @@ def test_exists_reflects_store(store):
     assert asyncio.run(store.exists("e1")) is False
     asyncio.run(store.store("e1", "Ep", _hits(1)))
     assert asyncio.run(store.exists("e1")) is True
+
+
+class _HangingIndex(_FakeIndex):
+    """upsert() blocks forever, mimicking a dead-but-ESTABLISHED socket."""
+
+    def upsert(self, vectors, namespace):
+        # Long enough to blow past the test's 0.2s timeout, short enough that
+        # the orphaned worker thread (wait_for can't kill it) doesn't wedge
+        # interpreter shutdown.
+        import time
+        time.sleep(5)
+
+
+def test_hung_write_times_out_instead_of_blocking(store):
+    # The real incident: a write hung 2.5h on a half-open socket because the
+    # Pinecone client has no read timeout. The wait_for guard must convert that
+    # into a prompt failure the caller's idempotent retry can recover from.
+    store._index = _HangingIndex()
+    store._settings.pinecone_write_timeout_seconds = 0.2
+    with pytest.raises((asyncio.TimeoutError, TimeoutError)):
+        asyncio.run(store.store("e1", "Ep", _hits(1)))

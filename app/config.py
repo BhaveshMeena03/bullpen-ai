@@ -54,6 +54,12 @@ class Settings(BaseSettings):
     # --- Pinecone -----------------------------------------------------------
     pinecone_api_key: str
     pinecone_index: str = "bullpen-concierge"
+    # Hard ceiling on a single Pinecone write. The SDK's HTTP client has no
+    # read timeout, so a half-open socket (seen once: a write hung 2.5h with
+    # the connection ESTABLISHED but dead) blocks forever. Bounding the write
+    # turns that into a fast failure the ingest's idempotent retry can recover
+    # from. A few-hundred-vector upsert takes ~2s, so 60s is generous headroom.
+    pinecone_write_timeout_seconds: float = 60.0
 
     # --- Retrieval ----------------------------------------------------------
     retrieval_top_k: int = 6
