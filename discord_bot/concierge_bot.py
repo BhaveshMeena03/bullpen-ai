@@ -23,6 +23,7 @@ Env:
     COOLDOWN_SECONDS (optional)  per-user cooldown, default 8
     CHAT_TIMEOUT     (optional)  backend call timeout seconds, default 60
     MAX_ASKS_PER_MIN (optional)  bot-wide ceiling, default 20
+    ALWAYS_EPHEMERAL (optional)  "1" forces every answer private, default off
 """
 
 from __future__ import annotations
@@ -109,6 +110,7 @@ def build_bot() -> ConciergeBot:
     cooldown_s = float(_env("COOLDOWN_SECONDS", "8"))
     timeout = float(_env("CHAT_TIMEOUT", "60"))
     max_per_min = float(_env("MAX_ASKS_PER_MIN", "20"))
+    always_ephemeral = _env("ALWAYS_EPHEMERAL", "0") == "1"
 
     bot = ConciergeBot(
         backend_url=backend,
@@ -125,10 +127,24 @@ def build_bot() -> ConciergeBot:
         name="ask",
         description="Ask about funding, wallets, order types or the claim.",
     )
-    @app_commands.describe(question="What do you need help with?")
-    async def ask_cmd(interaction: discord.Interaction, question: str) -> None:
+    @app_commands.describe(
+        question="What do you need help with?",
+        private="Only you see the answer. Use it if the question is about your own account.",
+    )
+    async def ask_cmd(
+        interaction: discord.Interaction,
+        question: str,
+        private: bool = False,
+    ) -> None:
         import time
         now = time.monotonic()
+
+        # Public by default so one answer serves everyone reading, which is
+        # most of the value in a busy server. The asker opts into privacy
+        # because only they know whether the question reveals their own
+        # position or balance. A server that wants every answer private sets
+        # ALWAYS_EPHEMERAL and the flag stops mattering.
+        hidden = private or always_ephemeral
 
         # Validate BEFORE consuming any limiter slot.
         question = " ".join(question.split())
@@ -163,10 +179,14 @@ def build_bot() -> ConciergeBot:
 
         cooldown.stamp(interaction.user.id, now)
         # MUST defer: the backend call takes longer than Discord's 3s window.
-        await interaction.response.defer(thinking=True)
+        # Visibility is fixed at defer time — the followup inherits it, so it
+        # cannot be decided later once the answer is back.
+        await interaction.response.defer(thinking=True, ephemeral=hidden)
         try:
             embed = await bot.run_ask(question)
-            await interaction.followup.send(embed=embed, allowed_mentions=no_mentions)
+            await interaction.followup.send(
+                embed=embed, ephemeral=hidden, allowed_mentions=no_mentions
+            )
         except ChatError as exc:
             await interaction.followup.send(
                 f"⚠️ {exc}", ephemeral=True, allowed_mentions=no_mentions

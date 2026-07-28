@@ -23,6 +23,20 @@ and truncation (`format.py`), retry behaviour — are shared, not duplicated.
 Each bot needs **its own** `DISCORD_TOKEN`; one token is one bot identity.
 The image picks which to run from `BOT_MODULE` (see the Dockerfile).
 
+## Who sees the answer
+
+`/ask` is public by default, because in a busy server one answer serves
+everyone reading it and cuts the repeat questions the mods handle by hand.
+
+The asker can add `private: true` to keep an answer to themselves. That's
+their call to make rather than the bot's: only they know whether the question
+gives away their own balance or position. A server that would rather keep
+every support answer private sets `ALWAYS_EPHEMERAL=1` and the flag stops
+mattering.
+
+Visibility is fixed when the interaction is deferred, so it can't be decided
+after the answer comes back.
+
 ## The concierge's extra rule
 
 `/ask` intercepts anything mentioning a seed phrase, private key, recovery
