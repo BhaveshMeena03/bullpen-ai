@@ -28,10 +28,18 @@ from app.schemas import IngestDocument  # noqa: E402
 BASE = "https://docs.bullpen.fi"
 OUT = Path(__file__).resolve().parent.parent / "data" / "bullpen_docs.json"
 
-# Curated for what users actually ask support about. Deep per-order-type
-# sub-pages are covered by their parent "order-types" page, so they're left
-# out to keep the KB focused.
-PAGES = [
+SITEMAP = f"{BASE}/sitemap-pages.xml"
+
+# The page list comes from the sitemap, not from here. This list is only the
+# fallback for when the sitemap can't be fetched.
+#
+# It used to be the source of truth, hand-curated, on the theory that the
+# per-order-type sub-pages were "covered by their parent page". They weren't:
+# the concierge had nothing on stop-limit, TP/SL, TWAP, time-in-force or the
+# bullpen-cli section, which is most of what someone asks support about. A
+# hand-maintained list also silently falls behind every time Bullpen ships a
+# new page, and nothing surfaces the drift.
+FALLBACK_PAGES = [
     "about-bullpen/what-is-bullpen",
     "about-bullpen/platform-architecture",
     "getting-started/creating-an-account",
@@ -112,10 +120,40 @@ def title_of(markdown: str, slug: str) -> str:
     return h1
 
 
+def discover_pages(client: httpx.Client) -> list[str]:
+    """Every documentation page, straight from Bullpen's sitemap.
+
+    Falls back to the curated list if the sitemap is unreachable, so a network
+    blip refreshes a slightly stale KB rather than silently emptying it.
+    """
+    try:
+        resp = client.get(SITEMAP)
+        resp.raise_for_status()
+    except httpx.HTTPError as exc:
+        print(f"  sitemap unavailable ({exc}) — falling back to curated list")
+        return list(FALLBACK_PAGES)
+
+    slugs = set()
+    for loc in re.findall(r"<loc>([^<]+)</loc>", resp.text):
+        slug = loc.strip().removeprefix(BASE).strip("/")
+        if slug:                      # the bare root resolves to no page
+            slugs.add(slug)
+    if not slugs:
+        print("  sitemap parsed to zero pages — falling back to curated list")
+        return list(FALLBACK_PAGES)
+
+    missing = slugs - set(FALLBACK_PAGES)
+    if missing:
+        print(f"  sitemap adds {len(missing)} page(s) beyond the curated list")
+    return sorted(slugs)
+
+
 def main() -> None:
     docs: list[dict] = []
     with httpx.Client(timeout=30, follow_redirects=True) as client:
-        for slug in PAGES:
+        pages = discover_pages(client)
+        print(f"  {len(pages)} pages to fetch\n")
+        for slug in pages:
             url = f"{BASE}/{slug}.md"
             try:
                 resp = client.get(url)
@@ -139,7 +177,7 @@ def main() -> None:
             print(f"  ok  {title[:48]:50s} {len(body):5d} chars")
 
     OUT.write_text(json.dumps(docs, indent=2, ensure_ascii=False))
-    print(f"\n{len(docs)}/{len(PAGES)} pages -> {OUT.name}")
+    print(f"\n{len(docs)}/{len(pages)} pages -> {OUT.name}")
 
 
 if __name__ == "__main__":
