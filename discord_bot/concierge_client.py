@@ -51,15 +51,28 @@ class ChatClient:
     async def aclose(self) -> None:
         await self._http.aclose()
 
-    async def ask(self, question: str, *, retries: int = 1) -> ChatResult:
+    async def ask(
+        self,
+        question: str,
+        *,
+        history: list[dict] | None = None,
+        retries: int = 1,
+    ) -> ChatResult:
         """POST the question to /v1/chat. Retries once on a transient failure,
         matching SearchClient: the backend sleeps on free hosting, so the first
-        call after an idle period can legitimately time out once."""
+        call after an idle period can legitimately time out once.
+
+        `history` is prior turns as [{"role": ..., "content": ...}]. The API is
+        stateless and the client replays the conversation, same as the web page.
+        """
         url = f"{self._base}/v1/chat"
+        payload: dict = {"message": question}
+        if history:
+            payload["history"] = history
         last: Exception | None = None
         for attempt in range(retries + 1):
             try:
-                resp = await self._http.post(url, json={"message": question})
+                resp = await self._http.post(url, json=payload)
                 if resp.status_code == 429:
                     raise ChatError(
                         "http", "The assistant is at capacity right now."

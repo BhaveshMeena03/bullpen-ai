@@ -37,6 +37,23 @@ mattering.
 Visibility is fixed when the interaction is deferred, so it can't be decided
 after the answer comes back.
 
+## Follow-up questions
+
+The concierge often asks a clarifying question before answering — "which
+account were you funding?" — and then uses the reply. That needs conversation
+history, which the API is stateless about: the client replays it, exactly as
+the web page does.
+
+`memory.py` keeps that history briefly and forgetfully: keyed on
+(user, channel) so nothing bleeds between people or rooms, expiring after ten
+minutes of silence, capped at the last few turns since history is resent on
+every request, and bounded in total so a busy server can't grow it without
+limit. Nothing touches disk — a restart forgets everything, which is the right
+default for support chat that may mention someone's balance.
+
+Refused answers are not remembered; storing one makes the model keep
+apologising for it.
+
 ## The concierge's extra rule
 
 `/ask` intercepts anything mentioning a seed phrase, private key, recovery

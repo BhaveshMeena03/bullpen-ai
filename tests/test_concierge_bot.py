@@ -11,8 +11,13 @@ import httpx
 import pytest
 
 from discord_bot.concierge_client import ChatClient, ChatError, ChatResult
-from discord_bot.concierge_format import build_chat_payload, format_sources
+from discord_bot.concierge_format import (
+    build_chat_payload,
+    flatten_tables,
+    format_sources,
+)
 from discord_bot.limits import Cooldown, GlobalThrottle
+from discord_bot.memory import ConversationMemory
 
 
 def _client(handler) -> ChatClient:
@@ -136,10 +141,122 @@ class TestFormatting:
     def test_source_title_that_looks_like_a_domain_is_defanged(self):
         assert "bullpen.fi" not in format_sources(["bullpen.fi"])
 
-    def test_long_answer_truncated_within_discord_limits(self):
+    def test_very_long_answer_is_still_truncated(self):
         out = build_chat_payload("q", ChatResult(answer="word " * 2000))
-        assert len(out["description"]) <= 1401
         assert out["description"].endswith("…")
+
+
+class TestTablesAndLength:
+    def test_markdown_table_becomes_plain_lines(self):
+        """Discord renders no tables, so a table arrives as a wall of pipes."""
+        answer = (
+            "Here's what you need:\n"
+            "| Market | What you need |\n"
+            "|---|---|\n"
+            "| Solana Spot | SOL for gas |\n"
+            "| Perps | USDC |\n"
+            "Done."
+        )
+        out = flatten_tables(answer)
+        assert "|" not in out
+        assert "• **Solana Spot** — SOL for gas" in out
+        assert "• **Perps** — USDC" in out
+        assert out.startswith("Here's what you need:")
+        assert out.rstrip().endswith("Done.")
+
+    def test_prose_with_pipes_is_left_alone(self):
+        assert flatten_tables("use a | b for piping") == "use a | b for piping"
+
+    def test_support_length_answer_is_not_truncated(self):
+        """1400 came from podcast search; support answers run ~2000 and were
+        losing their last third."""
+        answer = "word " * 400          # ~2000 chars
+        out = build_chat_payload("q", ChatResult(answer=answer))
+        assert not out["description"].endswith("…")
+
+    def test_still_capped_below_discord_embed_limit(self):
+        out = build_chat_payload("q", ChatResult(answer="word " * 2000))
+        assert len(out["description"]) <= 3501
+        assert len(out["description"]) < 4096, "Discord rejects over 4096"
+
+
+class TestClientHistory:
+    def test_history_is_sent_when_present(self):
+        seen = {}
+
+        def handler(req):
+            import json
+            seen.update(json.loads(req.content))
+            return httpx.Response(200, json={"answer": "ok", "sources": []})
+        past = [{"role": "user", "content": "hi"},
+                {"role": "assistant", "content": "hello"}]
+        asyncio.run(_client(handler).ask("follow up", history=past))
+        assert seen["history"] == past
+
+    def test_history_key_omitted_when_empty(self):
+        seen = {}
+
+        def handler(req):
+            import json
+            seen.update(json.loads(req.content))
+            return httpx.Response(200, json={"answer": "ok", "sources": []})
+        asyncio.run(_client(handler).ask("first question"))
+        assert "history" not in seen
+
+
+class TestConversationMemory:
+    def test_follow_up_sees_the_previous_exchange(self):
+        m = ConversationMemory()
+        m.append(1, 10, "balance is zero", "which product?", now=100.0)
+        turns = m.get(1, 10, now=105.0)
+        assert [t["role"] for t in turns] == ["user", "assistant"]
+        assert turns[0]["content"] == "balance is zero"
+
+    def test_expires_after_silence(self):
+        m = ConversationMemory(ttl=60)
+        m.append(1, 10, "q", "a", now=100.0)
+        assert m.get(1, 10, now=150.0)          # still inside the window
+        assert m.get(1, 10, now=200.0) == []    # gone
+
+    def test_channels_do_not_bleed_into_each_other(self):
+        m = ConversationMemory()
+        m.append(1, 10, "q", "a", now=100.0)
+        assert m.get(1, 11, now=100.0) == []
+
+    def test_users_do_not_see_each_other(self):
+        m = ConversationMemory()
+        m.append(1, 10, "my balance", "…", now=100.0)
+        assert m.get(2, 10, now=100.0) == []
+
+    def test_only_recent_turns_kept(self):
+        """History is resent every request, so unbounded history is an
+        unbounded bill."""
+        m = ConversationMemory(max_turns=4)
+        for i in range(5):
+            m.append(1, 10, f"q{i}", f"a{i}", now=100.0 + i)
+        turns = m.get(1, 10, now=110.0)
+        assert len(turns) == 4
+        assert turns[-1]["content"] == "a4"
+        assert all("q0" != t["content"] for t in turns)
+
+    def test_conversation_count_is_bounded(self):
+        m = ConversationMemory(max_conversations=3)
+        for uid in range(10):
+            m.append(uid, 10, "q", "a", now=100.0 + uid)
+        assert len(m._store) <= 3
+
+    def test_expired_entries_are_reclaimed_not_just_hidden(self):
+        m = ConversationMemory(ttl=10, max_conversations=100)
+        m.append(1, 10, "q", "a", now=100.0)
+        m.append(2, 10, "q", "a", now=500.0)   # triggers eviction sweep
+        assert (1, 10) not in m._store
+
+    def test_forget_clears_one_conversation(self):
+        m = ConversationMemory()
+        m.append(1, 10, "q", "a", now=100.0)
+        assert m.forget(1, 10) is True
+        assert m.get(1, 10, now=101.0) == []
+        assert m.forget(1, 10) is False
 
 
 class TestSharedLimits:

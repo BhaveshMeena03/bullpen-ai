@@ -38,6 +38,7 @@ from discord import app_commands
 from .concierge_client import ChatClient, ChatError
 from .concierge_format import build_chat_payload
 from .limits import Cooldown, GlobalThrottle
+from .memory import ConversationMemory
 
 logging.basicConfig(
     level=logging.INFO,
@@ -88,8 +89,12 @@ class ConciergeBot(discord.Client):
         await self._chat.aclose()
         await super().close()
 
-    async def run_ask(self, question: str) -> discord.Embed:
-        result = await self._chat.ask(question)
+    async def run_ask(
+        self, question: str, history: list[dict] | None = None
+    ) -> tuple[discord.Embed, str]:
+        """Returns the embed and the raw answer, so the caller can remember it
+        without re-deriving it from the formatted output."""
+        result = await self._chat.ask(question, history=history)
         payload = build_chat_payload(question, result)
 
         embed = discord.Embed(
@@ -100,7 +105,9 @@ class ConciergeBot(discord.Client):
         if payload["sources"]:
             embed.add_field(name="from", value=payload["sources"], inline=False)
         embed.set_footer(text=FOOTER)
-        return embed
+        # Remember the model's own answer, not the truncated/flattened one the
+        # embed shows, so a follow-up sees what it actually said.
+        return embed, ("" if payload["empty"] else result.answer)
 
 
 def build_bot() -> ConciergeBot:
@@ -119,6 +126,7 @@ def build_bot() -> ConciergeBot:
     )
     cooldown = Cooldown(cooldown_s)
     throttle = GlobalThrottle(max_per_min)
+    memory = ConversationMemory()
     # Never let a model-generated answer @everyone/@here/@role the channel.
     no_mentions = discord.AllowedMentions.none()
     bot._token = token  # stashed for run()
@@ -183,10 +191,18 @@ def build_bot() -> ConciergeBot:
         # cannot be decided later once the answer is back.
         await interaction.response.defer(thinking=True, ephemeral=hidden)
         try:
-            embed = await bot.run_ask(question)
+            channel_id = interaction.channel_id or 0
+            past = memory.get(interaction.user.id, channel_id, now)
+            embed, answer = await bot.run_ask(question, past)
             await interaction.followup.send(
                 embed=embed, ephemeral=hidden, allowed_mentions=no_mentions
             )
+            # Only remember exchanges that produced a real answer. Storing a
+            # refusal would make the model keep apologising for it.
+            if answer:
+                memory.append(
+                    interaction.user.id, channel_id, question, answer, now
+                )
         except ChatError as exc:
             await interaction.followup.send(
                 f"⚠️ {exc}", ephemeral=True, allowed_mentions=no_mentions
