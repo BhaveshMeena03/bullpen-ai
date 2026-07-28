@@ -1,15 +1,35 @@
-# Market Bubble Search — Discord bot
+# Discord bots
 
-A `/search` slash command that lets a Discord community search every Market
-Bubble episode and jump to the exact YouTube moment, without leaving the
-server. It's a **thin client** — it calls the deployed search backend over
-HTTP, so it holds only a Discord token (no Anthropic/Voyage/Pinecone keys).
+Two bots, one package. Both are **thin clients** — they call the deployed
+backend over HTTP and hold only a Discord token (no Anthropic/Voyage/Pinecone
+keys).
+
+| Bot | Command | Answers from | Module |
+|---|---|---|---|
+| Market Bubble Search | `/search` | podcast transcripts, links to the exact YouTube second | `discord_bot.bot` |
+| Bullpen Concierge | `/ask` | Bullpen's official documentation, cites the pages | `discord_bot.concierge_bot` |
 
 ```
-Discord  ──/search──▶  bot  ──HTTPS──▶  marketbubble-search.onrender.com
-                        │                        │
-                    embed reply  ◀── answer + timestamp links
+Discord  ──/search──▶  bot  ──HTTPS──▶  /v1/podcast/search  ── answer + timestamp links
+Discord  ──/ask─────▶  bot  ──HTTPS──▶  /v1/chat            ── answer + doc page names
 ```
+
+They're separate bots rather than two commands on one, because they serve
+different audiences: `/search` is for listeners of the show, `/ask` is for
+people using the platform. A server can install either without the other. The
+parts worth getting right once — rate limiting (`limits.py`), URL defanging
+and truncation (`format.py`), retry behaviour — are shared, not duplicated.
+
+Each bot needs **its own** `DISCORD_TOKEN`; one token is one bot identity.
+The image picks which to run from `BOT_MODULE` (see the Dockerfile).
+
+## The concierge's extra rule
+
+`/ask` intercepts anything mentioning a seed phrase, private key, recovery
+phrase or mnemonic **before** it reaches the model, and replies ephemerally
+with a warning. Someone typing their seed phrase into a Discord command needs
+to be told to stop, not given a documentation lookup — and the text must never
+be echoed back into a public channel.
 
 ## What's production-grade about it
 - **Deferred responses** — search takes >3s; Discord kills a non-deferred

@@ -1,25 +1,28 @@
-"""Market Bubble Search — Discord bot.
+"""Bullpen Concierge — Discord bot.
 
-A /search slash command that queries the deployed backend and returns the
-answer plus clickable YouTube timestamp links, right inside Discord.
+An /ask slash command that answers support questions from Bullpen's official
+documentation, inside the server where people already ask them.
+
+A separate bot from bot.py rather than a second command on it, because the two
+serve different audiences: podcast search is for listeners, this is for users
+of the platform. Keeping them apart means a server can install one without the
+other, and the rate limiting, HTTP retry behaviour and output safety are
+shared through limits.py / format.py instead of being duplicated.
 
 Production concerns handled here:
-- Deferred responses (search takes >3s; Discord kills a non-deferred
-  interaction at 3s).
-- Per-user cooldown (protects the backend's model budget from one spammer).
-- Query validation and length caps.
-- Every failure path returns a friendly, ephemeral error — the bot never
-  shows a raw traceback and never crashes on a single command.
-- Clean startup/shutdown of the shared HTTP client.
-- Command sync scoped to a guild when GUILD_ID is set (instant) vs global
-  (up to 1h to propagate).
+- Deferred responses (the backend call takes longer than Discord's 3s window).
+- Per-user cooldown and a bot-wide ceiling (both guard model spend).
+- Question validation and length caps.
+- Every failure path returns a friendly, ephemeral error — never a traceback.
+- Answers can never post a link or ping a role.
 
 Env:
-    DISCORD_TOKEN   (required)  bot token
-    BACKEND_URL     (required)  e.g. https://marketbubble-search.onrender.com
-    GUILD_ID        (optional)  dev guild id for instant command sync
-    COOLDOWN_SECONDS(optional)  per-user cooldown, default 8
-    SEARCH_TIMEOUT  (optional)  backend call timeout seconds, default 60
+    DISCORD_TOKEN    (required)  bot token (its own, not the search bot's)
+    BACKEND_URL      (required)  e.g. https://marketbubble-search.onrender.com
+    GUILD_ID         (optional)  dev guild id for instant command sync
+    COOLDOWN_SECONDS (optional)  per-user cooldown, default 8
+    CHAT_TIMEOUT     (optional)  backend call timeout seconds, default 60
+    MAX_ASKS_PER_MIN (optional)  bot-wide ceiling, default 20
 """
 
 from __future__ import annotations
@@ -31,18 +34,26 @@ import signal
 import discord
 from discord import app_commands
 
-from .client import SearchClient, SearchError
-from .format import build_answer_payload
+from .concierge_client import ChatClient, ChatError
+from .concierge_format import build_chat_payload
 from .limits import Cooldown, GlobalThrottle
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
-logger = logging.getLogger("mbbot")
+logger = logging.getLogger("bpcbot")
 
 GREEN = 0x16C784
-FOOTER = "Market Bubble Search · not financial advice"
+FOOTER = "Bullpen Concierge · from the docs · not financial advice"
+
+# Shown when someone asks the one question a support bot must never answer.
+SEED_PHRASE_WARNING = (
+    "⚠️ Never share your seed phrase or private key — with me, with support, "
+    "or with anyone who DMs you. No one from Bullpen will ever ask for it."
+)
+_SECRET_WORDS = ("seed phrase", "seedphrase", "private key", "recovery phrase",
+                 "mnemonic", "secret phrase")
 
 
 def _env(name: str, default: str | None = None, required: bool = False) -> str | None:
@@ -52,11 +63,11 @@ def _env(name: str, default: str | None = None, required: bool = False) -> str |
     return val.strip() if isinstance(val, str) else val
 
 
-class MBBot(discord.Client):
+class ConciergeBot(discord.Client):
     def __init__(self, *, backend_url: str, timeout: float, guild_id: int | None):
         super().__init__(intents=discord.Intents.none())
         self.tree = app_commands.CommandTree(self)
-        self._search = SearchClient(backend_url, timeout=timeout)
+        self._chat = ChatClient(backend_url, timeout=timeout)
         self._guild_id = guild_id
 
     async def setup_hook(self) -> None:
@@ -70,72 +81,70 @@ class MBBot(discord.Client):
             logger.info("Synced commands globally (propagates within ~1h)")
 
     async def on_ready(self) -> None:
-        logger.info("Logged in as %s (%s)", self.user, getattr(self.user, "id", "?"))
-        await self.change_presence(
-            activity=discord.Activity(
-                type=discord.ActivityType.listening, name="/search the pod"
-            )
-        )
+        logger.info("Logged in as %s", self.user)
 
     async def close(self) -> None:
-        await self._search.aclose()
+        await self._chat.aclose()
         await super().close()
 
-    async def run_search(self, query: str) -> discord.Embed:
-        """Query the backend and build an embed. Raises SearchError for the
-        caller to turn into a friendly message."""
-        result = await self._search.search(query)
-        payload = build_answer_payload(query, result)
+    async def run_ask(self, question: str) -> discord.Embed:
+        result = await self._chat.ask(question)
+        payload = build_chat_payload(question, result)
+
         embed = discord.Embed(
+            title=payload["title"],
             description=payload["description"],
-            color=GREEN if not payload["empty"] else 0x8A939E,
+            colour=GREEN,
         )
-        if payload["title"]:
-            embed.set_author(name=f"🔎  {payload['title']}")
-        if payload["hits"]:
-            embed.add_field(
-                name="Jump to the moment", value=payload["hits"], inline=False
-            )
+        if payload["sources"]:
+            embed.add_field(name="from", value=payload["sources"], inline=False)
         embed.set_footer(text=FOOTER)
         return embed
 
 
-def build_bot() -> MBBot:
+def build_bot() -> ConciergeBot:
     token = _env("DISCORD_TOKEN", required=True)
     backend = _env("BACKEND_URL", required=True)
     guild_id = _env("GUILD_ID")
     cooldown_s = float(_env("COOLDOWN_SECONDS", "8"))
-    timeout = float(_env("SEARCH_TIMEOUT", "60"))
-    max_per_min = float(_env("MAX_SEARCHES_PER_MIN", "20"))
+    timeout = float(_env("CHAT_TIMEOUT", "60"))
+    max_per_min = float(_env("MAX_ASKS_PER_MIN", "20"))
 
-    bot = MBBot(
+    bot = ConciergeBot(
         backend_url=backend,
         timeout=timeout,
         guild_id=int(guild_id) if guild_id else None,
     )
     cooldown = Cooldown(cooldown_s)
     throttle = GlobalThrottle(max_per_min)
-    # Only reply to mentions/roles the model can't manufacture — never let a
-    # model-generated answer @everyone/@here/@role the channel.
+    # Never let a model-generated answer @everyone/@here/@role the channel.
     no_mentions = discord.AllowedMentions.none()
     bot._token = token  # stashed for run()
 
     @bot.tree.command(
-        name="search",
-        description="Search every Market Bubble episode and jump to the moment.",
+        name="ask",
+        description="Ask about funding, wallets, order types or the claim.",
     )
-    @app_commands.describe(question="What do you want to know?")
-    async def search_cmd(
-        interaction: discord.Interaction, question: str
-    ) -> None:
+    @app_commands.describe(question="What do you need help with?")
+    async def ask_cmd(interaction: discord.Interaction, question: str) -> None:
         import time
         now = time.monotonic()
 
         # Validate BEFORE consuming any limiter slot.
-        question = " ".join(question.split())  # collapse whitespace/control chars
+        question = " ".join(question.split())
         if not (2 <= len(question) <= 300):
             await interaction.response.send_message(
                 "Ask a question between 2 and 300 characters.", ephemeral=True
+            )
+            return
+
+        # Answer this one locally and ephemerally, before spending a model call
+        # or writing anything to a public channel. Someone typing their seed
+        # phrase into a Discord command needs a warning, not a documentation
+        # lookup — and the text must not be echoed back into the channel.
+        if any(w in question.lower() for w in _SECRET_WORDS):
+            await interaction.response.send_message(
+                SEED_PHRASE_WARNING, ephemeral=True, allowed_mentions=no_mentions
             )
             return
 
@@ -145,10 +154,9 @@ def build_bot() -> MBBot:
                 f"⏳ one sec — try again in {wait:.0f}s.", ephemeral=True
             )
             return
-        # Bot-wide budget backstop: a coordinated raid can't blow past this.
         if not throttle.allow(now):
             await interaction.response.send_message(
-                "🌊 The bot is at capacity right now — try again shortly.",
+                "🌊 The assistant is at capacity right now — try again shortly.",
                 ephemeral=True,
             )
             return
@@ -157,14 +165,14 @@ def build_bot() -> MBBot:
         # MUST defer: the backend call takes longer than Discord's 3s window.
         await interaction.response.defer(thinking=True)
         try:
-            embed = await bot.run_search(question)
+            embed = await bot.run_ask(question)
             await interaction.followup.send(embed=embed, allowed_mentions=no_mentions)
-        except SearchError as exc:
+        except ChatError as exc:
             await interaction.followup.send(
-                f"⚠️ {exc.message}", ephemeral=True, allowed_mentions=no_mentions
+                f"⚠️ {exc}", ephemeral=True, allowed_mentions=no_mentions
             )
         except Exception:  # noqa: BLE001 — never crash a command
-            logger.exception("Unhandled error in /search")
+            logger.exception("Unhandled error in /ask")
             await interaction.followup.send(
                 "⚠️ Something went wrong — please try again.",
                 ephemeral=True, allowed_mentions=no_mentions,
@@ -191,7 +199,6 @@ def build_bot() -> MBBot:
 def main() -> None:
     bot = build_bot()
 
-    # Graceful shutdown on SIGTERM (containers/hosts send this).
     def _stop(*_):
         logger.info("Shutting down…")
         import asyncio
