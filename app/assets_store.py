@@ -129,7 +129,13 @@ class AssetStore:
     async def exists(self, episode_id: str) -> bool:
         # Must match chunked ids ("assets-<id>-0"), not just the legacy
         # single-record id, or a stored episode reads back as missing.
-        return bool(await asyncio.to_thread(self._ids_for_episode, episode_id))
+        # Bounded: the Pinecone client has no read timeout, and this sits
+        # on the request path holding a thread from the bounded to_thread
+        # pool. A hang here starves every offloaded call in the process.
+        return bool(await asyncio.wait_for(
+            asyncio.to_thread(self._ids_for_episode, episode_id),
+            timeout=self._settings.pinecone_read_timeout_seconds,
+        ))
 
     async def all_hits(self) -> list[dict]:
         """Every stored hit across every episode, ready to aggregate."""
@@ -147,7 +153,13 @@ class AssetStore:
                     logger.warning("assets: unparseable hits blob, skipping")
             return hits
 
-        return await asyncio.to_thread(_load)
+        # Bounded: the Pinecone client has no read timeout, and this sits
+        # on the request path holding a thread from the bounded to_thread
+        # pool. A hang here starves every offloaded call in the process.
+        return await asyncio.wait_for(
+            asyncio.to_thread(_load),
+            timeout=self._settings.pinecone_read_timeout_seconds,
+        )
 
     async def episode_count(self) -> int:
         def _count() -> int:
@@ -156,4 +168,10 @@ class AssetStore:
                 for page in self.index.list(namespace=NAMESPACE)
                 for _ in (page.vectors if hasattr(page, "vectors") else page)
             )
-        return await asyncio.to_thread(_count)
+        # Bounded: the Pinecone client has no read timeout, and this sits
+        # on the request path holding a thread from the bounded to_thread
+        # pool. A hang here starves every offloaded call in the process.
+        return await asyncio.wait_for(
+            asyncio.to_thread(_count),
+            timeout=self._settings.pinecone_read_timeout_seconds,
+        )

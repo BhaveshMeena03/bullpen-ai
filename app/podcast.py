@@ -204,7 +204,13 @@ class PodcastIndex:
                 include_metadata=True,
             )
 
-        response = await asyncio.to_thread(_query)
+        # Bounded like the upsert above, and for the same half-open-socket
+        # reason. A read is the more dangerous case: it is on the request path
+        # and holds a thread from the bounded to_thread pool while it hangs.
+        response = await asyncio.wait_for(
+            asyncio.to_thread(_query),
+            timeout=self._settings.pinecone_read_timeout_seconds,
+        )
         hits: list[PodcastHit] = []
         for match in response.matches:
             if match.score < self._settings.retrieval_min_score:

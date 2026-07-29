@@ -201,6 +201,9 @@ class IngestionPipeline:
             for start in range(0, len(vectors), 100):
                 self.index.upsert(vectors=vectors[start:start + 100])
 
-        await asyncio.to_thread(_upsert)
+        await asyncio.wait_for(
+            asyncio.to_thread(_upsert),
+            timeout=self._settings.pinecone_write_timeout_seconds,
+        )
         logger.info("Upserted %d chunks from %d documents", len(vectors), len(docs))
         return len(vectors)

@@ -60,6 +60,12 @@ class Settings(BaseSettings):
     # turns that into a fast failure the ingest's idempotent retry can recover
     # from. A few-hundred-vector upsert takes ~2s, so 60s is generous headroom.
     pinecone_write_timeout_seconds: float = 60.0
+    # The same half-open socket hangs a read, and reads are worse: they sit on
+    # the request path, and every one runs in a bounded asyncio.to_thread pool.
+    # Threads stuck forever exhaust that pool and take down every offloaded
+    # call in the process, not just search. Only the writes were bounded when
+    # this was first found. A query normally returns in well under a second.
+    pinecone_read_timeout_seconds: float = 20.0
 
     # --- Retrieval ----------------------------------------------------------
     retrieval_top_k: int = 6

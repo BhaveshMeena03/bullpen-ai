@@ -75,7 +75,14 @@ class Retriever:
                 include_metadata=True,
             )
 
-        response = await asyncio.to_thread(_query)
+        # Bounded for the same reason the writes are: the Pinecone client has
+        # no read timeout, so a half-open socket would pin this thread forever.
+        # to_thread runs on a bounded pool, so enough stuck reads starve every
+        # offloaded call in the process.
+        response = await asyncio.wait_for(
+            asyncio.to_thread(_query),
+            timeout=self._settings.pinecone_read_timeout_seconds,
+        )
 
         chunks: list[RetrievedChunk] = []
         for match in response.matches:

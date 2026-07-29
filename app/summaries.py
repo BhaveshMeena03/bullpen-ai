@@ -128,7 +128,10 @@ class SummaryStore:
                 namespace=NAMESPACE,
             )
 
-        await asyncio.to_thread(_upsert)
+        await asyncio.wait_for(
+            asyncio.to_thread(_upsert),
+            timeout=self._settings.pinecone_write_timeout_seconds,
+        )
 
     # -- serving --------------------------------------------------------------
     async def exists(self, episode_id: str) -> bool:
@@ -136,7 +139,13 @@ class SummaryStore:
             return self.index.fetch(
                 ids=[f"summary-{episode_id}"], namespace=NAMESPACE
             )
-        result = await asyncio.to_thread(_fetch)
+        # Bounded: the Pinecone client has no read timeout, and this sits
+        # on the request path holding a thread from the bounded to_thread
+        # pool. A hang here starves every offloaded call in the process.
+        result = await asyncio.wait_for(
+            asyncio.to_thread(_fetch),
+            timeout=self._settings.pinecone_read_timeout_seconds,
+        )
         return bool(result.vectors)
 
     async def list_all(self) -> list[dict]:
@@ -153,6 +162,12 @@ class SummaryStore:
             fetched = self.index.fetch(ids=ids, namespace=NAMESPACE)
             return [dict(v.metadata or {}) for v in fetched.vectors.values()]
 
-        rows = await asyncio.to_thread(_load)
+        # Bounded: the Pinecone client has no read timeout, and this sits
+        # on the request path holding a thread from the bounded to_thread
+        # pool. A hang here starves every offloaded call in the process.
+        rows = await asyncio.wait_for(
+            asyncio.to_thread(_load),
+            timeout=self._settings.pinecone_read_timeout_seconds,
+        )
         rows.sort(key=lambda r: r.get("published_at", ""), reverse=True)
         return rows
