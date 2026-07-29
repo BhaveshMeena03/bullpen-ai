@@ -143,12 +143,12 @@ class TestAdminGuardWithNoTokenConfigured:
 
     @staticmethod
     def _request(host: str):
-        import asyncio
         from types import SimpleNamespace
         return SimpleNamespace(client=SimpleNamespace(host=host), headers={})
 
     def _call(self, host: str):
         import asyncio
+
         from app.security import require_admin
         return asyncio.run(require_admin(self._request(host)))
 
@@ -214,6 +214,7 @@ class TestHistorySpendCeiling:
     def test_previously_allowed_worst_case_is_rejected(self):
         import pytest
         from pydantic import ValidationError
+
         from app.schemas import ChatRequest
         with pytest.raises(ValidationError):
             ChatRequest(message="hi", history=self._turns(40, 16_000))
@@ -222,7 +223,8 @@ class TestHistorySpendCeiling:
         """Many small turns that individually pass must still be capped."""
         import pytest
         from pydantic import ValidationError
-        from app.schemas import ChatRequest, MAX_HISTORY_CHARS
+
+        from app.schemas import MAX_HISTORY_CHARS, ChatRequest
         over = (MAX_HISTORY_CHARS // 1_000) + 2
         with pytest.raises(ValidationError):
             ChatRequest(message="hi", history=self._turns(over, 1_000))
@@ -255,8 +257,10 @@ class TestDailyBudget:
 
     def test_exhausted_budget_returns_503_not_500(self):
         import asyncio
+
         import pytest
         from fastapi import HTTPException
+
         from app.security import DailyBudget
         b = DailyBudget(limit=1)
         b.check()
@@ -268,6 +272,7 @@ class TestDailyBudget:
     def test_state_reports_usage(self):
         from app.security import DailyBudget
         b = DailyBudget(limit=10)
-        b.check(); b.check()
+        b.check()
+        b.check()
         assert b.state()["used"] == 2
         assert b.state()["limit"] == 10
