@@ -4,12 +4,20 @@ Both are FastAPI dependencies so they're visible in the route signature
 and the OpenAPI docs, and testable in isolation.
 """
 
+import ipaddress
+import logging
 import secrets
 import time
 
 from fastapi import HTTPException, Request
 
 from .config import get_settings
+
+logger = logging.getLogger(__name__)
+
+
+def _client_host(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
 
 
 class RateLimiter:
@@ -94,16 +102,40 @@ public_rate_limit = RateLimiter()
 global_rate_limit = GlobalRateLimit()
 
 
+def _is_loopback(request: Request) -> bool:
+    host = request.client.host if request.client else ""
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
 async def require_admin(request: Request) -> None:
     """Guard for ingestion endpoints.
 
-    When ADMIN_TOKEN is configured, callers must send it as X-Admin-Token.
-    When unset (local development), the guard is a no-op — set it in any
-    deployed environment.
+    Callers must send ADMIN_TOKEN as X-Admin-Token.
+
+    With no token configured this FAILS CLOSED for anything off-loopback.
+    It used to return early and wave the request through, so an environment
+    that lost the variable — a new deploy, a cleared dashboard field, a fresh
+    clone — silently published /v1/ingest and /v1/podcast/ingest to the
+    internet. Those endpoints rewrite the knowledge base and spend model
+    budget, and nothing in the response would have told you the door was open.
+    Local development still works unauthenticated because it comes from
+    127.0.0.1.
     """
     expected = get_settings().admin_token
     if not expected:
-        return
+        if _is_loopback(request):
+            return
+        logger.error(
+            "Admin endpoint hit from %s with no ADMIN_TOKEN set — refusing.",
+            _client_host(request),
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Admin endpoints are disabled: server has no ADMIN_TOKEN configured.",
+        )
     provided = request.headers.get("x-admin-token", "")
     # Compare bytes, not str: Starlette decodes headers as latin-1, so a
     # non-ASCII header byte would make compare_digest(str, str) raise a

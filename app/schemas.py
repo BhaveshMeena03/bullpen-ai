@@ -3,7 +3,11 @@
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+# Ceiling on a replayed conversation, summed across turns. See the validator
+# on ChatRequest.history for why the per-turn limits were not enough.
+MAX_HISTORY_CHARS = 60_000
 
 
 class SourceType(StrEnum):
@@ -23,13 +27,34 @@ class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=8000)
     # Prior turns of the conversation; the API layer is stateless so the
     # client replays history. Keeping history byte-identical between turns
-    # is what lets the prompt cache pay off. Bounded so a hostile client
-    # can't stuff megabytes of fake history into every request.
+    # is what lets the prompt cache pay off.
     history: list[ChatTurn] = Field(default_factory=list, max_length=40)
     # Optional metadata pre-filter, e.g. {"source_type": "docs"} to answer
     # only from documentation, or {"episode": "ep-42"}.
     filters: dict[str, str | int | bool] | None = None
     session_id: str | None = None
+
+    @field_validator("history")
+    @classmethod
+    def _bound_total_history(cls, turns: list[ChatTurn]) -> list[ChatTurn]:
+        """Cap the whole conversation, not just each turn.
+
+        The per-field limits alone allowed 40 turns of 16,000 characters:
+        640,000 characters, roughly 160k tokens, on every request. Input is
+        billed per token, so that made a single caller's spend a function of
+        what they chose to send rather than of the rate limit.
+
+        Real clients are nowhere near it. The web page replays at most 20
+        entries, the Discord bot 6, and an answer runs about 2,000 characters,
+        so a genuine conversation is well under 60,000. Anything larger is a
+        client bug or someone probing the bill.
+        """
+        total = sum(len(t.content) for t in turns)
+        if total > MAX_HISTORY_CHARS:
+            raise ValueError(
+                f"history too large: {total} characters, limit {MAX_HISTORY_CHARS}"
+            )
+        return turns
 
 
 class RetrievedChunk(BaseModel):

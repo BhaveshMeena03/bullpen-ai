@@ -147,14 +147,14 @@ class TestCorsAndHealth:
 
 
 class TestIngest:
-    def test_ingest_roundtrip(self, client):
-        r = client.post("/v1/ingest", json=[{
+    def test_ingest_roundtrip(self, client, admin_headers):
+        r = client.post("/v1/ingest", headers=admin_headers, json=[{
             "source_type": "tweet", "source_id": "t1", "text": "gm",
         }])
         assert r.json() == {"chunks_upserted": 1}
 
-    def test_ingest_rejects_bad_source_type(self, client):
-        r = client.post("/v1/ingest", json=[{
+    def test_ingest_rejects_bad_source_type(self, client, admin_headers):
+        r = client.post("/v1/ingest", headers=admin_headers, json=[{
             "source_type": "reddit", "source_id": "t1", "text": "gm",
         }])
         assert r.status_code == 422
@@ -241,13 +241,13 @@ class TestConciergeAnalytics:
         assert main_module.STATS["refusals"] == 1
         assert main_module.STATS["unanswered_chats"] == 0
 
-    def test_gaps_endpoint_reports_recent_and_top(self, client, monkeypatch):
+    def test_gaps_endpoint_reports_recent_and_top(self, client, monkeypatch, admin_headers):
         async def empty(self, query, filters=None, top_k=None):
             return []
 
         monkeypatch.setattr(StubRetriever, "search", empty)
         client.post("/v1/chat", json={"message": "exact deposit minimum"})
-        r = client.get("/v1/gaps")
+        r = client.get("/v1/gaps", headers=admin_headers)
         assert r.status_code == 200
         body = r.json()
         assert body["total_unanswered"] == 1

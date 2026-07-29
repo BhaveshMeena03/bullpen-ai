@@ -133,6 +133,54 @@ class TestProxyIPAndBuckets:
         assert limiter.check("victim") is False
 
 
+class TestAdminGuardWithNoTokenConfigured:
+    """The blank-token case was covered; the *absent* case was not, and that
+    was the one that mattered. With no ADMIN_TOKEN the guard used to return
+    early and wave every caller through, so an environment that lost the
+    variable published /v1/ingest and /v1/podcast/ingest to the internet with
+    nothing in the response to say so.
+    """
+
+    @staticmethod
+    def _request(host: str):
+        import asyncio
+        from types import SimpleNamespace
+        return SimpleNamespace(client=SimpleNamespace(host=host), headers={})
+
+    def _call(self, host: str):
+        import asyncio
+        from app.security import require_admin
+        return asyncio.run(require_admin(self._request(host)))
+
+    def test_remote_caller_is_refused(self, monkeypatch):
+        import pytest
+        from fastapi import HTTPException
+        monkeypatch.delenv("ADMIN_TOKEN", raising=False)
+        get_settings.cache_clear()
+        with pytest.raises(HTTPException) as exc:
+            self._call("203.0.113.7")
+        assert exc.value.status_code == 503
+        get_settings.cache_clear()
+
+    def test_unparseable_client_host_is_refused(self, monkeypatch):
+        """Anything that isn't a loopback IP fails closed, including the
+        placeholder hosts test clients and some proxies present."""
+        import pytest
+        from fastapi import HTTPException
+        monkeypatch.delenv("ADMIN_TOKEN", raising=False)
+        get_settings.cache_clear()
+        with pytest.raises(HTTPException):
+            self._call("testclient")
+        get_settings.cache_clear()
+
+    def test_loopback_still_works_for_local_dev(self, monkeypatch):
+        monkeypatch.delenv("ADMIN_TOKEN", raising=False)
+        get_settings.cache_clear()
+        assert self._call("127.0.0.1") is None
+        assert self._call("::1") is None
+        get_settings.cache_clear()
+
+
 class TestAdminTokenFailClosed:
     def test_blank_admin_token_refuses_to_start(self, monkeypatch):
         import pytest
@@ -142,3 +190,39 @@ class TestAdminTokenFailClosed:
         with pytest.raises(ValidationError):
             get_settings()
         get_settings.cache_clear()
+
+
+class TestHistorySpendCeiling:
+    """Input is billed per token, so an unbounded replayed conversation makes
+    a caller's spend a function of what they choose to send rather than of the
+    rate limit. The per-field limits alone allowed 40 x 16,000 = 640,000
+    characters, roughly 160k tokens, on every single request.
+    """
+
+    @staticmethod
+    def _turns(n: int, size: int):
+        from app.schemas import ChatTurn
+        return [ChatTurn(role="user", content="x" * size) for _ in range(n)]
+
+    def test_realistic_conversation_is_accepted(self):
+        from app.schemas import ChatRequest
+        # The web page replays at most 20 entries and an answer is ~2,000
+        # characters, so this is the upper end of something genuine.
+        req = ChatRequest(message="hi", history=self._turns(20, 2_000))
+        assert len(req.history) == 20
+
+    def test_previously_allowed_worst_case_is_rejected(self):
+        import pytest
+        from pydantic import ValidationError
+        from app.schemas import ChatRequest
+        with pytest.raises(ValidationError):
+            ChatRequest(message="hi", history=self._turns(40, 16_000))
+
+    def test_limit_counts_the_total_not_each_turn(self):
+        """Many small turns that individually pass must still be capped."""
+        import pytest
+        from pydantic import ValidationError
+        from app.schemas import ChatRequest, MAX_HISTORY_CHARS
+        over = (MAX_HISTORY_CHARS // 1_000) + 2
+        with pytest.raises(ValidationError):
+            ChatRequest(message="hi", history=self._turns(over, 1_000))
