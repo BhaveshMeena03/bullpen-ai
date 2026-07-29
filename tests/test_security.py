@@ -226,3 +226,48 @@ class TestHistorySpendCeiling:
         over = (MAX_HISTORY_CHARS // 1_000) + 2
         with pytest.raises(ValidationError):
             ChatRequest(message="hi", history=self._turns(over, 1_000))
+
+
+class TestDailyBudget:
+    """Per-minute limits stop a burst but not a slow drain: 25 requests a
+    minute sits inside every other limit and still reaches ~36,000 in a day.
+    """
+
+    def test_allows_up_to_the_ceiling_then_refuses(self):
+        from app.security import DailyBudget
+        b = DailyBudget(limit=3)
+        assert [b.check() for _ in range(3)] == [True, True, True]
+        assert b.check() is False
+
+    def test_resets_on_utc_rollover(self, monkeypatch):
+        from app.security import DailyBudget
+        b = DailyBudget(limit=1)
+        monkeypatch.setattr(DailyBudget, "_today", staticmethod(lambda: "2026-07-29"))
+        assert b.check() is True
+        assert b.check() is False
+        monkeypatch.setattr(DailyBudget, "_today", staticmethod(lambda: "2026-07-30"))
+        assert b.check() is True, "a new UTC day must start fresh"
+
+    def test_zero_disables_the_cap(self):
+        from app.security import DailyBudget
+        b = DailyBudget(limit=0)
+        assert all(b.check() for _ in range(500))
+
+    def test_exhausted_budget_returns_503_not_500(self):
+        import asyncio
+        import pytest
+        from fastapi import HTTPException
+        from app.security import DailyBudget
+        b = DailyBudget(limit=1)
+        b.check()
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(b(None))
+        assert exc.value.status_code == 503
+        assert "Retry-After" in exc.value.headers
+
+    def test_state_reports_usage(self):
+        from app.security import DailyBudget
+        b = DailyBudget(limit=10)
+        b.check(); b.check()
+        assert b.state()["used"] == 2
+        assert b.state()["limit"] == 10

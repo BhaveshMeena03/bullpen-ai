@@ -97,9 +97,70 @@ class GlobalRateLimit(RateLimiter):
             )
 
 
+class DailyBudget:
+    """A hard ceiling on model-backed requests per UTC day.
+
+    The rate limiters bound requests per *minute*, which stops a burst but
+    says nothing about a slow drain: 25 requests a minute sits inside every
+    existing limit and still reaches ~36,000 chats in a day. Since traffic
+    here is unpredictable, the protection that matters is the one that holds
+    without anyone watching it.
+
+    Counting requests rather than tokens is deliberate. Per-request cost is
+    already bounded — history is capped and so is max_tokens — so a request
+    count maps to a bounded worst case, and it needs no bookkeeping of what
+    the provider actually billed.
+
+    In-memory, matching the rate limiters: correct for the single-process
+    deployment this runs on, and it resets on restart. Move it to Redis at
+    the same time as those, if there is ever a second replica.
+    """
+
+    def __init__(self, limit: int | None = None):
+        self._limit = limit
+        self._day: str | None = None
+        self._count = 0
+
+    @staticmethod
+    def _today() -> str:
+        return time.strftime("%Y-%m-%d", time.gmtime())
+
+    def _ceiling(self) -> int:
+        return self._limit if self._limit is not None else get_settings().daily_request_budget
+
+    def check(self) -> bool:
+        limit = self._ceiling()
+        if limit <= 0:          # 0 disables the cap
+            return True
+        today = self._today()
+        if today != self._day:  # UTC rollover
+            self._day, self._count = today, 0
+        if self._count >= limit:
+            return False
+        self._count += 1
+        return True
+
+    def state(self) -> dict:
+        return {"day": self._day, "used": self._count, "limit": self._ceiling()}
+
+    async def __call__(self, request: Request) -> None:
+        if not self.check():
+            logger.error(
+                "Daily request budget exhausted (%s) — refusing model calls.",
+                self.state(),
+            )
+            raise HTTPException(
+                status_code=503,
+                detail=("The assistant has reached its daily limit. "
+                        "It will reset at midnight UTC."),
+                headers={"Retry-After": "3600"},
+            )
+
+
 # Shared limiters for the public chat/search endpoints (both applied).
 public_rate_limit = RateLimiter()
 global_rate_limit = GlobalRateLimit()
+daily_budget = DailyBudget()
 
 
 def _is_loopback(request: Request) -> bool:

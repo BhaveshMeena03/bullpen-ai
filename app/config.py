@@ -81,6 +81,17 @@ class Settings(BaseSettings):
 
     # --- API protection ------------------------------------------------------
     # Requests/minute per client IP on public endpoints.
+    # Hard ceiling on model-backed requests per UTC day. The per-minute limits
+    # stop a burst but not a slow drain: 25/min sits inside every other limit
+    # and still reaches ~36,000 requests a day.
+    #
+    # 500 is the number because of what it costs, not what it allows. A
+    # concierge answer is ~1.4c, so a maxed-out day is about $7 — a bad day,
+    # not a bad month. Real traffic is currently a handful a day, and even a
+    # good showing in a Discord would be low hundreds, so this should never
+    # touch a genuine user. Raise it when real usage approaches it; the log
+    # line on exhaustion says when that happens. Set to 0 to disable.
+    daily_request_budget: int = 500
     rate_limit_rpm: int = 30
     # Requests/minute across ALL clients — the model-spend ceiling.
     global_rate_limit_rpm: int = 120

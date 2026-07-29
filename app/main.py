@@ -37,7 +37,12 @@ from .schemas import (
     PodcastSearchRequest,
     PodcastSearchResponse,
 )
-from .security import global_rate_limit, public_rate_limit, require_admin
+from .security import (
+    daily_budget,
+    global_rate_limit,
+    public_rate_limit,
+    require_admin,
+)
 from .summaries import SummaryStore
 
 logging.basicConfig(level=logging.INFO)
@@ -212,7 +217,8 @@ async def healthz() -> dict:
 
 
 @app.post("/v1/chat", response_model=ChatResponse,
-          dependencies=[Depends(public_rate_limit), Depends(global_rate_limit)])
+          dependencies=[Depends(public_rate_limit), Depends(global_rate_limit),
+                        Depends(daily_budget)])
 async def chat(
     body: ChatRequest,
     retriever: Retriever = Depends(get_retriever),
@@ -237,7 +243,8 @@ async def chat(
         ) from exc
 
 
-@app.post("/v1/chat/stream", dependencies=[Depends(public_rate_limit), Depends(global_rate_limit)])
+@app.post("/v1/chat/stream", dependencies=[Depends(public_rate_limit), Depends(global_rate_limit),
+                        Depends(daily_budget)])
 async def chat_stream(
     body: ChatRequest,
     retriever: Retriever = Depends(get_retriever),
@@ -296,7 +303,8 @@ async def ingest(
 
 
 @app.post("/v1/podcast/search", response_model=PodcastSearchResponse,
-          dependencies=[Depends(public_rate_limit), Depends(global_rate_limit)])
+          dependencies=[Depends(public_rate_limit), Depends(global_rate_limit),
+                        Depends(daily_budget)])
 async def podcast_search(
     body: PodcastSearchRequest,
     podcast: PodcastIndex = Depends(get_podcast),
@@ -315,7 +323,8 @@ async def podcast_search(
 
 
 @app.post("/v1/podcast/search/stream",
-          dependencies=[Depends(public_rate_limit), Depends(global_rate_limit)])
+          dependencies=[Depends(public_rate_limit), Depends(global_rate_limit),
+                        Depends(daily_budget)])
 async def podcast_search_stream(
     body: PodcastSearchRequest,
     podcast: PodcastIndex = Depends(get_podcast),
@@ -350,8 +359,13 @@ async def podcast_search_stream(
 
 @app.get("/v1/stats")
 async def stats() -> dict:
-    """Usage counters since last restart (durable record: ANALYTICS log lines)."""
-    return STATS
+    """Usage counters since last restart (durable record: ANALYTICS log lines).
+
+    Includes the daily budget so how close the service is to its ceiling is
+    visible without reading logs — a cap you can't see is one you only find
+    out about when it starts refusing people.
+    """
+    return {**STATS, "daily_budget": daily_budget.state()}
 
 
 @app.get("/v1/gaps", dependencies=[Depends(require_admin)])
