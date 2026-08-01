@@ -1,0 +1,30 @@
+# Fly.io config for the Bullpen Concierge Discord bot (/ask).
+#
+# A sibling of fly.toml, which runs the Market Bubble Search bot (/search).
+# Same image, same Dockerfile; the two differ only in BOT_MODULE and in which
+# Discord token they hold, because one token is one bot identity. Running them
+# as separate apps is what lets a server install either without the other.
+#
+#   fly launch --config fly.concierge-bot.toml --no-deploy   # first time
+#   fly secrets set DISCORD_TOKEN=... -a bullpen-concierge-bot
+#   fly deploy --config fly.concierge-bot.toml
+app = "bullpen-concierge-bot"
+primary_region = "iad"
+
+[build]
+  dockerfile = "discord_bot/Dockerfile"
+
+[env]
+  # Selects which bot the shared image runs. Without this the image would
+  # start the podcast search bot and quietly log in as the wrong identity.
+  BOT_MODULE = "discord_bot.concierge_bot"
+  BACKEND_URL = "https://marketbubble-search.onrender.com"
+  # Answers are public by default so one reply serves everyone reading; the
+  # asker can add private:true per question. Set ALWAYS_EPHEMERAL=1 to force
+  # every answer private for a server that prefers it.
+
+# One always-on machine. No auto-stop (that's an HTTP-service feature) and no
+# [http_service] block — a gateway bot connects OUT and serves no HTTP.
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
