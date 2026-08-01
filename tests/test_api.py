@@ -253,3 +253,36 @@ class TestConciergeAnalytics:
         assert body["total_unanswered"] == 1
         assert body["recent"][-1]["query"] == "exact deposit minimum"
         assert body["top_unanswered"][0]["query"] == "exact deposit minimum"
+
+
+class TestHostBasedLanding:
+    """Search and the concierge are one service, so without host routing every
+    custom domain lands on the same page and one tool is only reachable as a
+    path under the other."""
+
+    @staticmethod
+    def _landing(client, host: str) -> str:
+        r = client.get("/", headers={"host": host}, follow_redirects=False)
+        assert r.status_code in (302, 307)
+        return r.headers["location"]
+
+    def test_concierge_subdomain_lands_on_concierge(self, client):
+        assert self._landing(client, "concierge.lexthedev.com") == "/demo/concierge.html"
+
+    def test_search_subdomain_lands_on_search(self, client):
+        assert self._landing(client, "search.lexthedev.com") == "/demo/podcast.html"
+
+    def test_tokens_subdomain_lands_on_assets(self, client):
+        assert self._landing(client, "tokens.lexthedev.com") == "/demo/assets.html"
+
+    def test_unknown_host_falls_back_to_search(self, client):
+        assert self._landing(client, "marketbubble-search.onrender.com") == "/demo/podcast.html"
+
+    def test_bare_domain_falls_back_to_search(self, client):
+        assert self._landing(client, "lexthedev.com") == "/demo/podcast.html"
+
+    def test_port_in_host_header_is_ignored(self, client):
+        assert self._landing(client, "concierge.lexthedev.com:8000") == "/demo/concierge.html"
+
+    def test_host_matching_is_case_insensitive(self, client):
+        assert self._landing(client, "Concierge.LexTheDev.com") == "/demo/concierge.html"

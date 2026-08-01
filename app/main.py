@@ -205,10 +205,28 @@ async def _unhandled(request: Request, exc: Exception):
     )
 
 
+# Which page a bare domain lands on, by hostname. Search and the concierge
+# are the same service, so without this every custom domain would land on the
+# same page and one of the two tools would only be reachable as a path under
+# the other. Matching on the leading label keeps it working for any domain
+# pointed at this service rather than hardcoding one.
+_HOST_LANDING = {
+    "concierge": "/demo/concierge.html",
+    "support": "/demo/concierge.html",
+    "search": "/demo/podcast.html",
+    "tokens": "/demo/assets.html",
+    "assets": "/demo/assets.html",
+}
+_DEFAULT_LANDING = "/demo/podcast.html"
+
+
 @app.get("/", include_in_schema=False)
-async def root() -> RedirectResponse:
-    # Bare domain -> the Market Bubble search page (the public entry point).
-    return RedirectResponse(url="/demo/podcast.html")
+async def root(request: Request) -> RedirectResponse:
+    # Bare domain -> the page that hostname is for; Market Bubble search is
+    # the default, since it is the public entry point.
+    host = (request.headers.get("host") or "").split(":")[0].lower()
+    label = host.split(".")[0] if "." in host else ""
+    return RedirectResponse(url=_HOST_LANDING.get(label, _DEFAULT_LANDING))
 
 
 @app.get("/healthz")
