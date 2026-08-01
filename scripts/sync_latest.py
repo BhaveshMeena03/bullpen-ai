@@ -53,6 +53,69 @@ def load_indexed() -> list[dict]:
     return []
 
 
+async def reconcile(indexed, summaries, asset_store, anthropic_client) -> None:
+    """Finish any episode that was only half-indexed on an earlier run.
+
+    An episode is recorded once its transcript is in Pinecone, deliberately:
+    losing the transcript to a failed summary would be the worse trade, and
+    search works without one. But the later steps are allowed to fail, and
+    when they do the only signal is a line in this log saying "re-run
+    summarize_episodes.py later".
+
+    That happened on 2026-08-01. The transcript landed, the summary call
+    timed out, and the episode was searchable but missing from
+    /v1/podcast/episodes, which reads the summary store. Neither surface
+    looked broken on its own, so it sat that way for a day until someone
+    compared the two by hand.
+
+    Repairing on the way in makes a transient failure self-correct on the next
+    scheduled run instead of waiting to be noticed. Both stores are idempotent
+    and this only touches what is actually missing, so a healthy index costs a
+    couple of existence checks and nothing else.
+    """
+    # List each namespace ONCE and check membership locally. The per-episode
+    # exists() helpers each list the whole namespace, which is fine on the
+    # request path where it is one call, but quadratic in a loop over every
+    # episode.
+    have_summary = {
+        row.get("episode_id")
+        for row in await summaries.list_all()
+        if row.get("episode_id")
+    }
+    asset_ids = await asyncio.to_thread(asset_store._all_ids)
+
+    def has_assets(vid: str) -> bool:
+        prefix = f"assets-{vid}"
+        return any(i == prefix or i.startswith(prefix + "-") for i in asset_ids)
+
+    missing_summary = [r for r in indexed if r["episode_id"] not in have_summary]
+    missing_assets = [r for r in indexed if not has_assets(r["episode_id"])]
+
+    if not missing_summary and not missing_assets:
+        return
+    log(f"repairing {len(missing_summary)} missing summary/summaries and "
+        f"{len(missing_assets)} missing asset set(s) from earlier runs")
+
+    for raw in missing_summary:
+        vid = raw["episode_id"]
+        try:
+            episode = Episode(**raw)
+            summary = await summaries.summarize(episode)
+            await summaries.store(episode, summary)
+            log(f"  {vid}: summary backfilled ({len(summary)} chars)")
+        except Exception as exc:  # noqa: BLE001 — try the rest regardless
+            log(f"  {vid}: summary backfill FAILED ({exc}) — will retry next run")
+
+    for raw in missing_assets:
+        vid = raw["episode_id"]
+        try:
+            hits = await extract_episode(anthropic_client, ASSET_MODEL, raw, False)
+            stored = await asset_store.store(vid, raw.get("title", ""), hits)
+            log(f"  {vid}: {stored} asset hits backfilled")
+        except Exception as exc:  # noqa: BLE001
+            log(f"  {vid}: asset backfill FAILED ({exc}) — will retry next run")
+
+
 async def main(argv: list[str]) -> int:
     cookies = "chrome"
     check = 8
@@ -65,6 +128,13 @@ async def main(argv: list[str]) -> int:
     known = {e["episode_id"] for e in indexed}
     log(f"{len(known)} episodes already indexed; scanning newest {check}...")
 
+    podcast = PodcastIndex()
+    summaries = SummaryStore()
+    asset_store = AssetStore()
+    anthropic_client = AsyncAnthropic(api_key=get_settings().anthropic_api_key)
+
+    await reconcile(indexed, summaries, asset_store, anthropic_client)
+
     ids = latest_ids(check, cookies)
     if not ids:
         log("could not list channel (cookies expired? YouTube block?) — aborting")
@@ -76,10 +146,6 @@ async def main(argv: list[str]) -> int:
         return 0
 
     log(f"{len(new_ids)} new episode(s): {new_ids}")
-    podcast = PodcastIndex()
-    summaries = SummaryStore()
-    asset_store = AssetStore()
-    anthropic_client = AsyncAnthropic(api_key=get_settings().anthropic_api_key)
     added = 0
 
     for vid in new_ids:
