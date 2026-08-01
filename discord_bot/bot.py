@@ -60,14 +60,25 @@ class MBBot(discord.Client):
         self._guild_id = guild_id
 
     async def setup_hook(self) -> None:
+        # Guild sync only buys instant command registration instead of the ~1h
+        # global propagation, so its failure must not be fatal. Unhandled, a
+        # GUILD_ID for a server the bot is not in raises 403 here and kills the
+        # process, and the host restarts it forever.
         if self._guild_id:
-            guild = discord.Object(id=self._guild_id)
-            self.tree.copy_global_to(guild=guild)
-            await self.tree.sync(guild=guild)
-            logger.info("Synced commands to guild %s (instant)", self._guild_id)
-        else:
-            await self.tree.sync()
-            logger.info("Synced commands globally (propagates within ~1h)")
+            try:
+                guild = discord.Object(id=self._guild_id)
+                self.tree.copy_global_to(guild=guild)
+                await self.tree.sync(guild=guild)
+                logger.info("Synced commands to guild %s (instant)", self._guild_id)
+                return
+            except discord.HTTPException as exc:
+                logger.error(
+                    "Guild sync to %s failed (%s) — is the bot invited to that "
+                    "server, with the applications.commands scope? Falling back "
+                    "to a global sync.", self._guild_id, exc,
+                )
+        await self.tree.sync()
+        logger.info("Synced commands globally (propagates within ~1h)")
 
     async def on_ready(self) -> None:
         logger.info("Logged in as %s (%s)", self.user, getattr(self.user, "id", "?"))

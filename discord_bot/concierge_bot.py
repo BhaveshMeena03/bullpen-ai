@@ -73,14 +73,27 @@ class ConciergeBot(discord.Client):
         self._guild_id = guild_id
 
     async def setup_hook(self) -> None:
+        # Guild sync is only a convenience: it registers commands instantly
+        # instead of waiting out the ~1h global propagation. So its failure
+        # must not be fatal. It used to be, and a GUILD_ID for a server the
+        # bot had not been invited to raised 403 here, killed the process, and
+        # left Fly restarting it forever — the bot was completely unusable
+        # because of an optional dev setting.
         if self._guild_id:
-            guild = discord.Object(id=self._guild_id)
-            self.tree.copy_global_to(guild=guild)
-            await self.tree.sync(guild=guild)
-            logger.info("Synced commands to guild %s (instant)", self._guild_id)
-        else:
-            await self.tree.sync()
-            logger.info("Synced commands globally (propagates within ~1h)")
+            try:
+                guild = discord.Object(id=self._guild_id)
+                self.tree.copy_global_to(guild=guild)
+                await self.tree.sync(guild=guild)
+                logger.info("Synced commands to guild %s (instant)", self._guild_id)
+                return
+            except discord.HTTPException as exc:
+                logger.error(
+                    "Guild sync to %s failed (%s) — is the bot invited to that "
+                    "server, with the applications.commands scope? Falling back "
+                    "to a global sync.", self._guild_id, exc,
+                )
+        await self.tree.sync()
+        logger.info("Synced commands globally (propagates within ~1h)")
 
     async def on_ready(self) -> None:
         logger.info("Logged in as %s", self.user)
