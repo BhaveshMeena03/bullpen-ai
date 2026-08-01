@@ -37,6 +37,16 @@ mattering.
 Visibility is fixed when the interaction is deferred, so it can't be decided
 after the answer comes back.
 
+## Answer length
+
+`/ask` returns a chat-sized answer by default. The full-length one takes about
+ten seconds to generate and arrives as a wall of text in Discord, where it goes
+unread; the short one takes about four and fits on screen. Same retrieval, same
+sources, same guardrails — only the length differs.
+
+`detailed: true` gets the long form for anyone who wants it. The web page has
+room to read a thorough answer, so it never asks for brief.
+
 ## Follow-up questions
 
 The concierge often asks a clarifying question before answering — "which

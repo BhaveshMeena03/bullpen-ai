@@ -296,3 +296,26 @@ class TestBriefRequest:
             return httpx.Response(200, json={"answer": "ok", "sources": []})
         asyncio.run(_client(handler).ask("how do i set a stop loss?"))
         assert seen["brief"] is True
+
+
+class TestDetailedOverride:
+    """Brief is the right default for a chat window, but a user who wants the
+    long answer must be able to get it — the knowledge is the same, only the
+    length differs, so the choice belongs to whoever is reading."""
+
+    @staticmethod
+    def _payload_for(brief: bool) -> dict:
+        seen = {}
+
+        def handler(req):
+            import json
+            seen.update(json.loads(req.content))
+            return httpx.Response(200, json={"answer": "ok", "sources": []})
+        asyncio.run(_client(handler).ask("q", brief=brief))
+        return seen
+
+    def test_default_is_brief(self):
+        assert self._payload_for(True)["brief"] is True
+
+    def test_detailed_turns_brief_off(self):
+        assert self._payload_for(False)["brief"] is False

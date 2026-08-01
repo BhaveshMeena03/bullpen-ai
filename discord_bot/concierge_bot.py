@@ -103,11 +103,14 @@ class ConciergeBot(discord.Client):
         await super().close()
 
     async def run_ask(
-        self, question: str, history: list[dict] | None = None
+        self,
+        question: str,
+        history: list[dict] | None = None,
+        brief: bool = True,
     ) -> tuple[discord.Embed, str]:
         """Returns the embed and the raw answer, so the caller can remember it
         without re-deriving it from the formatted output."""
-        result = await self._chat.ask(question, history=history)
+        result = await self._chat.ask(question, history=history, brief=brief)
         payload = build_chat_payload(question, result)
 
         embed = discord.Embed(
@@ -151,11 +154,13 @@ def build_bot() -> ConciergeBot:
     @app_commands.describe(
         question="What do you need help with?",
         private="Only you see the answer. Use it if the question is about your own account.",
+        detailed="Longer, fuller answer. Slower (~10s instead of ~4s).",
     )
     async def ask_cmd(
         interaction: discord.Interaction,
         question: str,
         private: bool = False,
+        detailed: bool = False,
     ) -> None:
         import time
         now = time.monotonic()
@@ -206,7 +211,7 @@ def build_bot() -> ConciergeBot:
         try:
             channel_id = interaction.channel_id or 0
             past = memory.get(interaction.user.id, channel_id, now)
-            embed, answer = await bot.run_ask(question, past)
+            embed, answer = await bot.run_ask(question, past, brief=not detailed)
             await interaction.followup.send(
                 embed=embed, ephemeral=hidden, allowed_mentions=no_mentions
             )

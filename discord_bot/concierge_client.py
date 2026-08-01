@@ -56,6 +56,7 @@ class ChatClient:
         question: str,
         *,
         history: list[dict] | None = None,
+        brief: bool = True,
         retries: int = 1,
     ) -> ChatResult:
         """POST the question to /v1/chat. Retries once on a transient failure,
@@ -66,11 +67,10 @@ class ChatClient:
         stateless and the client replays the conversation, same as the web page.
         """
         url = f"{self._base}/v1/chat"
-        # Always brief from Discord. A full-length answer takes ~10s to
-        # generate and arrives as a wall of text in a chat window, where it
-        # goes unread. Same knowledge, same sources, sized for the surface;
-        # the web page still gets the long form.
-        payload: dict = {"message": question, "brief": True}
+        # Brief by default from Discord: a full answer takes ~10s and lands as
+        # a wall of text in a chat window. Brief is ~4s and fits on screen.
+        # Callers can turn it off when someone explicitly asks for depth.
+        payload: dict = {"message": question, "brief": brief}
         if history:
             payload["history"] = history
         last: Exception | None = None
