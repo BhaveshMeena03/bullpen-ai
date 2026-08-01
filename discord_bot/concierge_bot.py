@@ -194,14 +194,12 @@ def build_bot() -> ConciergeBot:
         # where a full sentence is skipped rather than read.
         question="Type your question, or pick a suggestion",
         private="Only you see the reply",
-        detailed="Longer answer, a bit slower",
     )
     @app_commands.autocomplete(question=suggest_questions)
     async def ask_cmd(
         interaction: discord.Interaction,
         question: str,
         private: bool = False,
-        detailed: bool = False,
     ) -> None:
         import time
         now = time.monotonic()
@@ -252,7 +250,7 @@ def build_bot() -> ConciergeBot:
         try:
             channel_id = interaction.channel_id or 0
             past = memory.get(interaction.user.id, channel_id, now)
-            embed, answer = await bot.run_ask(question, past, brief=not detailed)
+            embed, answer = await bot.run_ask(question, past)
             await interaction.followup.send(
                 embed=embed, ephemeral=hidden, allowed_mentions=no_mentions
             )

@@ -44,8 +44,11 @@ ten seconds to generate and arrives as a wall of text in Discord, where it goes
 unread; the short one takes about four and fits on screen. Same retrieval, same
 sources, same guardrails — only the length differs.
 
-`detailed: true` gets the long form for anyone who wants it. The web page has
-room to read a thorough answer, so it never asks for brief.
+There is deliberately no length option on the command. Every boolean in a
+Discord slash command renders as a True/False picker, so each one is a real
+step between wanting an answer and getting it — and length is a preference,
+not a safety concern. Anyone who wants the long form can ask a follow-up, or
+use the web page, which never asks for brief.
 
 ## Follow-up questions
 
