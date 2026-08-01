@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     # Adaptive-thinking depth: low | medium | high | xhigh | max
     effort: str = "high"
     max_tokens: int = 16000
+    # Ceiling for answers requested with brief=true (chat surfaces). ~120
+    # words is well under this; the cap is the backstop, not the target.
+    brief_max_tokens: int = 400
 
     # --- Voyage AI (embeddings — Anthropic's recommended partner) ----------
     voyage_api_key: str

@@ -33,6 +33,9 @@ class ChatRequest(BaseModel):
     # only from documentation, or {"episode": "ep-42"}.
     filters: dict[str, str | int | bool] | None = None
     session_id: str | None = None
+    # Ask for a chat-sized answer. Chat clients set this; the web page
+    # does not, because it has room to read a thorough one.
+    brief: bool = False
 
     @field_validator("history")
     @classmethod

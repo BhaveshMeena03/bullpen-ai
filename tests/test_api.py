@@ -25,7 +25,7 @@ class StubRetriever:
 class StubAgent:
     mode = "ok"
 
-    async def answer(self, message, history, chunks):
+    async def answer(self, message, history, chunks, brief=False):
         if self.mode == "refusal":
             return ChatResponse(answer=REFUSAL_MESSAGE, sources=[], refused=True,
                                 model="claude-opus-4-8")
@@ -216,7 +216,7 @@ class TestConciergeAnalytics:
         assert main_module.GAPS[-1]["reason"] == "no_context"
 
     def test_ungrounded_answer_records_low_confidence(self, client, monkeypatch):
-        async def unsure(self, message, history, chunks):
+        async def unsure(self, message, history, chunks, brief=False):
             return ChatResponse(
                 answer="I don't have that information — contact official "
                        "Bullpen support.",
@@ -286,3 +286,57 @@ class TestHostBasedLanding:
 
     def test_host_matching_is_case_insensitive(self, client):
         assert self._landing(client, "Concierge.LexTheDev.com") == "/demo/concierge.html"
+
+
+class TestBriefAnswers:
+    """A 600-token answer takes ~10s to generate and lands as a wall of text
+    in a chat client. brief asks for the same knowledge sized for the surface.
+    """
+
+    def test_brief_defaults_off_so_the_web_page_is_unchanged(self):
+        from app.schemas import ChatRequest
+        assert ChatRequest(message="hi").brief is False
+
+    def test_brief_instruction_is_not_in_the_cached_system_block(self):
+        """The system prompt is frozen and cached. Branching it would create a
+        second cache entry and cost more latency than the shorter answer saves,
+        so the instruction has to ride on the per-request content."""
+        from app.agent import BRIEF_INSTRUCTION, SYSTEM_PROMPT
+        assert BRIEF_INSTRUCTION not in SYSTEM_PROMPT
+
+    def test_brief_adds_the_instruction_and_lowers_the_ceiling(self):
+        from app.agent import BRIEF_INSTRUCTION, ConciergeAgent
+        from app.config import get_settings
+        agent = ConciergeAgent.__new__(ConciergeAgent)
+        agent._settings = get_settings()
+
+        plain = agent._build_request("q", [], [], brief=False)
+        brief = agent._build_request("q", [], [], brief=True)
+
+        texts = [b["text"] for b in brief["messages"][-1]["content"]]
+        assert BRIEF_INSTRUCTION in texts
+        assert BRIEF_INSTRUCTION not in [
+            b["text"] for b in plain["messages"][-1]["content"]
+        ]
+        assert brief["max_tokens"] < plain["max_tokens"]
+
+    def test_system_block_is_byte_identical_either_way(self):
+        """If this diverges, the prompt cache splits and brief gets slower."""
+        from app.agent import ConciergeAgent
+        from app.config import get_settings
+        agent = ConciergeAgent.__new__(ConciergeAgent)
+        agent._settings = get_settings()
+        assert (
+            agent._build_request("q", [], [], brief=True)["system"]
+            == agent._build_request("q", [], [], brief=False)["system"]
+        )
+
+    def test_question_still_carries_the_cache_breakpoint(self):
+        """The instruction must not displace cache_control off the newest turn."""
+        from app.agent import ConciergeAgent
+        from app.config import get_settings
+        agent = ConciergeAgent.__new__(ConciergeAgent)
+        agent._settings = get_settings()
+        last = agent._build_request("q", [], [], brief=True)["messages"][-1]["content"][-1]
+        assert last["text"] == "q"
+        assert last["cache_control"] == {"type": "ephemeral"}

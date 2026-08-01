@@ -117,6 +117,27 @@ Be warm, plain-spoken, and concise. Prefer numbered steps for walkthroughs. \
 One question at a time when you need clarification.
 </style>"""
 
+# Sent with the request, never in the cached system block, and only when the
+# caller asks for it. Chat surfaces are the reason this exists: a 600-token
+# answer takes ~10s to generate and arrives as a wall of text in Discord,
+# where nobody reads past the first few lines. Same knowledge and the same
+# sources, sized for the surface.
+#
+# The guardrails are deliberately restated. Brevity must never be a reason to
+# drop a risk note or start guessing — those come from the system prompt and
+# this must not read as permission to trade them away for length.
+BRIEF_INSTRUCTION = """\
+Answer in under 120 words. This is going to a chat message, not a web page.
+
+Lead with the direct answer in the first sentence. Use at most three short
+bullets if a list genuinely helps. Do not restate the question, do not add a
+closing offer to explain further, and do not add headings.
+
+Keep every safety behaviour exactly as it is: still refuse what you would
+otherwise refuse, still say you don't have something rather than guessing,
+and still keep any risk note that belongs on this answer. Cut length, never
+substance."""
+
 REFUSAL_MESSAGE = (
     "I can't help with that request. I'm Bullpen's support tool — I can help "
     "you set up a wallet, fund your account, navigate the terminal, or claim "
@@ -152,6 +173,7 @@ class ConciergeAgent:
         message: str,
         history: list[ChatTurn],
         chunks: list[RetrievedChunk],
+        brief: bool = False,
     ) -> dict:
         """Assemble the request. Cache layout (prefix order matters):
 
@@ -163,23 +185,26 @@ class ConciergeAgent:
         messages: list[dict] = [
             {"role": turn.role, "content": turn.content} for turn in history
         ]
-        messages.append(
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": _format_context(chunks)},
-                    {
-                        "type": "text",
-                        "text": message,
-                        "cache_control": {"type": "ephemeral"},
-                    },
-                ],
-            }
+        content: list[dict] = [{"type": "text", "text": _format_context(chunks)}]
+        if brief:
+            # Deliberately NOT in the system prompt. That block is frozen and
+            # cached, so branching it would create a second cache entry and
+            # cost more latency than the shorter answer saves.
+            content.append({"type": "text", "text": BRIEF_INSTRUCTION})
+        content.append(
+            {"type": "text", "text": message, "cache_control": {"type": "ephemeral"}}
         )
+        messages.append({"role": "user", "content": content})
         model = self._settings.anthropic_model
         request: dict = {
             "model": model,
-            "max_tokens": self._settings.max_tokens,
+            # A ceiling as well as an instruction: the instruction is what the
+            # model follows, the ceiling is what stops a runaway answer blowing
+            # the latency budget anyway.
+            "max_tokens": (
+                self._settings.brief_max_tokens if brief
+                else self._settings.max_tokens
+            ),
             "system": [
                 {
                     "type": "text",
@@ -209,8 +234,9 @@ class ConciergeAgent:
         message: str,
         history: list[ChatTurn],
         chunks: list[RetrievedChunk],
+        brief: bool = False,
     ) -> ChatResponse:
-        request = self._build_request(message, history, chunks)
+        request = self._build_request(message, history, chunks, brief)
         response = await self._client.beta.messages.create(**request)
 
         # Always check stop_reason before touching content — a pre-output

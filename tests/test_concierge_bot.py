@@ -284,3 +284,15 @@ class TestSharedLimits:
             t.allow(now=1000.0)
         assert t.allow(now=1000.5) is False
         assert t.allow(now=1002.0) is True
+
+
+class TestBriefRequest:
+    def test_discord_always_asks_for_a_brief_answer(self):
+        seen = {}
+
+        def handler(req):
+            import json
+            seen.update(json.loads(req.content))
+            return httpx.Response(200, json={"answer": "ok", "sources": []})
+        asyncio.run(_client(handler).ask("how do i set a stop loss?"))
+        assert seen["brief"] is True

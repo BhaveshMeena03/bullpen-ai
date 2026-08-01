@@ -66,7 +66,11 @@ class ChatClient:
         stateless and the client replays the conversation, same as the web page.
         """
         url = f"{self._base}/v1/chat"
-        payload: dict = {"message": question}
+        # Always brief from Discord. A full-length answer takes ~10s to
+        # generate and arrives as a wall of text in a chat window, where it
+        # goes unread. Same knowledge, same sources, sized for the surface;
+        # the web page still gets the long form.
+        payload: dict = {"message": question, "brief": True}
         if history:
             payload["history"] = history
         last: Exception | None = None

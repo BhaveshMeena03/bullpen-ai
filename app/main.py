@@ -245,7 +245,9 @@ async def chat(
     _track("concierge_chats")
     chunks = await retriever.search(body.message, filters=body.filters)
     try:
-        response = await agent.answer(body.message, body.history, chunks)
+        response = await agent.answer(
+            body.message, body.history, chunks, brief=body.brief
+        )
         _classify_outcome(body.message, chunks, response.answer, response.refused)
         return response
     except anthropic.RateLimitError as exc:
