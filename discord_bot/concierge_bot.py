@@ -190,26 +190,23 @@ def build_bot() -> ConciergeBot:
         description="Ask anything about Bullpen — answered from the official docs.",
     )
     @app_commands.describe(
-        # Kept to a few words each. Discord renders these in a cramped picker
-        # where a full sentence is skipped rather than read.
         question="Type your question, or pick a suggestion",
-        private="Only you see the reply",
     )
     @app_commands.autocomplete(question=suggest_questions)
     async def ask_cmd(
         interaction: discord.Interaction,
         question: str,
-        private: bool = False,
     ) -> None:
         import time
         now = time.monotonic()
 
-        # Public by default so one answer serves everyone reading, which is
-        # most of the value in a busy server. The asker opts into privacy
-        # because only they know whether the question reveals their own
-        # position or balance. A server that wants every answer private sets
-        # ALWAYS_EPHEMERAL and the flag stops mattering.
-        hidden = private or always_ephemeral
+        # One field, no options: every boolean in a slash command renders as a
+        # True/False picker, so each one is a step between wanting an answer
+        # and getting it. Visibility is a server-wide decision instead, made
+        # once by whoever runs the server rather than per question by someone
+        # who just wants help. Public by default, since one answer in a busy
+        # server serves everyone reading it.
+        hidden = always_ephemeral
 
         # Validate BEFORE consuming any limiter slot.
         question = " ".join(question.split())

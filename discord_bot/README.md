@@ -25,14 +25,15 @@ The image picks which to run from `BOT_MODULE` (see the Dockerfile).
 
 ## Who sees the answer
 
-`/ask` is public by default, because in a busy server one answer serves
-everyone reading it and cuts the repeat questions the mods handle by hand.
+`/ask` takes one field: the question. Every boolean in a Discord slash command
+renders as a True/False picker, so each option is a real step between wanting
+an answer and getting one, and a support command should not feel like a form.
 
-The asker can add `private: true` to keep an answer to themselves. That's
-their call to make rather than the bot's: only they know whether the question
-gives away their own balance or position. A server that would rather keep
-every support answer private sets `ALWAYS_EPHEMERAL=1` and the flag stops
-mattering.
+Answers are public, because in a busy server one answer serves everyone
+reading it and cuts the repeat questions mods handle by hand. A server that
+would rather keep support answers private sets `ALWAYS_EPHEMERAL=1` — one
+decision made once by whoever runs the server, instead of per question by
+someone who just wants help.
 
 Visibility is fixed when the interaction is deferred, so it can't be decided
 after the answer comes back.
