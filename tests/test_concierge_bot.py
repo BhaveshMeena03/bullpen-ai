@@ -319,3 +319,39 @@ class TestDetailedOverride:
 
     def test_detailed_turns_brief_off(self):
         assert self._payload_for(False)["brief"] is False
+
+
+class TestQuestionSuggestions:
+    """An empty question box tells a new user nothing about what the bot
+    knows. Suggestions double as documentation of what it can answer."""
+
+    @staticmethod
+    def _suggest(typed: str):
+        from discord_bot.concierge_bot import suggest_questions
+        return [c.name for c in asyncio.run(suggest_questions(None, typed))]
+
+    def test_empty_input_offers_the_full_list(self):
+        from discord_bot.concierge_bot import COMMON_QUESTIONS
+        assert self._suggest("") == COMMON_QUESTIONS
+
+    def test_matches_anywhere_not_just_the_start(self):
+        """Someone typing 'deposit' should still be offered 'why is my
+        deposit not showing up?'."""
+        assert any("deposit" in q for q in self._suggest("deposit"))
+
+    def test_is_case_insensitive(self):
+        assert self._suggest("DEPOSIT") == self._suggest("deposit")
+
+    def test_unmatched_input_suggests_nothing_rather_than_everything(self):
+        """Free text always wins; a question we have no suggestion for must
+        not be buried under twelve irrelevant ones."""
+        assert self._suggest("zzzzz nonsense") == []
+
+    def test_never_exceeds_discords_choice_limit(self):
+        from discord_bot import concierge_bot as m
+        original = m.COMMON_QUESTIONS
+        try:
+            m.COMMON_QUESTIONS = [f"question {i}" for i in range(80)]
+            assert len(self._suggest("")) == 25
+        finally:
+            m.COMMON_QUESTIONS = original

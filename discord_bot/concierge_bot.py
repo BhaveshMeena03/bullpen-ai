@@ -58,6 +58,44 @@ _SECRET_WORDS = ("seed phrase", "seedphrase", "private key", "recovery phrase",
                  "mnemonic", "secret phrase")
 
 
+# Offered as you type in the question box. An empty prompt tells a new user
+# nothing about what the bot knows, so they either guess or don't use it.
+# These are the questions a support desk actually gets, so the suggestions
+# double as documentation of what it can answer.
+COMMON_QUESTIONS = [
+    "why is my deposit not showing up?",
+    "how do i fund my account?",
+    "how do i set a stop loss?",
+    "what's the difference between spot and perps?",
+    "how do i claim $ANSEM?",
+    "what order types can i use?",
+    "how do withdrawals work?",
+    "why did my order not fill?",
+    "how does leverage work?",
+    "what is a prediction market?",
+    "how do i connect a wallet?",
+    "what fees does bullpen charge?",
+]
+_MAX_SUGGESTIONS = 25  # Discord's hard limit on autocomplete choices
+
+
+async def suggest_questions(
+    interaction: discord.Interaction, current: str
+) -> list[app_commands.Choice[str]]:
+    """Filter the common questions by what has been typed so far.
+
+    Substring rather than prefix: someone typing "deposit" should still be
+    offered "why is my deposit not showing up?". Free text always wins — this
+    only suggests, it never restricts what can be asked.
+    """
+    typed = (current or "").strip().lower()
+    matches = [q for q in COMMON_QUESTIONS if typed in q] if typed else COMMON_QUESTIONS
+    return [
+        app_commands.Choice(name=q, value=q)
+        for q in matches[:_MAX_SUGGESTIONS]
+    ]
+
+
 def _env(name: str, default: str | None = None, required: bool = False) -> str | None:
     val = os.environ.get(name, default)
     if required and not val:
@@ -149,13 +187,16 @@ def build_bot() -> ConciergeBot:
 
     @bot.tree.command(
         name="ask",
-        description="Ask about funding, wallets, order types or the claim.",
+        description="Ask anything about Bullpen — answered from the official docs.",
     )
     @app_commands.describe(
-        question="What do you need help with?",
-        private="Only you see the answer. Use it if the question is about your own account.",
-        detailed="Longer, fuller answer. Slower (~10s instead of ~4s).",
+        # Kept to a few words each. Discord renders these in a cramped picker
+        # where a full sentence is skipped rather than read.
+        question="Type your question, or pick a suggestion",
+        private="Only you see the reply",
+        detailed="Longer answer, a bit slower",
     )
+    @app_commands.autocomplete(question=suggest_questions)
     async def ask_cmd(
         interaction: discord.Interaction,
         question: str,
