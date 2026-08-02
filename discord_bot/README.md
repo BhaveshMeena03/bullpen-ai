@@ -33,9 +33,18 @@ their call rather than the bot's: only they know whether their question gives
 away their own balance or position. A server that would rather keep every
 support answer private sets `ALWAYS_EPHEMERAL=1` and the flag stops mattering.
 
-There is no length option, deliberately. Every boolean renders as a True/False
-picker, so each one is a step between wanting an answer and getting it, and
-length is a preference where privacy protects something.
+**Private answers are also the fuller ones.** A private reply is read by
+exactly one person, so its length costs nobody anything — there is no channel
+to clutter — and asking privately usually means a personal, tangled problem,
+which is where the full walkthrough helps. Public answers stay short because
+they compete for everyone's scroll.
+
+So one flag covers both, and there is no separate length picker. Every boolean
+costs a True/False step, and this pairing earns the one it uses.
+
+The depth is keyed to the explicit choice rather than to whether the reply
+happens to be hidden: a server running `ALWAYS_EPHEMERAL` has not asked for
+depth, and tying it there would make every answer take ~10s.
 
 Visibility is fixed when the interaction is deferred, so it can't be decided
 after the answer comes back.

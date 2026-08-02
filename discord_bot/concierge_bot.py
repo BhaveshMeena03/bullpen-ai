@@ -191,7 +191,7 @@ def build_bot() -> ConciergeBot:
     )
     @app_commands.describe(
         question="Type your question, or pick a suggestion",
-        private="Only you see the reply",
+        private="Only you see it, and you get the fuller answer",
     )
     @app_commands.autocomplete(question=suggest_questions)
     async def ask_cmd(
@@ -208,6 +208,17 @@ def build_bot() -> ConciergeBot:
         # and that is not a call the bot should make for them. A server that
         # wants every answer private sets ALWAYS_EPHEMERAL.
         hidden = private or always_ephemeral
+
+        # A private answer is read by exactly one person, so its length costs
+        # nobody anything — there is no channel to clutter. And asking
+        # privately usually means a personal, tangled problem, which is where
+        # the full walkthrough actually helps. So privacy buys depth, and one
+        # flag covers both without a second picker.
+        #
+        # Deliberately keyed to the explicit choice, not to `hidden`: a
+        # server running ALWAYS_EPHEMERAL has not asked for depth, and tying
+        # it there would make every answer in that server take ~10s.
+        brief = not private
 
         # Validate BEFORE consuming any limiter slot.
         question = " ".join(question.split())
@@ -248,7 +259,7 @@ def build_bot() -> ConciergeBot:
         try:
             channel_id = interaction.channel_id or 0
             past = memory.get(interaction.user.id, channel_id, now)
-            embed, answer = await bot.run_ask(question, past)
+            embed, answer = await bot.run_ask(question, past, brief=brief)
             await interaction.followup.send(
                 embed=embed, ephemeral=hidden, allowed_mentions=no_mentions
             )
