@@ -95,16 +95,19 @@ def main() -> int:
     if not edge_gaps:
         add("None — every edge-case question resolved to a documented answer.\n")
     else:
-        add(f"{len(edge_gaps)} questions a user would plausibly ask, with no "
-            "grounded answer in the docs. Grouped by the section that would "
-            "own them.\n")
+        noun = "question a user" if len(edge_gaps) == 1 else "questions a user"
+        add(f"{len(edge_gaps)} {noun} would plausibly ask, with no "
+            "grounded answer in the docs.\n")
+        add("**Every question listed below is one the documentation could "
+            "not answer.** Headings show how many of that topic's questions "
+            "failed, out of how many were asked.\n")
         per_section = defaultdict(list)
         for r in edge_gaps:
             per_section[r["section"]].append(r)
         for section, rs in sorted(per_section.items(),
                                   key=lambda kv: -len(kv[1])):
             total = sum(1 for r in by_group["edge"] if r["section"] == section)
-            add(f"### {section} — {len(rs)} of {total} unanswered\n")
+            add(f"### {section} — {len(rs)} of {total} questions unanswered\n")
             for r in rs:
                 add(f"- {r['q']}")
             add("")
@@ -115,9 +118,13 @@ def main() -> int:
     if not ans_gaps:
         add("None. Every question with a documented answer got one.\n")
     else:
-        add(f"{len(ans_gaps)} questions that *are* covered by an indexed page "
-            "but didn't retrieve one. These are the concierge's fault, not "
-            "the documentation's.\n")
+        plural = "question that *is*" if len(ans_gaps) == 1 else "questions that *are*"
+        add(f"{len(ans_gaps)} {plural} covered by an indexed page but didn't "
+            "retrieve one. This is the concierge's fault, not the "
+            "documentation's.\n" if len(ans_gaps) == 1 else
+            f"{len(ans_gaps)} {plural} covered by an indexed page but didn't "
+            "retrieve one. These are the concierge's fault, not the "
+            "documentation's.\n")
         for r in ans_gaps:
             add(f"- `{r['q']}` — {r['section']} ({r['outcome']})")
         add("")
