@@ -154,7 +154,13 @@ class PodcastIndex:
 
         embeddings = await embed_texts(
             self._voyage,
-            [r["text"] for r in rows],
+            # Embed the title with the window. An episode's subject often
+            # lives in its title and is barely spoken aloud — "Ansem's trade
+            # journal", "TJR", "AI beating crypto" are all title phrasings —
+            # so embedding the transcript alone made whole episodes
+            # unreachable by the obvious question. The stored excerpt stays
+            # the transcript, so a reader still sees what was actually said.
+            [f"{r['title']}\n\n{r['text']}" for r in rows],
             model=self._settings.voyage_model,
             dimension=self._settings.embedding_dimension,
             input_type="document",
@@ -249,7 +255,11 @@ class PodcastIndex:
             order = await rerank_order(
                 self._voyage,
                 query,
-                [h.text for h in hits],
+                # Title first, same as at ingest. Reranking the transcript
+                # alone throws away the title signal the embedding just
+                # used, so an episode found *because* of its title gets
+                # demoted by the stage meant to improve the ordering.
+                [f"{h.title}\n\n{h.text}" for h in hits],
                 top_k=top_k,
                 model=self._settings.rerank_model,
             )
