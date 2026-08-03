@@ -11,3 +11,4 @@ data/.asset_cache/
 
 # Raw eval answers — regenerable, and large. REPORT.md is the artifact.
 evals/results.jsonl
+evals/search_results.jsonl
