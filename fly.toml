@@ -1,0 +1,14 @@
+# Fly.io config for the Market Bubble Search Discord bot.
+# It's a worker: it connects OUT to Discord's gateway + the backend and
+# serves no HTTP, so there is no [http_service] block and no exposed port.
+app = "marketbubble-search-bot"
+primary_region = "iad"
+
+[build]
+  dockerfile = "discord_bot/Dockerfile"
+
+# One always-on machine running the bot process. No auto-stop (that's an
+# HTTP-service feature) — a gateway bot must stay connected.
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
