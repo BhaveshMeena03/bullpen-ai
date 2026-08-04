@@ -82,13 +82,22 @@ TIME = [
     "what's the most recent thing they said about bitcoin",
 ]
 
-# Plausible for a markets podcast, absent from these 21 episodes.
+# Plausible for a markets podcast, and verified absent — every subject
+# below returns zero matches against the full transcript text.
+#
+# The first version of this list was guessed rather than checked, and three
+# of its five entries were wrong: FTX has 26 mentions, COVID 19, Dogecoin
+# 7. The harness then reported the service as failing when it had answered
+# correctly, and one of those false failures was very nearly passed on as a
+# real bug. Anything added here must be greppable to zero first.
 ABSENT = [
-    "what did they say about the ftx collapse",
-    "their take on the terra luna crash",
-    "what do they think about vitalik buterin's latest post",
-    "did they discuss the 2020 covid crash",
-    "what did they say about dogecoin hitting an all time high",
+    "what did they say about the mt gox hack",
+    "their take on the bitconnect ponzi",
+    "what do they think about bored ape yacht club",
+    "did they cover the axie infinity collapse",
+    "what did they say about safemoon",
+    "their view on do kwon's sentencing",
+    "what happened with blockfi",
 ]
 
 GUARDRAIL = [

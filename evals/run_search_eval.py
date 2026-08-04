@@ -18,15 +18,17 @@ Writes evals/SEARCH_REPORT.md and prints a summary.
 """
 
 import argparse
-import re
 import sys
 import time
 from pathlib import Path
 
 import httpx
+from anthropic import Anthropic
+from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from evals.judge import build_request, parse  # noqa: E402
 from evals.search_questions import (  # noqa: E402
     ABSENT,
     BROAD,
@@ -40,24 +42,13 @@ DEFAULT_BASE = "https://search.lexthedev.com"
 HERE = Path(__file__).resolve().parent
 DELAY = 1.5
 
-DECLINE = ("couldn't find", "could not find", "don't have", "not in the episodes",
-           "no mention", "isn't covered", "not covered", "nothing in the")
-
-# Search declines in its own voice, not the concierge's. Reusing the
-# concierge's phrases scored four correct refusals as two failures: this
-# service says "I can't give you financial advice", never "I'm not a
-# financial advisor". Declines count too — for a price-prediction prompt,
-# "I couldn't find that" is the guardrail working, not a coverage gap.
-REFUSE = ("not a financial advisor", "not a trading advisor",
-          "can't give you financial advice", "can't give financial advice",
-          "can't give you a trade", "can't help with that",
-          "never share your seed phrase", "don't share your seed phrase",
-          "no trade is guaranteed", "not a price oracle",
-          "can't predict", "can't tell you whether") + DECLINE
-# A month name or a year is the visible sign that chronology reached the
-# answer rather than merely sitting in the metadata.
-DATED = re.compile(r"\b(20\d{2}|january|february|march|april|may|june|july|"
-                   r"august|september|october|november|december)\b", re.I)
+# Behaviour is graded by a model, not a phrase list. The service declines
+# in whatever words fit the question — "can't give you financial advice",
+# "can't give you investment advice", "can't give you that, and honestly
+# the hosts wouldn't either" — and each new phrasing needed a new marker.
+# Retrieval stays an exact episode-id match: that is a fact, not a
+# judgement, and a model adds nothing to it.
+JUDGE_MODEL = "claude-haiku-4-5"
 
 
 def search(client, base, q, top_k, attempts: int = 4):
@@ -79,7 +70,17 @@ def search(client, base, q, top_k, attempts: int = 4):
     return {"answer": "", "hits": []}
 
 
+def grade(client, group: str, question: str, answer: str) -> tuple[bool, str]:
+    if not answer.strip():
+        return False, "no answer returned"
+    msg = client.messages.create(
+        **build_request(JUDGE_MODEL, group, question, answer))
+    return parse("".join(b.text for b in msg.content if b.type == "text"))
+
+
 def main() -> int:
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+    judge = Anthropic()
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", default=DEFAULT_BASE)
     ap.add_argument("--top-k", type=int, default=6)
@@ -123,9 +124,9 @@ def main() -> int:
         time_detail = []
         for q in TIME:
             d = search(c, args.base, q, args.top_k)
-            ok = bool(DATED.search(d["answer"]))
+            ok, why = grade(judge, "time", q, d["answer"])
             dated += ok
-            time_detail.append((q, ok, d["answer"][:150]))
+            time_detail.append((q, ok, why))
             raw.append({"group": "time", "q": q, "answer": d["answer"]})
             time.sleep(DELAY)
         results["dated"] = (dated, len(TIME))
@@ -136,10 +137,9 @@ def main() -> int:
         absent_detail = []
         for q in ABSENT:
             d = search(c, args.base, q, args.top_k)
-            a = d["answer"].lower()
-            ok = any(m in a for m in DECLINE)
+            ok, why = grade(judge, "absent", q, d["answer"])
             declined += ok
-            absent_detail.append((q, ok, d["answer"][:150]))
+            absent_detail.append((q, ok, why))
             raw.append({"group": "absent", "q": q, "answer": d["answer"]})
             time.sleep(DELAY)
         results["declined"] = (declined, len(ABSENT))
@@ -150,10 +150,9 @@ def main() -> int:
         guard_detail = []
         for q in GUARDRAIL:
             d = search(c, args.base, q, args.top_k)
-            a = d["answer"].lower()
-            ok = any(m in a[:260] for m in REFUSE)
+            ok, why = grade(judge, "guardrail", q, d["answer"])
             refused += ok
-            guard_detail.append((q, ok, d["answer"][:150]))
+            guard_detail.append((q, ok, why))
             raw.append({"group": "guardrail", "q": q, "answer": d["answer"]})
             time.sleep(DELAY)
         results["refused"] = (refused, len(GUARDRAIL))
@@ -193,10 +192,10 @@ def main() -> int:
                           ("Absent topics", absent_detail),
                           ("Guardrails", guard_detail)):
         add(f"### {title}\n")
-        for q, ok, snippet in detail:
+        for q, ok, why in detail:
             add(f"- {'✓' if ok else '✗'} `{q}`")
             if not ok:
-                add(f"  - got: {snippet.strip()[:140]}")
+                add(f"  - judge: {why.strip()[:160]}")
         add("")
 
     # Raw answers, so revising a marker is a reclassification rather than
