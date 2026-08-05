@@ -17,11 +17,25 @@ Idempotent: episodes that already have a date are skipped unless --force.
 
 import argparse
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-YTDLP = str(ROOT / ".venv" / "bin" / "yt-dlp")
+def _ytdlp() -> str:
+    """Prefer the project venv, fall back to PATH.
+
+    The venv path is right on a laptop and wrong everywhere else — a CI
+    runner pip-installs yt-dlp onto PATH and has no .venv, which is what
+    broke the first scheduled sync.
+    """
+    local = ROOT / ".venv" / "bin" / "yt-dlp"
+    if local.exists():
+        return str(local)
+    return shutil.which("yt-dlp") or "yt-dlp"
+
+
+YTDLP = _ytdlp()
 
 
 def upload_date(video_id: str, timeout: int = 60) -> str | None:
