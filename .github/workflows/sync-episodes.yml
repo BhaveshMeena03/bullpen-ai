@@ -1,0 +1,71 @@
+# Weekly episode sync.
+#
+# Without this, a new Market Bubble episode only reaches the index when
+# someone remembers to run the script — and lexthedev.com reports the
+# episode count live, so a stale index becomes a number that is confidently
+# wrong on a page whose whole premise is that it just checked.
+#
+# GitHub rather than Render: this needs yt-dlp and a few minutes of CPU, and
+# a failed run here sends an email instead of disappearing into a log nobody
+# reads.
+name: sync episodes
+
+on:
+  schedule:
+    # Fridays 06:00 UTC. Market Bubble publishes Thursdays, so this lands
+    # after captions have had a night to generate — a run that finds none
+    # skips the episode and retries next week, which would mean a seven-day
+    # gap on the board.
+    - cron: "0 6 * * 5"
+  workflow_dispatch:
+    inputs:
+      check:
+        description: "How many of the newest videos to scan"
+        default: "8"
+
+concurrency:
+  # Two syncs at once would fetch and embed the same episode twice. Ingest
+  # is idempotent so nothing corrupts, but it doubles the bill for nothing.
+  group: sync-episodes
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # Always the newest yt-dlp: YouTube changes its bot check often
+          # enough that a pinned version is the usual cause of a dead run.
+          pip install --upgrade yt-dlp
+
+      - name: Sync
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+          PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+          PINECONE_INDEX: bullpen-concierge
+        run: |
+          # --cookies none: no browser here to read them from. The script
+          # already knows what is indexed by asking Pinecone, so a fresh
+          # checkout does not re-fetch the back catalogue.
+          python scripts/sync_latest.py --cookies none \
+            --check "${{ github.event.inputs.check || '8' }}"
+
+      - name: Confirm the live index
+        if: always()
+        run: |
+          # The deployed service is what the world sees, so end by asking it
+          # rather than trusting the step above.
+          n=$(curl -s --max-time 60 https://search.lexthedev.com/v1/podcast/episodes \
+              | python -c "import sys,json;print(len(json.load(sys.stdin)))")
+          echo "search.lexthedev.com now reports $n episodes"

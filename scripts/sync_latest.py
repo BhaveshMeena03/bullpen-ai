@@ -121,17 +121,39 @@ async def main(argv: list[str]) -> int:
     check = 8
     if "--cookies" in argv:
         cookies = argv[argv.index("--cookies") + 1]
+    # A CI runner has no browser to read cookies from. yt-dlp's remote
+    # solver clears YouTube's bot check on its own often enough to be worth
+    # trying, and a failed listing aborts loudly rather than silently
+    # indexing nothing.
+    if cookies in ("none", "off", ""):
+        cookies = None
     if "--check" in argv:
         check = int(argv[argv.index("--check") + 1])
 
     indexed = load_indexed()
     known = {e["episode_id"] for e in indexed}
-    log(f"{len(known)} episodes already indexed; scanning newest {check}...")
 
     podcast = PodcastIndex()
     summaries = SummaryStore()
     asset_store = AssetStore()
     anthropic_client = AsyncAnthropic(api_key=get_settings().anthropic_api_key)
+
+    # data/episodes.json is the fast path, but it is gitignored and so absent
+    # on a fresh checkout: a scheduled run would see zero indexed episodes and
+    # re-fetch the whole back catalogue from YouTube. The index is the durable
+    # truth, so union what it already knows.
+    #
+    # An episode that ingested but whose summary failed is missing here, and
+    # will be picked up again — which is the right recovery. Ingest is
+    # idempotent (deterministic vector ids), so the retry costs an embedding
+    # and finally gets the summary.
+    from_index = {r["episode_id"] for r in await summaries.list_all()
+                  if r.get("episode_id")}
+    if from_index - known:
+        log(f"{len(from_index - known)} episode(s) known to the index but not "
+            f"to the local record — trusting the index")
+    known |= from_index
+    log(f"{len(known)} episodes already indexed; scanning newest {check}...")
 
     await reconcile(indexed, summaries, asset_store, anthropic_client)
 
