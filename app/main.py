@@ -155,6 +155,30 @@ _ROOT = Path(__file__).resolve().parent.parent
 app.mount("/widget", StaticFiles(directory=_ROOT / "widget"), name="widget")
 app.mount("/demo", StaticFiles(directory=_ROOT / "demo", html=True), name="demo")
 
+# Static files shipped with no Cache-Control at all, only an etag — which
+# lets a browser serve a stale copy without ever asking. The practical cost
+# is that a deploy is invisible: you change a page, load it, and see the old
+# one, which is indistinguishable from the change not working. That cost an
+# hour of chasing a streaming bug that had already been fixed.
+#
+# HTML revalidates every time. The etag makes that a 304 with no body, so it
+# is close to free and a deploy shows up immediately. Images keep a real
+# cache lifetime — they change rarely and are the only heavy thing here.
+@app.middleware("http")
+async def cache_headers(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path.endswith((".html", "/")) or path.startswith("/demo") and "." not in path.rsplit("/", 1)[-1]:
+        response.headers.setdefault("Cache-Control", "no-cache")
+    elif path.endswith((".png", ".jpg", ".jpeg", ".svg", ".webp", ".ico")):
+        response.headers.setdefault("Cache-Control", "public, max-age=86400")
+    elif path.endswith(".js"):
+        # Unhashed filename, so it must revalidate too or a shipped fix sits
+        # unused in a cache.
+        response.headers.setdefault("Cache-Control", "no-cache")
+    return response
+
+
 
 def get_retriever(request: Request) -> Retriever:
     return request.app.state.retriever
