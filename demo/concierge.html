@@ -49,16 +49,24 @@
   /* chat */
   .chat{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:12px;
     padding:6px 2px 12px}
-  .msg{max-width:86%;padding:11px 14px;border-radius:13px;white-space:pre-wrap;
-    word-wrap:break-word;font-size:14.5px}
+  .msg{max-width:86%;padding:11px 14px;border-radius:13px;
+    word-wrap:break-word;font-size:14.5px;line-height:1.58}
+  /* Only while the raw text is streaming in. Once it is rendered into
+     elements, pre-wrap would honour the model's own line breaks and the
+     answer would wrap at its width instead of the bubble's. */
+  .msg.streaming{white-space:pre-wrap}
   .user{align-self:flex-end;background:var(--green);color:#08210f;
     border-bottom-right-radius:4px;font-weight:500}
   .bot{align-self:flex-start;background:var(--panel);border:1px solid var(--line);
     border-bottom-left-radius:4px}
   /* rendered markdown inside a bot bubble */
-  .bot .mdh{font-weight:700;margin:8px 0 3px}
-  .bot .mdli{margin:2px 0 2px 4px}
-  .bot .mdsp{height:8px}
+  .bot .mdh{font-weight:700;margin:14px 0 5px}
+  .bot .mdh:first-child{margin-top:0}
+  /* Hanging indent: the bullet sits in the margin so a wrapped second line
+     aligns with the text above it, not under the dot. 2px of margin also
+     packed these tighter than the paragraphs around them. */
+  .bot .mdli{margin:6px 0 6px 2px; padding-left:0.75em; text-indent:-0.75em}
+  .bot .mdsp{height:10px}
   .bot table.md{border-collapse:collapse;margin:8px 0;font-size:13.5px;
     display:block;overflow-x:auto}
   .bot table.md th,.bot table.md td{border:1px solid var(--line);
@@ -171,9 +179,49 @@ function renderMd(raw){
   return out.join("");
 }
 
+
+// Painting on arrival looks laggy: the model streams in uneven bursts, so
+// the text lurches a clause at a time. This buffers whatever arrives and
+// releases it at a steady rate, which is why chat UIs feel liquid. The rate
+// scales with the backlog so it always finishes just after the stream does
+// rather than trailing behind it.
+function Typewriter(el){
+  var shown = "", queue = "", done = false, raf = null, onDone = null;
+
+  function tick(){
+    if(queue.length){
+      // Proportional catch-up, but capped. Uncapped, a 1,600-character
+      // burst drained 200 chars in a single frame — which is the stutter
+      // this was meant to remove. 14/frame is ~840 chars/sec at 60fps:
+      // far faster than anyone reads, still visibly smooth.
+      var n = Math.min(14, Math.max(2, Math.ceil(queue.length / 12)));
+      shown += queue.slice(0, n);
+      queue = queue.slice(n);
+      el.textContent = shown;
+      el.parentNode.scrollTop = el.parentNode.scrollHeight;
+    }
+    if(queue.length || !done){ raf = requestAnimationFrame(tick); }
+    else { raf = null; if(onDone){ onDone(shown); onDone = null; } }
+  }
+
+  return {
+    push: function(t){
+      queue += t;
+      if(raf === null){ raf = requestAnimationFrame(tick); }
+    },
+    // Replace everything immediately — refusals and errors shouldn't type out.
+    set: function(t){ queue = ""; shown = t; el.textContent = t; },
+    text: function(){ return shown + queue; },
+    finish: function(cb){
+      done = true; onDone = cb;
+      if(raf === null){ cb(shown + queue); onDone = null; }
+    }
+  };
+}
+
 function bubble(kind, text){
   var b = document.createElement("div");
-  b.className = "msg " + (kind === "user" ? "user" : "bot");
+  b.className = "msg streaming " + (kind === "user" ? "user" : "bot");
   b.textContent = text;
   chat.appendChild(b);
   chat.scrollTop = chat.scrollHeight;
@@ -218,7 +266,9 @@ function send(text){
 
   bubble("user", text);
   var botBubble = bubble("bot", "…");
-  var answer = "", pending = null;
+  var typer = Typewriter(botBubble);
+  typer.set("…");
+  var pending = null;
 
   fetch(API + "/v1/chat/stream", {
     method: "POST",
@@ -248,23 +298,32 @@ function send(text){
       if(!data) return;
       var payload; try { payload = JSON.parse(data); } catch(e){ return; }
       if(event === "sources") pending = payload;
-      else if(event === "refusal"){ answer = payload.text; botBubble.textContent = answer; }
+      else if(event === "refusal"){ typer.set(payload.text); }
       else if(event === "error"){
-        answer = "Something went wrong on my end — please try again.";
-        botBubble.textContent = answer;
-      } else if(payload.text){ answer += payload.text; botBubble.textContent = answer; }
+        typer.set("Something went wrong on my end — please try again.");
+      } else if(payload.text){ typer.push(payload.text); }
     }
     function finish(){
-      // Swap the raw streamed text for rendered Markdown once complete.
-      if(answer) botBubble.innerHTML = renderMd(answer);
-      sources(pending);
-      convo.push({ role: "user", content: text });
-      convo.push({ role: "assistant", content: answer });
-      if(convo.length > 20) convo = convo.slice(-20);
+      // Wait for the typewriter to drain before swapping in Markdown —
+      // rendering early would cut it off mid-sentence and the last words
+      // would never be seen. Sources appear at the same moment, so the
+      // answer completes as one beat rather than two.
+      typer.finish(function(answer){
+        if(answer){
+          // The text becomes elements here, so pre-wrap goes with it.
+          botBubble.innerHTML = renderMd(answer);
+          botBubble.classList.remove("streaming");
+        }
+        sources(pending);
+        convo.push({ role: "user", content: text });
+        convo.push({ role: "assistant", content: answer });
+        if(convo.length > 20) convo = convo.slice(-20);
+      });
     }
     return pump();
   })
   .catch(function(){
+    botBubble.classList.add("streaming");   // plain text again
     botBubble.textContent =
       "I couldn't reach support services. Check your connection and try again.";
   })
