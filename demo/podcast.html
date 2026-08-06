@@ -58,9 +58,16 @@
     border:1px solid #16c78455;border-radius:16px;padding:6px 12px;cursor:pointer}
   .chip:hover{background:#16c78418}
   .answer{background:var(--panel);border:1px solid var(--line);
-    border-radius:14px;padding:18px 20px;margin-bottom:22px;white-space:pre-wrap;
-    display:none}
+    border-radius:14px;padding:18px 20px;margin-bottom:22px;display:none}
   .answer.show{display:block}
+  /* The answer had no block rhythm: paragraphs, headings and lists all ran
+     together at the default zero margin. */
+  #answer-body p{margin:0 0 12px}
+  #answer-body p:last-child{margin-bottom:0}
+  #answer-body h4{font-size:15px;font-weight:700;margin:18px 0 8px}
+  #answer-body h4:first-child{margin-top:0}
+  #answer-body ul{margin:0 0 12px;padding-left:20px}
+  #answer-body li{margin-bottom:6px}
   .answer h3{font-size:12px;text-transform:uppercase;letter-spacing:.8px;
     color:var(--muted);margin-bottom:10px}
   .hits h3{font-size:12px;text-transform:uppercase;letter-spacing:.8px;
@@ -198,12 +205,52 @@
 
   // Minimal, XSS-safe markdown: escape everything first, then allow only
   // **bold** and bullet lists that WE reconstruct from the escaped text.
+
+  // Streaming raw text and rendering Markdown once at the end meant watching
+  // literal # and ** go past, then the whole answer reflowing in one jump.
+  // Rendering every frame costs ~0.1ms on an answer this size, so the box
+  // now formats itself as it types and nothing moves when the stream ends.
+  function Typer(el){
+    var shown="", queue="", done=false, raf=null, onDone=null;
+
+    // Hide a trailing unmatched ** so emphasis switches on with the word
+    // rather than showing its asterisks until the closer arrives.
+    function trimDangling(t){
+      var n=(t.match(/\*\*/g)||[]).length;
+      return n%2 ? t.slice(0,t.lastIndexOf("**")) : t;
+    }
+    function paint(){ el.innerHTML=md(trimDangling(shown)); }
+
+    function tick(){
+      if(queue.length){
+        // Proportional catch-up, capped: uncapped, a large burst lands in a
+        // single frame, which is the stutter this exists to remove.
+        var n=Math.min(14,Math.max(2,Math.ceil(queue.length/12)));
+        shown+=queue.slice(0,n); queue=queue.slice(n); paint();
+      }
+      if(queue.length||!done){ raf=requestAnimationFrame(tick); }
+      else { raf=null; if(onDone){ onDone(shown); onDone=null; } }
+    }
+    return {
+      push:function(t){ queue+=t; if(raf===null) raf=requestAnimationFrame(tick); },
+      set:function(t){ queue=""; shown=t; paint(); },
+      finish:function(cb){
+        done=true; onDone=cb;
+        if(raf===null){ cb(shown+queue); onDone=null; }
+      }
+    };
+  }
+
   function md(s){
     var safe=esc(s);
     safe=safe.replace(/\*\*([^*]+)\*\*/g,"<strong>$1</strong>");
     var lines=safe.split("\n"), out=[], inList=false;
     lines.forEach(function(ln){
-      if(/^\s*[-•]\s+/.test(ln)){
+      var h=/^\s*(#{1,4})\s+(.*)$/.exec(ln);
+      if(h){
+        if(inList){out.push("</ul>");inList=false;}
+        out.push("<h4>"+h[2]+"</h4>");
+      }else if(/^\s*[-•]\s+/.test(ln)){
         if(!inList){out.push("<ul>");inList=true;}
         out.push("<li>"+ln.replace(/^\s*[-•]\s+/,"")+"</li>");
       }else{
@@ -402,12 +449,14 @@
       body:JSON.stringify({query:query}),signal:mySignal
     }).then(function(res){
       if(!res.ok||!res.body) throw new Error("stream "+res.status);
-      var reader=res.body.getReader(), dec=new TextDecoder(), buf="", text="";
+      var reader=res.body.getReader(), dec=new TextDecoder(), buf="";
       answer.classList.add("show"); body.textContent="";
+      var typer=Typer(body);
       function pump(){
         return reader.read().then(function(step){
           if(stale()) return;  // a newer search superseded this one
-          if(step.done){ body.innerHTML=md(text); finishSearch(); return; }
+          // Wait for the buffer to drain, or the last words are never seen.
+          if(step.done){ typer.finish(function(){ finishSearch(); }); return; }
           buf+=dec.decode(step.value,{stream:true});
           var frames=buf.split("\n\n"); buf=frames.pop();
           frames.forEach(function(frame){
@@ -419,10 +468,8 @@
             if(!data) return;
             var p; try{ p=JSON.parse(data); }catch(e){ return; }
             if(ev==="hits") renderHits(p);
-            else if(ev==="error") body.textContent="Search hiccuped — try again.";
-            // Plain text while streaming (fast, no partial-markdown flicker);
-            // md() render happens once on completion.
-            else if(p.text){ text+=p.text; body.textContent=text; }
+            else if(ev==="error") typer.set("Search hiccuped — try again.");
+            else if(p.text){ typer.push(p.text); }
           });
           return pump();
         });
