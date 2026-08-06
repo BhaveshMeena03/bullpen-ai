@@ -180,25 +180,45 @@ function renderMd(raw){
 }
 
 
-// Painting on arrival looks laggy: the model streams in uneven bursts, so
-// the text lurches a clause at a time. This buffers whatever arrives and
-// releases it at a steady rate, which is why chat UIs feel liquid. The rate
-// scales with the backlog so it always finishes just after the stream does
-// rather than trailing behind it.
+// Streaming raw text and swapping to Markdown at the end is what made this
+// feel unlike Gemini: you watched literal ** and # go by, then the whole
+// answer reflowed at once. Rendering Markdown every frame costs 0.08ms on a
+// 1,300-character answer — 200x inside a 60fps budget — so there is no
+// reason not to. The bubble now formats itself as it types and nothing
+// jumps at the end.
 function Typewriter(el){
   var shown = "", queue = "", done = false, raf = null, onDone = null;
+  var scroller = el.parentNode;
+
+  // A half-typed "**bold" would show its asterisks until the closer arrives.
+  // Hide a trailing unmatched marker so emphasis appears to switch on with
+  // the word rather than after it.
+  function trimDangling(t){
+    var stars = (t.match(/\*\*/g) || []).length;
+    if(stars % 2) t = t.slice(0, t.lastIndexOf("**"));
+    return t;
+  }
+
+  function paint(){
+    // Only follow the text if the reader is already at the bottom —
+    // yanking them back down while they scroll up to re-read is worse
+    // than a little lag.
+    var atBottom = scroller.scrollHeight - scroller.scrollTop
+                   - scroller.clientHeight < 60;
+    el.classList.remove("streaming");   // elements now, not raw text
+    el.innerHTML = renderMd(trimDangling(shown));
+    if(atBottom) scroller.scrollTop = scroller.scrollHeight;
+  }
 
   function tick(){
     if(queue.length){
-      // Proportional catch-up, but capped. Uncapped, a 1,600-character
-      // burst drained 200 chars in a single frame — which is the stutter
-      // this was meant to remove. 14/frame is ~840 chars/sec at 60fps:
-      // far faster than anyone reads, still visibly smooth.
+      // Proportional catch-up, capped. Uncapped, a 1,600-character burst
+      // drained 200 chars in one frame — the stutter this exists to remove.
+      // 14/frame is ~840 chars/sec: far faster than reading, still smooth.
       var n = Math.min(14, Math.max(2, Math.ceil(queue.length / 12)));
       shown += queue.slice(0, n);
       queue = queue.slice(n);
-      el.textContent = shown;
-      el.parentNode.scrollTop = el.parentNode.scrollHeight;
+      paint();
     }
     if(queue.length || !done){ raf = requestAnimationFrame(tick); }
     else { raf = null; if(onDone){ onDone(shown); onDone = null; } }
@@ -209,9 +229,8 @@ function Typewriter(el){
       queue += t;
       if(raf === null){ raf = requestAnimationFrame(tick); }
     },
-    // Replace everything immediately — refusals and errors shouldn't type out.
-    set: function(t){ queue = ""; shown = t; el.textContent = t; },
-    text: function(){ return shown + queue; },
+    // Refusals and errors replace everything at once — they shouldn't type.
+    set: function(t){ queue = ""; shown = t; paint(); },
     finish: function(cb){
       done = true; onDone = cb;
       if(raf === null){ cb(shown + queue); onDone = null; }
@@ -309,11 +328,6 @@ function send(text){
       // would never be seen. Sources appear at the same moment, so the
       // answer completes as one beat rather than two.
       typer.finish(function(answer){
-        if(answer){
-          // The text becomes elements here, so pre-wrap goes with it.
-          botBubble.innerHTML = renderMd(answer);
-          botBubble.classList.remove("streaming");
-        }
         sources(pending);
         convo.push({ role: "user", content: text });
         convo.push({ role: "assistant", content: answer });
