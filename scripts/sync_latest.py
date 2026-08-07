@@ -169,12 +169,18 @@ async def main(argv: list[str]) -> int:
 
     log(f"{len(new_ids)} new episode(s): {new_ids}")
     added = 0
+    skipped: list[str] = []
 
     for vid in new_ids:
         raw = fetch(vid, cookies)
         if not raw:
-            log(f"  {vid}: no captions yet (likely still generating) — skip, "
-                f"will retry next run")
+            # fetch() has already printed the actual cause. Count it so the
+            # run can exit non-zero: a green tick on a run that failed to add
+            # a published episode is worse than no automation, because it
+            # looks like there was nothing to add.
+            skipped.append(vid)
+            log(f"  {vid}: could not fetch — see the reason above. The index "
+                f"is now behind the channel.")
             continue
         episode = Episode(**raw)
 
@@ -216,6 +222,9 @@ async def main(argv: list[str]) -> int:
         added += 1
 
     log(f"DONE: added {added} new episode(s).")
+    if skipped:
+        log(f"{len(skipped)} episode(s) could not be fetched: {skipped}")
+        return 1        # fail the run so the schedule emails
     return 0
 
 

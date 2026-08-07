@@ -146,6 +146,29 @@ def from_vtt_file(path: Path, video_id: str, title: str | None = None) -> dict |
     }
 
 
+
+# yt-dlp's failure modes look the same from the outside but need opposite
+# responses: a blocked IP needs credentials or a different host, a video
+# with no subtitles yet just needs waiting. Naming which one it is turns a
+# silent weekly stall into something actionable.
+_BLOCK_SIGNS = (
+    "sign in to confirm", "not a bot", "confirm you're not a bot",
+    "http error 403", "http error 429", "too many requests",
+    "unable to extract", "player response", "failed to extract",
+)
+
+
+def _diagnose(stderr: str) -> str:
+    err = (stderr or "").lower()
+    last = [ln for ln in (stderr or "").strip().splitlines() if ln.strip()]
+    tail = last[-1][:160] if last else "(no stderr)"
+    if any(sign in err for sign in _BLOCK_SIGNS):
+        return f"BLOCKED by YouTube (bot check / rate limit) — {tail}"
+    if "no subtitles" in err or "no automatic captions" in err:
+        return f"no captions published yet — {tail}"
+    return tail
+
+
 def fetch(
     video_id: str, cookies_browser: str | None = None, attempts: int = 3
 ) -> dict | None:
@@ -194,12 +217,13 @@ def fetch(
                         "platform": "youtube", "published_at": published_at,
                         "segments": segments,
                     }
+        why = _diagnose(proc.stderr)
         if attempt < attempts:
             wait = 20 * attempt  # back off — YouTube throttles rapid pulls
-            print(f"  … {video_id} throttled (try {attempt}/{attempts}), "
-                  f"waiting {wait}s")
+            print(f"  … {video_id} failed (try {attempt}/{attempts}): {why} "
+                  f"— waiting {wait}s")
             time.sleep(wait)
-    print(f"  ! no captions for {video_id} ({title}) after {attempts} tries")
+    print(f"  ! {video_id} failed after {attempts} tries: {_diagnose(proc.stderr)}")
     return None
 
 

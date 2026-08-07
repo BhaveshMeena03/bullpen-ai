@@ -12,11 +12,11 @@ name: sync episodes
 
 on:
   schedule:
-    # Fridays 06:00 UTC. Market Bubble publishes Thursdays, so this lands
-    # after captions have had a night to generate — a run that finds none
-    # skips the episode and retries next week, which would mean a seven-day
-    # gap on the board.
-    - cron: "0 6 * * 5"
+    # Daily. Weekly was wrong: the first real episode arrived, the fetch was
+    # refused, and the retry was seven days away — the board would have been
+    # a week stale. A run with nothing to do costs one channel listing, so
+    # there is no reason to space them out.
+    - cron: "0 6 * * *"
   workflow_dispatch:
     inputs:
       check:
