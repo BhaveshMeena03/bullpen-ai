@@ -1,4 +1,4 @@
-# Weekly episode sync.
+# Daily episode sync — notify-only when YouTube blocks the runner.
 #
 # Without this, a new Market Bubble episode only reaches the index when
 # someone remembers to run the script — and lexthedev.com reports the
@@ -8,6 +8,19 @@
 # GitHub rather than Render: this needs yt-dlp and a few minutes of CPU, and
 # a failed run here sends an email instead of disappearing into a log nobody
 # reads.
+#
+# KNOWN LIMIT, on purpose. GitHub's runners are datacentre IPs and YouTube
+# refuses full extraction from them — the channel listing works, fetching a
+# video does not. So this reliably detects a new episode and reliably tells
+# you, but often cannot index it itself. When that happens the run fails,
+# you get an email, and one command locally finishes the job:
+#
+#     .venv/bin/python scripts/sync_latest.py
+#
+# The alternatives were both worse today: cookies in a secret expire every
+# few weeks and trade a visible failure for a silent one, and a residential
+# proxy costs $5-15/month for something that happens weekly. Revisit if the
+# episode cadence goes up.
 name: sync episodes
 
 on:
@@ -69,3 +82,9 @@ jobs:
           n=$(curl -s --max-time 60 https://search.lexthedev.com/v1/podcast/episodes \
               | python -c "import sys,json;print(len(json.load(sys.stdin)))")
           echo "search.lexthedev.com now reports $n episodes"
+          if [ "${{ job.status }}" != "success" ]; then
+            echo ""
+            echo "::warning::Sync could not index an episode from this runner."
+            echo "This is the known datacentre-IP limit, not a code failure."
+            echo "Finish it locally:  .venv/bin/python scripts/sync_latest.py"
+          fi

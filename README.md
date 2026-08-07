@@ -323,3 +323,29 @@ ANTHROPIC_API_KEY=sk-ant-... .venv/bin/python scripts/redteam.py   # live red-te
   hallucination checks (fees/dates/addresses with no context), identity
   questions, and a prompt-cache verification across turns. Writes
   `redteam_report.md` with the full transcript for human review.
+
+## Keeping the index current
+
+A GitHub Action checks the channel daily and adds any new episode.
+
+It reliably *detects* a new episode. It often cannot *fetch* one: GitHub's
+runners are datacentre IPs and YouTube refuses full extraction from them,
+so the channel listing succeeds while the video fetch is blocked. When that
+happens the run fails deliberately and emails, rather than passing green
+with the index a full episode behind the channel.
+
+Finishing it takes one command from a normal connection:
+
+```bash
+.venv/bin/python scripts/sync_latest.py
+```
+
+The failure names its own cause — a blocked fetch says so, rather than
+being reported as missing captions. That distinction matters: the first
+time this happened the message claimed captions were still generating, the
+captions existed, and the wrong explanation cost an afternoon.
+
+Cookies in a repository secret would make it fully automatic, at the price
+of an expiry every few weeks; a residential proxy would too, for
+$5-15/month. Neither is worth it at roughly one episode a week.
+
