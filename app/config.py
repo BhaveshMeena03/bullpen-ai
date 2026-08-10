@@ -92,18 +92,27 @@ class Settings(BaseSettings):
     # stop a burst but not a slow drain: 25/min sits inside every other limit
     # and still reaches ~36,000 requests a day.
     #
-    # 2000 is the number because of what it costs, not what it allows. A
-    # concierge answer is ~1.4c, so a maxed-out day is about $28 — a bad day,
+    # 3000 is the number because of what it costs, not what it allows. A
+    # concierge answer is ~1.4c, so a maxed-out day is about $42 — a bad day,
     # not a bad month. Set to 0 to disable.
     #
-    # Raised from 500 ahead of showing this to people who might share it. 500
-    # was sized for "a handful a day plus a good Discord showing", and it was
-    # never close to being hit. But the cost of the cap being wrong is
-    # asymmetric: too high costs a few tens of dollars once, too low means the
-    # people you most wanted to impress get told to come back tomorrow. The
-    # log line on exhaustion says when real usage approaches it.
-    daily_request_budget: int = 2000
-    rate_limit_rpm: int = 30
+    # Raised from 500 ahead of showing this to people who might share it. The
+    # cost of getting the cap wrong is asymmetric: too high costs a few tens
+    # of dollars once, too low means the people you most wanted to impress get
+    # told to come back tomorrow. The log line on exhaustion says when real
+    # usage approaches it.
+    #
+    # This is the ONLY thing bounding spend against a slow drain. The global
+    # per-minute limit catches bursts; it does nothing about one client
+    # trickling requests all day, which is why the per-IP limit below was cut
+    # at the same time this went up.
+    daily_request_budget: int = 3000
+    # 12/min per client. A person asks maybe 1-5 questions a minute, so this
+    # is still 2-3x human speed and no real user will meet it. It was 30,
+    # which is ~10x human and let a single scripted client drain a whole day's
+    # budget in about an hour. At 12 that takes over four hours — slow enough
+    # to show up in the logs while there is still a day left to save.
+    rate_limit_rpm: int = 12
     # Requests/minute across ALL clients. Not the spend ceiling — the daily
     # budget is — this exists so one burst can't outrun the single process.
     # 240/min is ~4/second, comfortably above any organic spike and still far
