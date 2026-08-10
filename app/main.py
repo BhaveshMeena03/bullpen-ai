@@ -420,7 +420,7 @@ async def podcast_search_stream(
     )
 
 
-@app.get("/v1/whoami", dependencies=[Depends(require_admin)])
+@app.get("/v1/whoami")
 async def whoami(request: Request) -> dict:
     """What this app believes about who is calling. Admin-only.
 
@@ -433,8 +433,12 @@ async def whoami(request: Request) -> dict:
     per-IP limiting off entirely.
 
     Returns the raw header, the resolved key, and the peer address, so the
-    correct hop count can be read off a single request instead of inferred.
-    Admin-gated because it reflects caller IPs back.
+    chain can be read off a single request instead of inferred.
+
+    Deliberately unauthenticated, and safe to be: every value in the response
+    describes THIS request only. A caller learns their own address, which they
+    already know, and the shape of the proxy chain in front of a public API.
+    It exposes nothing about any other user, and no counters or state.
     """
     xff = request.headers.get("x-forwarded-for", "")
     return {

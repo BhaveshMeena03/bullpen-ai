@@ -20,6 +20,21 @@ def _client_host(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+def _is_public_ip(value: str) -> bool:
+    """True for a routable internet address.
+
+    Used to skip the host's own infrastructure when reading X-Forwarded-For.
+    Anything unparseable is treated as not-public, so a garbage entry can
+    never be selected as the identity to rate-limit on.
+    """
+    try:
+        ip = ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    return not (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_unspecified)
+
+
 class RateLimiter:
     """In-memory token bucket, keyed by client IP.
 
@@ -84,13 +99,18 @@ class RateLimiter:
         xff = request.headers.get("x-forwarded-for")
         if xff:
             hops = [h.strip() for h in xff.split(",") if h.strip()]
+            # Walk right-to-left and take the first address that is not
+            # infrastructure. Counting a fixed number of hops from either end
+            # is brittle: hard-coding the left end lets the caller pick their
+            # own bucket, and hard-coding the right end assumes the host
+            # appends exactly one stable address. Skipping private, loopback
+            # and link-local entries lands on the real client without needing
+            # to know how many proxies are in front or what they write.
+            for hop in reversed(hops):
+                if _is_public_ip(hop):
+                    return hop
             if hops:
-                n = max(1, get_settings().trusted_proxy_hops)
-                # Fewer entries than expected means the request did not come
-                # through the full proxy chain; take the left-most rather than
-                # indexing off the end, which would wrap around to the caller's
-                # own value.
-                return hops[-n] if len(hops) >= n else hops[0]
+                return hops[-1]
         return request.client.host if request.client else "unknown"
 
     async def __call__(self, request: Request) -> None:
