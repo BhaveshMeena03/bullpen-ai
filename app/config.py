@@ -102,6 +102,12 @@ class Settings(BaseSettings):
     rate_limit_rpm: int = 30
     # Requests/minute across ALL clients — the model-spend ceiling.
     global_rate_limit_rpm: int = 120
+    # How many proxies sit in front of this app. Used to pick the real client
+    # out of X-Forwarded-For: proxies APPEND, so the trustworthy entry is this
+    # many places from the RIGHT. One on Render. Raise it only if you add
+    # another proxy in front (an orange-clouded Cloudflare would make it two);
+    # setting it too high hands the choice back to the caller.
+    trusted_proxy_hops: int = 1
     # When set, /v1/ingest and /v1/podcast/ingest require this value in the
     # X-Admin-Token header. Leave unset only for local development.
     admin_token: str | None = None

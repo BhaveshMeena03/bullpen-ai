@@ -200,8 +200,16 @@
   // a malformed link field can't become a clickable script.
   function escAttr(s){return String(s).replace(/[&<>"']/g,function(c){
     return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
-  function safeUrl(u){u=String(u).trim();
-    return /^(https?:|\/|#|\?)/i.test(u)?u:"#";}
+  // Parse rather than pattern-match. The regex this replaced allowed anything
+  // starting with "/", which includes the protocol-relative "//evil.com" — a
+  // fully external link that looks local. Resolving against location.href and
+  // checking the resulting protocol has no such gap. (Matches assets.html,
+  // which already did it this way.)
+  function safeUrl(u){
+    try{ var p=new URL(String(u).trim(), location.href);
+         return (p.protocol==="http:"||p.protocol==="https:") ? p.href : "#";
+    }catch(e){ return "#"; }
+  }
 
   // Minimal, XSS-safe markdown: escape everything first, then allow only
   // **bold** and bullet lists that WE reconstruct from the escaped text.

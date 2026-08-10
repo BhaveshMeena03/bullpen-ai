@@ -60,12 +60,37 @@ class RateLimiter:
 
     @staticmethod
     def _client_ip(request: Request) -> str:
-        # Behind Render's proxy, request.client.host is the proxy's IP for
-        # every user — which would collapse all clients into one bucket. Use
-        # the left-most X-Forwarded-For hop (the real client) when present.
+        """Identify the caller for bucketing, without letting them choose.
+
+        Behind Render's proxy, request.client.host is the proxy's IP for every
+        user, which would collapse everyone into one bucket. So X-Forwarded-For
+        has to be consulted — but it cannot be trusted naively.
+
+        This used to read the LEFT-most hop. Proxies append, so a caller who
+        sends their own X-Forwarded-For lands first in the list and the address
+        Render observed is appended after it: the left-most entry is whatever
+        the caller typed. Confirmed against the live service — 40 requests each
+        carrying a different forged value never hit the 30/min limit, while 40
+        carrying the same forged value were throttled at exactly the limit.
+
+        Counting from the RIGHT fixes it. The last entry was written by our own
+        proxy and a client cannot append past it, so with one proxy in front
+        (trusted_proxy_hops=1) hop -1 is the real client.
+
+        Worth being precise about the blast radius: the global RPM ceiling and
+        the daily budget never keyed on identity, so the model-spend cap held
+        throughout. What was bypassable was the per-IP fairness limit.
+        """
         xff = request.headers.get("x-forwarded-for")
         if xff:
-            return xff.split(",")[0].strip()
+            hops = [h.strip() for h in xff.split(",") if h.strip()]
+            if hops:
+                n = max(1, get_settings().trusted_proxy_hops)
+                # Fewer entries than expected means the request did not come
+                # through the full proxy chain; take the left-most rather than
+                # indexing off the end, which would wrap around to the caller's
+                # own value.
+                return hops[-n] if len(hops) >= n else hops[0]
         return request.client.host if request.client else "unknown"
 
     async def __call__(self, request: Request) -> None:

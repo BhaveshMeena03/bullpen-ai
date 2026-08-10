@@ -139,9 +139,26 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# The widget is embedded on a different origin (the host site), so the
-# browser needs CORS approval to call this API. Lock allow_origins down to
-# the real host domains (e.g. https://app.bullpen.fi) before production.
+# The widget is embedded on a different origin (the host site), so the browser
+# needs CORS approval to call this API.
+#
+# "*" is the deliberate choice here, not an unfinished TODO. What makes a
+# wildcard dangerous is pairing it with credentials: the browser then attaches
+# the visitor's cookies to a cross-origin call and any site can act as them.
+# This API has no cookie or session auth at all, so allow_credentials stays
+# off (the default) and a cross-origin request can do nothing a plain curl
+# could not already do. Verified in production: the preflight returns
+# access-control-allow-origin with no allow-credentials header.
+#
+# Two things must stay true for that reasoning to hold, so change them only
+# together with this comment:
+#   - never set allow_credentials=True while origins is "*"
+#   - keep x-admin-token OUT of allow_headers, so a page in someone's browser
+#     cannot be made to carry an admin token to the ingest endpoints
+#
+# The remaining cost of an open origin is that any site could embed the widget
+# and spend model budget. That is bounded by the global RPM ceiling and the
+# daily request budget, neither of which keys on origin.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

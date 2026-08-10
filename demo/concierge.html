@@ -164,7 +164,12 @@ var chat = document.getElementById("chat");
 var input = document.getElementById("q");
 var sendBtn = document.getElementById("send");
 
-function esc(s){ return String(s==null?"":s); }
+// NOTE: there is deliberately no esc() here. There used to be one that only
+// did String(s ?? "") — no escaping at all — while the sibling search page has
+// an esc() that genuinely escapes. Nothing called it, but a name like that is
+// a loaded gun for the next person adding a feature: reach for it in an
+// innerHTML string and you have XSS with no obvious mistake in the diff.
+// Everything on this page renders through textContent or htmlEsc() below.
 
 // Minimal, XSS-safe Markdown -> HTML for bot answers. Everything is
 // HTML-escaped FIRST, then only our own safe tags are added — so nothing the

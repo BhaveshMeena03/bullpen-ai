@@ -109,7 +109,14 @@ class TestProxyIPAndBuckets:
                      "client": ("10.0.0.1", 0)}
             return SReq(scope)
 
-        assert limiter._client_ip(req("1.1.1.1, 10.0.0.1")) == "1.1.1.1"
+        # This used to assert the LEFT-most hop ("1.1.1.1"), which is what the
+        # code did and what made the limiter bypassable: each proxy appends the
+        # address it received the connection FROM, so for a caller who supplies
+        # their own header the left-most entry is the forgery. A genuine client
+        # that sends nothing produces a single-entry list, and the entry our
+        # own proxy wrote is always the right-most one.
+        assert limiter._client_ip(req("1.1.1.1")) == "1.1.1.1"
+        assert limiter._client_ip(req("9.9.9.9, 1.1.1.1")) == "1.1.1.1"
         # Two different real clients behind the same proxy get separate buckets
         assert limiter.check("1.1.1.1")
         assert limiter.check("2.2.2.2"), "distinct XFF clients must not share a bucket"
@@ -276,3 +283,53 @@ class TestDailyBudget:
         b.check()
         assert b.state()["used"] == 2
         assert b.state()["limit"] == 10
+
+
+class TestClientIpCannotBeChosenByTheCaller:
+    """The per-IP limiter keyed on a caller-supplied value.
+
+    Confirmed against the live service before the fix: 40 requests each
+    carrying a different forged X-Forwarded-For never hit the 30/min limit,
+    while 40 carrying the same forged value were throttled at exactly the
+    limit. Proxies append, so the left-most entry is whatever the caller typed.
+    """
+
+    @staticmethod
+    def _req(xff=None, client_host="10.0.0.1"):
+        from starlette.requests import Request
+        headers = [(b"x-forwarded-for", xff.encode())] if xff else []
+        return Request({"type": "http", "headers": headers, "method": "GET",
+                        "path": "/", "scheme": "https",
+                        "client": (client_host, 1234)})
+
+    def test_forged_leading_hop_is_ignored(self):
+        from app.security import RateLimiter
+        # What Render produces when the caller sent their own header.
+        ip = RateLimiter._client_ip(self._req("203.0.113.9, 198.51.100.7"))
+        assert ip == "198.51.100.7", "used the caller-supplied entry"
+
+    def test_rotating_forgeries_collapse_to_one_bucket(self):
+        from app.security import RateLimiter
+        seen = {RateLimiter._client_ip(self._req(f"203.0.113.{i}, 198.51.100.7"))
+                for i in range(1, 30)}
+        assert seen == {"198.51.100.7"}, "forged values still open fresh buckets"
+
+    def test_rotating_forgeries_actually_get_throttled(self):
+        """End-to-end through the bucket, not just the parsing."""
+        from app.security import RateLimiter
+        limiter = RateLimiter(rpm=30, burst=5)
+        allowed = sum(
+            limiter.check(RateLimiter._client_ip(
+                self._req(f"203.0.113.{i}, 198.51.100.7")))
+            for i in range(1, 40)
+        )
+        assert allowed <= 6, f"{allowed} of 39 forged requests allowed"
+
+    def test_direct_request_without_proxy_headers(self):
+        from app.security import RateLimiter
+        assert RateLimiter._client_ip(self._req()) == "10.0.0.1"
+
+    def test_short_chain_does_not_wrap_to_the_caller(self):
+        """A single-entry XFF must not index off the end of the list."""
+        from app.security import RateLimiter
+        assert RateLimiter._client_ip(self._req("203.0.113.9")) == "203.0.113.9"
