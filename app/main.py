@@ -37,7 +37,9 @@ from .schemas import (
     PodcastSearchRequest,
     PodcastSearchResponse,
 )
+from .config import get_settings
 from .security import (
+    RateLimiter,
     daily_budget,
     global_rate_limit,
     public_rate_limit,
@@ -416,6 +418,37 @@ async def podcast_search_stream(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.get("/v1/whoami", dependencies=[Depends(require_admin)])
+async def whoami(request: Request) -> dict:
+    """What this app believes about who is calling. Admin-only.
+
+    Exists because rate limiting behind a proxy cannot be reasoned about from
+    documentation — it has to be measured. Which X-Forwarded-For entry is
+    trustworthy depends on how many proxies the host actually runs and what
+    each one writes, and getting it wrong fails in both directions: read too
+    far left and callers pick their own bucket, too far right and everyone
+    lands in a bucket keyed on a value that rotates, which quietly switches
+    per-IP limiting off entirely.
+
+    Returns the raw header, the resolved key, and the peer address, so the
+    correct hop count can be read off a single request instead of inferred.
+    Admin-gated because it reflects caller IPs back.
+    """
+    xff = request.headers.get("x-forwarded-for", "")
+    return {
+        "x_forwarded_for_raw": xff,
+        "hops": [h.strip() for h in xff.split(",") if h.strip()],
+        "peer": request.client.host if request.client else None,
+        "resolved_rate_limit_key": RateLimiter._client_ip(request),
+        "trusted_proxy_hops": get_settings().trusted_proxy_hops,
+        "other_ip_headers": {
+            k: v for k, v in request.headers.items()
+            if k.lower() in ("x-real-ip", "cf-connecting-ip", "true-client-ip",
+                             "render-proxy-ip", "fly-client-ip", "forwarded")
+        },
+    }
 
 
 @app.get("/v1/stats")
