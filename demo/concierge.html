@@ -187,8 +187,20 @@ function renderMd(raw){
 // reason not to. The bubble now formats itself as it types and nothing
 // jumps at the end.
 function Typewriter(el){
-  var shown = "", queue = "", done = false, raf = null, onDone = null;
+  var shown = "", queue = "", done = false, pending = null, onDone = null;
   var scroller = el.parentNode;
+
+  // rAF while the tab is visible, a timer while it is hidden. Browsers PAUSE
+  // rAF in a backgrounded tab, and driving this loop from rAF alone meant
+  // tabbing away mid-answer left the queue undrained for good: the completion
+  // callback never ran, so the thinking indicator never cleared and the
+  // composer stayed disabled until a reload. Timers keep firing in the
+  // background, so the answer always completes.
+  function schedule(){
+    pending = document.hidden
+      ? setTimeout(tick, 100)
+      : requestAnimationFrame(tick);
+  }
 
   // A half-typed "**bold" would show its asterisks until the closer arrives.
   // Hide a trailing unmatched marker so emphasis appears to switch on with
@@ -215,25 +227,30 @@ function Typewriter(el){
       // Proportional catch-up, capped. Uncapped, a 1,600-character burst
       // drained 200 chars in one frame — the stutter this exists to remove.
       // 14/frame is ~840 chars/sec: far faster than reading, still smooth.
-      var n = Math.min(14, Math.max(2, Math.ceil(queue.length / 12)));
+      // Hidden tabs skip the animation entirely: nobody is watching it, and
+      // pacing an invisible answer only delays the callback that re-enables
+      // the composer.
+      var n = document.hidden
+        ? queue.length
+        : Math.min(14, Math.max(2, Math.ceil(queue.length / 12)));
       shown += queue.slice(0, n);
       queue = queue.slice(n);
       paint();
     }
-    if(queue.length || !done){ raf = requestAnimationFrame(tick); }
-    else { raf = null; if(onDone){ onDone(shown); onDone = null; } }
+    if(queue.length || !done){ schedule(); }
+    else { pending = null; if(onDone){ onDone(shown); onDone = null; } }
   }
 
   return {
     push: function(t){
       queue += t;
-      if(raf === null){ raf = requestAnimationFrame(tick); }
+      if(pending === null){ schedule(); }
     },
     // Refusals and errors replace everything at once — they shouldn't type.
     set: function(t){ queue = ""; shown = t; paint(); },
     finish: function(cb){
       done = true; onDone = cb;
-      if(raf === null){ cb(shown + queue); onDone = null; }
+      if(pending === null){ cb(shown + queue); onDone = null; }
     }
   };
 }

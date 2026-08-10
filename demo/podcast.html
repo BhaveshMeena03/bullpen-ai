@@ -211,7 +211,20 @@
   // Rendering every frame costs ~0.1ms on an answer this size, so the box
   // now formats itself as it types and nothing moves when the stream ends.
   function Typer(el){
-    var shown="", queue="", done=false, raf=null, onDone=null;
+    var shown="", queue="", done=false, pending=null, onDone=null;
+
+    // Drive the animation with rAF while the tab is visible, but fall back to
+    // a timer when it is hidden. Browsers PAUSE rAF in a backgrounded tab, and
+    // the loop used to depend on it alone — so tabbing away mid-answer left the
+    // queue undrained forever: the completion callback never fired, the spinner
+    // never cleared, and the Search button stayed disabled until a reload.
+    // Timers keep firing (throttled) in the background, so completion is
+    // guaranteed either way.
+    function schedule(){
+      pending = document.hidden
+        ? setTimeout(tick, 100)
+        : requestAnimationFrame(tick);
+    }
 
     // Hide a trailing unmatched ** so emphasis switches on with the word
     // rather than showing its asterisks until the closer arrives.
@@ -223,20 +236,23 @@
 
     function tick(){
       if(queue.length){
-        // Proportional catch-up, capped: uncapped, a large burst lands in a
-        // single frame, which is the stutter this exists to remove.
-        var n=Math.min(14,Math.max(2,Math.ceil(queue.length/12)));
+        // A hidden tab isn't being watched, so animating it wastes nothing but
+        // battery — flush the whole queue at once. Visible: proportional
+        // catch-up, capped, so a large burst doesn't land in one janky frame.
+        var n = document.hidden
+          ? queue.length
+          : Math.min(14,Math.max(2,Math.ceil(queue.length/12)));
         shown+=queue.slice(0,n); queue=queue.slice(n); paint();
       }
-      if(queue.length||!done){ raf=requestAnimationFrame(tick); }
-      else { raf=null; if(onDone){ onDone(shown); onDone=null; } }
+      if(queue.length||!done){ schedule(); }
+      else { pending=null; if(onDone){ onDone(shown); onDone=null; } }
     }
     return {
-      push:function(t){ queue+=t; if(raf===null) raf=requestAnimationFrame(tick); },
+      push:function(t){ queue+=t; if(pending===null) schedule(); },
       set:function(t){ queue=""; shown=t; paint(); },
       finish:function(cb){
         done=true; onDone=cb;
-        if(raf===null){ cb(shown+queue); onDone=null; }
+        if(pending===null){ cb(shown+queue); onDone=null; }
       }
     };
   }
@@ -450,6 +466,10 @@
     }).then(function(res){
       if(!res.ok||!res.body) throw new Error("stream "+res.status);
       var reader=res.body.getReader(), dec=new TextDecoder(), buf="";
+      // Drop "Searching the episodes…" as soon as there is an answer box to
+      // watch. Leaving it above a visibly streaming answer reads as though the
+      // page is still working on something else.
+      spin.classList.remove("show");
       answer.classList.add("show"); body.textContent="";
       var typer=Typer(body);
       function pump(){
