@@ -320,6 +320,11 @@ document.getElementById("f").addEventListener("submit", function(e){
 
 bubble("bot", GREETING);
 
+// Marks "we hit a limit" apart from "the network failed", so the catch handler
+// can show the server's own explanation instead of blaming the connection.
+function LimitError(m){ this.message = m; this.isLimit = true; }
+LimitError.prototype = Object.create(Error.prototype);
+
 function send(text){
   text = (text || "").trim();
   if(!text || busy) return;
@@ -338,6 +343,17 @@ function send(text){
     body: JSON.stringify({ message: text, history: convo })
   })
   .then(function(res){
+    // 429 and 503 are us saying "too busy" / "at today's cap", and the server
+    // puts a human explanation in `detail`. Falling through to the generic
+    // network message tells the user to check their wifi for our limit — it
+    // reads as broken rather than busy, which is the wrong impression at
+    // exactly the moment traffic is highest.
+    if(res.status === 429 || res.status === 503){
+      return res.json().catch(function(){ return {}; }).then(function(j){
+        throw new LimitError(j.detail ||
+          "The assistant is busy right now — please try again shortly.");
+      });
+    }
     if(!res.ok || !res.body) throw new Error("HTTP " + res.status);
     var reader = res.body.getReader(), decoder = new TextDecoder(), buffer = "";
     function pump(){
@@ -379,10 +395,11 @@ function send(text){
     }
     return pump();
   })
-  .catch(function(){
+  .catch(function(err){
     botBubble.classList.add("streaming");   // plain text again
-    botBubble.textContent =
-      "I couldn't reach support services. Check your connection and try again.";
+    botBubble.textContent = (err && err.isLimit)
+      ? err.message
+      : "I couldn't reach support services. Check your connection and try again.";
   })
   .finally(function(){
     busy = false; sendBtn.disabled = false; input.focus();

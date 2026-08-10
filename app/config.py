@@ -92,16 +92,23 @@ class Settings(BaseSettings):
     # stop a burst but not a slow drain: 25/min sits inside every other limit
     # and still reaches ~36,000 requests a day.
     #
-    # 500 is the number because of what it costs, not what it allows. A
-    # concierge answer is ~1.4c, so a maxed-out day is about $7 — a bad day,
-    # not a bad month. Real traffic is currently a handful a day, and even a
-    # good showing in a Discord would be low hundreds, so this should never
-    # touch a genuine user. Raise it when real usage approaches it; the log
-    # line on exhaustion says when that happens. Set to 0 to disable.
-    daily_request_budget: int = 500
+    # 2000 is the number because of what it costs, not what it allows. A
+    # concierge answer is ~1.4c, so a maxed-out day is about $28 — a bad day,
+    # not a bad month. Set to 0 to disable.
+    #
+    # Raised from 500 ahead of showing this to people who might share it. 500
+    # was sized for "a handful a day plus a good Discord showing", and it was
+    # never close to being hit. But the cost of the cap being wrong is
+    # asymmetric: too high costs a few tens of dollars once, too low means the
+    # people you most wanted to impress get told to come back tomorrow. The
+    # log line on exhaustion says when real usage approaches it.
+    daily_request_budget: int = 2000
     rate_limit_rpm: int = 30
-    # Requests/minute across ALL clients — the model-spend ceiling.
-    global_rate_limit_rpm: int = 120
+    # Requests/minute across ALL clients. Not the spend ceiling — the daily
+    # budget is — this exists so one burst can't outrun the single process.
+    # 240/min is ~4/second, comfortably above any organic spike and still far
+    # below what would be needed to matter to the daily cap.
+    global_rate_limit_rpm: int = 240
     # How many proxies sit in front of this app, used to locate the real
     # client in X-Forwarded-For. Each proxy appends the peer it received from,
     # so the client is this many entries from the right.

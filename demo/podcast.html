@@ -218,6 +218,11 @@
   // literal # and ** go past, then the whole answer reflowing in one jump.
   // Rendering every frame costs ~0.1ms on an answer this size, so the box
   // now formats itself as it types and nothing moves when the stream ends.
+  // Marks "we hit a limit" apart from "the network failed", so the handler
+  // shows the server's own explanation instead of a generic outage message.
+  function LimitError(m){ this.message = m; this.isLimit = true; }
+  LimitError.prototype = Object.create(Error.prototype);
+
   function Typer(el){
     var shown="", queue="", done=false, pending=null, onDone=null;
 
@@ -472,6 +477,15 @@
       method:"POST",headers:{"content-type":"application/json"},
       body:JSON.stringify({query:query}),signal:mySignal
     }).then(function(res){
+      // Our own limits, not a network failure. Retrying the plain endpoint
+      // would hit the same cap and land the user on the generic "unavailable"
+      // text, which reads as broken rather than busy.
+      if(res.status===429||res.status===503){
+        return res.json().catch(function(){ return {}; }).then(function(j){
+          throw new LimitError(j.detail ||
+            "Search is busy right now — please try again shortly.");
+        });
+      }
       if(!res.ok||!res.body) throw new Error("stream "+res.status);
       var reader=res.body.getReader(), dec=new TextDecoder(), buf="";
       // Drop "Searching the episodes…" as soon as there is an answer box to
@@ -505,6 +519,10 @@
       return pump();
     }).catch(function(err){
       if(stale()||(err&&err.name==="AbortError")) return;  // superseded
+      if(err&&err.isLimit){
+        body.textContent=err.message; answer.classList.add("show");
+        finishSearch(); return;
+      }
       // Fallback: plain (non-streaming) search.
       fetch(API+"/v1/podcast/search",{
         method:"POST",headers:{"content-type":"application/json"},
