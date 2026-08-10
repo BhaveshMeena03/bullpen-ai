@@ -420,7 +420,7 @@ async def podcast_search_stream(
     )
 
 
-@app.get("/v1/whoami")
+@app.get("/v1/whoami", dependencies=[Depends(require_admin)])
 async def whoami(request: Request) -> dict:
     """What this app believes about who is calling. Admin-only.
 
@@ -435,10 +435,13 @@ async def whoami(request: Request) -> dict:
     Returns the raw header, the resolved key, and the peer address, so the
     chain can be read off a single request instead of inferred.
 
-    Deliberately unauthenticated, and safe to be: every value in the response
-    describes THIS request only. A caller learns their own address, which they
-    already know, and the shape of the proxy chain in front of a public API.
-    It exposes nothing about any other user, and no counters or state.
+    Re-gated behind the admin token now that the chain has been read. It is
+    caller-scoped so it was never a data leak, but the proxy layout is
+    operational detail with no reason to be public.
+
+    The reading it produced, for the record:
+        49.36.72.251, 172.69.179.154, 10.192.63.131
+        client         Cloudflare       Render
     """
     xff = request.headers.get("x-forwarded-for", "")
     return {

@@ -109,14 +109,14 @@ class TestProxyIPAndBuckets:
                      "client": ("10.0.0.1", 0)}
             return SReq(scope)
 
-        # This used to assert the LEFT-most hop ("1.1.1.1"), which is what the
-        # code did and what made the limiter bypassable: each proxy appends the
-        # address it received the connection FROM, so for a caller who supplies
-        # their own header the left-most entry is the forgery. A genuine client
-        # that sends nothing produces a single-entry list, and the entry our
-        # own proxy wrote is always the right-most one.
-        assert limiter._client_ip(req("1.1.1.1")) == "1.1.1.1"
-        assert limiter._client_ip(req("9.9.9.9, 1.1.1.1")) == "1.1.1.1"
+        # This originally asserted the LEFT-most hop, which is what the code
+        # did and what made the limiter bypassable — that entry is whatever the
+        # caller typed. The chains below are real ones read back from
+        # production: client, then Cloudflare, then Render.
+        assert limiter._client_ip(
+            req("1.1.1.1, 172.69.179.154, 10.192.63.131")) == "1.1.1.1"
+        assert limiter._client_ip(
+            req("9.9.9.9, 1.1.1.1, 172.69.179.154, 10.192.63.131")) == "1.1.1.1"
         # Two different real clients behind the same proxy get separate buckets
         assert limiter.check("1.1.1.1")
         assert limiter.check("2.2.2.2"), "distinct XFF clients must not share a bucket"
@@ -288,48 +288,92 @@ class TestDailyBudget:
 class TestClientIpCannotBeChosenByTheCaller:
     """The per-IP limiter keyed on a caller-supplied value.
 
-    Confirmed against the live service before the fix: 40 requests each
-    carrying a different forged X-Forwarded-For never hit the 30/min limit,
-    while 40 carrying the same forged value were throttled at exactly the
-    limit. Proxies append, so the left-most entry is whatever the caller typed.
+    Every chain below was copied from a real request to production via
+    /v1/whoami, not invented:
+
+        no spoof : 49.36.72.251, 172.69.179.154, 10.192.63.131
+        spoofed  : 6.6.6.6, 49.36.72.251, 172.69.86.84, 10.192.63.131
+                   ^forged   ^real client  ^cloudflare   ^render
+
+    Cloudflare prepends nothing and appends nothing: it passes the caller's
+    header through and the real address lands immediately after it.
     """
 
+    REAL = "49.36.72.251"
+    CF = "172.69.179.154"
+    RENDER = "10.192.63.131"
+
     @staticmethod
-    def _req(xff=None, client_host="10.0.0.1"):
+    def _req(xff=None, client_host="10.192.63.131", **headers):
         from starlette.requests import Request
-        headers = [(b"x-forwarded-for", xff.encode())] if xff else []
-        return Request({"type": "http", "headers": headers, "method": "GET",
+        raw = [(k.replace("_", "-").encode(), v.encode())
+               for k, v in headers.items()]
+        if xff:
+            raw.append((b"x-forwarded-for", xff.encode()))
+        return Request({"type": "http", "headers": raw, "method": "GET",
                         "path": "/", "scheme": "https",
                         "client": (client_host, 1234)})
 
-    def test_forged_leading_hop_is_ignored(self):
+    def test_genuine_chain_resolves_to_the_real_client(self):
         from app.security import RateLimiter
-        # What Render produces when the caller sent their own header.
-        ip = RateLimiter._client_ip(self._req("203.0.113.9, 198.51.100.7"))
-        assert ip == "198.51.100.7", "used the caller-supplied entry"
+        assert RateLimiter._client_ip(
+            self._req(f"{self.REAL}, {self.CF}, {self.RENDER}")) == self.REAL
+
+    def test_forged_leading_entry_is_ignored(self):
+        from app.security import RateLimiter
+        assert RateLimiter._client_ip(
+            self._req(f"6.6.6.6, {self.REAL}, {self.CF}, {self.RENDER}")) == self.REAL
+
+    def test_cloudflare_header_wins_and_is_not_forgeable_from_outside(self):
+        from app.security import RateLimiter
+        # Cloudflare 403s a request carrying its own CF-Connecting-IP, so a
+        # value reaching us here was written by Cloudflare.
+        assert RateLimiter._client_ip(
+            self._req(f"6.6.6.6, {self.REAL}, {self.CF}, {self.RENDER}",
+                      cf_connecting_ip=self.REAL)) == self.REAL
+
+    def test_rotating_cloudflare_edge_does_not_open_new_buckets(self):
+        """The regression that switched per-IP limiting off entirely.
+
+        Cloudflare edge addresses are public and rotate, so 'right-most public
+        address' handed every request a fresh bucket.
+        """
+        from app.security import RateLimiter
+        edges = ["172.69.179.154", "172.68.175.47", "172.69.86.84"]
+        seen = {RateLimiter._client_ip(
+            self._req(f"{self.REAL}, {e}, {self.RENDER}")) for e in edges}
+        assert seen == {self.REAL}, f"bucket key moved with the edge: {seen}"
 
     def test_rotating_forgeries_collapse_to_one_bucket(self):
         from app.security import RateLimiter
-        seen = {RateLimiter._client_ip(self._req(f"203.0.113.{i}, 198.51.100.7"))
-                for i in range(1, 30)}
-        assert seen == {"198.51.100.7"}, "forged values still open fresh buckets"
+        seen = {RateLimiter._client_ip(
+            self._req(f"203.0.113.{i}, {self.REAL}, {self.CF}, {self.RENDER}"))
+            for i in range(1, 30)}
+        assert seen == {self.REAL}
 
     def test_rotating_forgeries_actually_get_throttled(self):
-        """End-to-end through the bucket, not just the parsing."""
+        """End to end through the bucket, not just the parsing."""
         from app.security import RateLimiter
         limiter = RateLimiter(rpm=30, burst=5)
         allowed = sum(
-            limiter.check(RateLimiter._client_ip(
-                self._req(f"203.0.113.{i}, 198.51.100.7")))
-            for i in range(1, 40)
-        )
+            limiter.check(RateLimiter._client_ip(self._req(
+                f"203.0.113.{i}, {self.REAL}, {self.CF}, {self.RENDER}")))
+            for i in range(1, 40))
         assert allowed <= 6, f"{allowed} of 39 forged requests allowed"
 
     def test_direct_request_without_proxy_headers(self):
         from app.security import RateLimiter
-        assert RateLimiter._client_ip(self._req()) == "10.0.0.1"
+        assert RateLimiter._client_ip(
+            self._req(client_host="10.0.0.1")) == "10.0.0.1"
 
-    def test_short_chain_does_not_wrap_to_the_caller(self):
-        """A single-entry XFF must not index off the end of the list."""
+    def test_short_chain_falls_back_to_the_peer(self):
+        """A truncated chain must never index into the caller's own entry."""
         from app.security import RateLimiter
-        assert RateLimiter._client_ip(self._req("203.0.113.9")) == "203.0.113.9"
+        assert RateLimiter._client_ip(
+            self._req("6.6.6.6", client_host="10.0.0.9")) == "10.0.0.9"
+
+    def test_private_value_in_trusted_header_is_not_used(self):
+        from app.security import RateLimiter
+        assert RateLimiter._client_ip(
+            self._req(f"{self.REAL}, {self.CF}, {self.RENDER}",
+                      cf_connecting_ip="10.0.0.5")) == self.REAL

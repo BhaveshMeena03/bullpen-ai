@@ -96,21 +96,40 @@ class RateLimiter:
         the daily budget never keyed on identity, so the model-spend cap held
         throughout. What was bypassable was the per-IP fairness limit.
         """
+        # Cloudflare's own headers first. Measured against production: a
+        # request carrying its own CF-Connecting-IP is rejected by Cloudflare
+        # with a 403 before it ever reaches this process, and a supplied
+        # True-Client-IP is overwritten with the real address. Neither can be
+        # forged from outside, which makes them the cheapest correct answer.
+        for header in ("cf-connecting-ip", "true-client-ip"):
+            candidate = request.headers.get(header, "").strip()
+            if candidate and _is_public_ip(candidate):
+                return candidate
+
         xff = request.headers.get("x-forwarded-for")
         if xff:
             hops = [h.strip() for h in xff.split(",") if h.strip()]
-            # Walk right-to-left and take the first address that is not
-            # infrastructure. Counting a fixed number of hops from either end
-            # is brittle: hard-coding the left end lets the caller pick their
-            # own bucket, and hard-coding the right end assumes the host
-            # appends exactly one stable address. Skipping private, loopback
-            # and link-local entries lands on the real client without needing
-            # to know how many proxies are in front or what they write.
-            for hop in reversed(hops):
-                if _is_public_ip(hop):
-                    return hop
-            if hops:
-                return hops[-1]
+            # Fall back to position. Each proxy appends the peer it received
+            # from, so with N proxies in front the client is N entries from the
+            # right. Measured chain with no spoofing:
+            #     49.36.72.251, 172.69.179.154, 10.192.63.131
+            #     client         Cloudflare       Render
+            # and with a forged header the forgery is simply prepended:
+            #     6.6.6.6, 49.36.72.251, <cloudflare>, <render>
+            # so hops[-(N+1)] is the client in both cases.
+            #
+            # Neither end works as a shortcut. The left end is whatever the
+            # caller typed. The right end is infrastructure — and "right-most
+            # public address" is no better, because the Cloudflare edge is
+            # public AND rotates: three consecutive requests came through
+            # 172.69.179.154, 172.68.175.47 and 172.69.86.84, which handed
+            # every request a fresh bucket and switched per-IP limiting off
+            # entirely without any error.
+            n = max(0, get_settings().proxies_in_front)
+            if len(hops) > n:
+                return hops[-(n + 1)]
+            # Shorter than the known chain means it did not arrive the usual
+            # way. Prefer the peer over trusting a truncated list.
         return request.client.host if request.client else "unknown"
 
     async def __call__(self, request: Request) -> None:

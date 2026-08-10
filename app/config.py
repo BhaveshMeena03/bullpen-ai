@@ -102,12 +102,18 @@ class Settings(BaseSettings):
     rate_limit_rpm: int = 30
     # Requests/minute across ALL clients — the model-spend ceiling.
     global_rate_limit_rpm: int = 120
-    # How many proxies sit in front of this app. Used to pick the real client
-    # out of X-Forwarded-For: proxies APPEND, so the trustworthy entry is this
-    # many places from the RIGHT. One on Render. Raise it only if you add
-    # another proxy in front (an orange-clouded Cloudflare would make it two);
-    # setting it too high hands the choice back to the caller.
-    trusted_proxy_hops: int = 1
+    # How many proxies sit in front of this app, used to locate the real
+    # client in X-Forwarded-For. Each proxy appends the peer it received from,
+    # so the client is this many entries from the right.
+    #
+    # Two here, measured rather than assumed: Cloudflare is proxying (orange
+    # cloud, not DNS-only) and Render's router adds a hop of its own, giving
+    # "client, cloudflare, render". Only matters as a fallback — Cloudflare's
+    # CF-Connecting-IP is preferred and cannot be forged.
+    #
+    # Set it too high and the caller's own forged entry gets selected, so
+    # change it only alongside a fresh reading from /v1/whoami.
+    proxies_in_front: int = 2
     # When set, /v1/ingest and /v1/podcast/ingest require this value in the
     # X-Admin-Token header. Leave unset only for local development.
     admin_token: str | None = None
