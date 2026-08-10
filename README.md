@@ -25,6 +25,20 @@ One backend, one vector database, one deploy; separate products with
 separate pages. It auto-updates when a new episode drops. Built
 independently — not affiliated with BullpenFi.
 
+## Try it
+
+Free, no login, no signup.
+
+| | |
+|---|---|
+| Bullpen Concierge | https://concierge.lexthedev.com |
+| Market Bubble Search | https://search.lexthedev.com |
+| Token Dashboard | https://search.lexthedev.com/demo/assets.html |
+
+Both run on a free tier that sleeps when idle, so the first request after a
+quiet spell can take ~30s. That is the hosting, not the service — see
+[Run](#run) for deploying it somewhere that stays warm.
+
 ## How it works
 
 The search is a RAG (retrieval-augmented generation) pipeline. The short
