@@ -106,6 +106,10 @@ class Settings(BaseSettings):
     # per-minute limit catches bursts; it does nothing about one client
     # trickling requests all day, which is why the per-IP limit below was cut
     # at the same time this went up.
+    #
+    # NOTE: render.yaml sets these three as environment variables, which take
+    # precedence over everything here. Editing this file alone changes nothing
+    # in production — that mistake was made once already.
     daily_request_budget: int = 3000
     # 12/min per client. A person asks maybe 1-5 questions a minute, so this
     # is still 2-3x human speed and no real user will meet it. It was 30,
