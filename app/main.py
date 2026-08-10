@@ -41,6 +41,7 @@ from .config import get_settings
 from .security import (
     RateLimiter,
     daily_budget,
+    per_client_daily,
     global_rate_limit,
     public_rate_limit,
     require_admin,
@@ -279,7 +280,7 @@ async def healthz() -> dict:
 
 @app.post("/v1/chat", response_model=ChatResponse,
           dependencies=[Depends(public_rate_limit), Depends(global_rate_limit),
-                        Depends(daily_budget)])
+                        Depends(daily_budget), Depends(per_client_daily)])
 async def chat(
     body: ChatRequest,
     retriever: Retriever = Depends(get_retriever),
@@ -307,7 +308,7 @@ async def chat(
 
 
 @app.post("/v1/chat/stream", dependencies=[Depends(public_rate_limit), Depends(global_rate_limit),
-                        Depends(daily_budget)])
+                        Depends(daily_budget), Depends(per_client_daily)])
 async def chat_stream(
     body: ChatRequest,
     retriever: Retriever = Depends(get_retriever),
@@ -367,7 +368,7 @@ async def ingest(
 
 @app.post("/v1/podcast/search", response_model=PodcastSearchResponse,
           dependencies=[Depends(public_rate_limit), Depends(global_rate_limit),
-                        Depends(daily_budget)])
+                        Depends(daily_budget), Depends(per_client_daily)])
 async def podcast_search(
     body: PodcastSearchRequest,
     podcast: PodcastIndex = Depends(get_podcast),
@@ -387,7 +388,7 @@ async def podcast_search(
 
 @app.post("/v1/podcast/search/stream",
           dependencies=[Depends(public_rate_limit), Depends(global_rate_limit),
-                        Depends(daily_budget)])
+                        Depends(daily_budget), Depends(per_client_daily)])
 async def podcast_search_stream(
     body: PodcastSearchRequest,
     podcast: PodcastIndex = Depends(get_podcast),
@@ -466,7 +467,8 @@ async def stats() -> dict:
     visible without reading logs — a cap you can't see is one you only find
     out about when it starts refusing people.
     """
-    return {**STATS, "daily_budget": daily_budget.state()}
+    return {**STATS, "daily_budget": daily_budget.state(),
+            "per_client": per_client_daily.state()}
 
 
 @app.get("/v1/gaps", dependencies=[Depends(require_admin)])

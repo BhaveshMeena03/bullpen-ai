@@ -110,6 +110,11 @@ class Settings(BaseSettings):
     # NOTE: render.yaml sets these three as environment variables, which take
     # precedence over everything here. Editing this file alone changes nothing
     # in production — that mistake was made once already.
+    # Per-client slice of the daily budget above. 200 is ~5-10x what an
+    # enthusiastic person does in a day, so only automation should meet it,
+    # and draining the service now needs ~15 distinct addresses rather than
+    # one patient script. 0 disables.
+    per_client_daily_budget: int = 200
     daily_request_budget: int = 3000
     # 12/min per client. A person asks maybe 1-5 questions a minute, so this
     # is still 2-3x human speed and no real user will meet it. It was 30,

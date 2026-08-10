@@ -1,6 +1,9 @@
 """Rate limiting and admin auth."""
 
+import asyncio
+
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 import app.main as main_module
@@ -377,3 +380,58 @@ class TestClientIpCannotBeChosenByTheCaller:
         assert RateLimiter._client_ip(
             self._req(f"{self.REAL}, {self.CF}, {self.RENDER}",
                       cf_connecting_ip="10.0.0.5")) == self.REAL
+
+
+class TestPerClientDailyBudget:
+    """One client must not be able to drain the whole day's budget.
+
+    The per-minute limiter caps rate, not total: a script sitting exactly on
+    12/min reached the 3000/day ceiling in about four hours, and every request
+    looked legal on the way there. After that, genuine visitors were refused
+    until UTC midnight.
+    """
+
+    def _req(self, ip: str):
+        from starlette.requests import Request
+
+        return Request({"type": "http", "headers": [], "client": (ip, 1234),
+                        "method": "GET", "path": "/", "scheme": "https"})
+
+    def test_one_client_is_capped(self):
+        from app.security import PerClientDailyBudget
+
+        budget = PerClientDailyBudget(limit=5)
+        for _ in range(5):
+            asyncio.run(budget(self._req("1.2.3.4")))
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(budget(self._req("1.2.3.4")))
+        assert exc.value.status_code == 429
+        assert "midnight" in exc.value.detail.lower()
+
+    def test_one_client_hitting_the_cap_does_not_block_others(self):
+        """The whole point: a drained attacker must not deny everyone else."""
+        from app.security import PerClientDailyBudget
+
+        budget = PerClientDailyBudget(limit=3)
+        for _ in range(3):
+            asyncio.run(budget(self._req("9.9.9.9")))
+        with pytest.raises(HTTPException):
+            asyncio.run(budget(self._req("9.9.9.9")))
+        asyncio.run(budget(self._req("5.5.5.5")))   # unaffected
+
+    def test_zero_disables(self):
+        from app.security import PerClientDailyBudget
+
+        budget = PerClientDailyBudget(limit=0)
+        for _ in range(50):
+            asyncio.run(budget(self._req("1.2.3.4")))
+
+    def test_client_table_is_bounded(self):
+        """Memory must not grow with attacker-controlled IP churn."""
+        from app.security import PerClientDailyBudget
+
+        budget = PerClientDailyBudget(limit=5)
+        budget.MAX_CLIENTS = 50
+        for i in range(400):
+            asyncio.run(budget(self._req(f"10.0.{i // 256}.{i % 256}")))
+        assert len(budget._counts) <= 50

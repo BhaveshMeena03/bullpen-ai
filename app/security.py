@@ -221,10 +221,92 @@ class DailyBudget:
             )
 
 
+class PerClientDailyBudget:
+    """A daily ceiling on model-backed requests from a SINGLE client.
+
+    The global daily budget bounds what the service can spend; it does nothing
+    to stop one client spending all of it. The per-minute limiter does not
+    help either — it caps the rate, not the total, so a patient script sitting
+    exactly on the limit drains the whole day and every request looks legal on
+    the way past.
+
+    Measured before this existed: at 12 requests/minute a single address
+    reached the 3000/day ceiling in about four hours, after which every
+    genuine visitor was refused until UTC midnight.
+
+    The cap here is deliberately far above human behaviour. Someone
+    enthusiastic might ask twenty or thirty questions in a day; this allows
+    several times that, so it should only ever be met by something automated.
+    Draining the service now needs a spread of addresses rather than one, and
+    the log line names the client when it happens.
+
+    In-memory and per-process, matching the other limiters. Same caveat: with
+    a second replica this needs to move to Redis, or each replica enforces its
+    own separate allowance.
+    """
+
+    MAX_CLIENTS = 20_000  # memory backstop; evicts the least recently seen
+
+    def __init__(self, limit: int | None = None):
+        self._limit = limit
+        self._day: str | None = None
+        self._counts: dict[str, int] = {}
+        self._seen: dict[str, float] = {}
+
+    def _ceiling(self) -> int:
+        if self._limit is not None:
+            return self._limit
+        return get_settings().per_client_daily_budget
+
+    def _roll(self) -> None:
+        today = time.strftime("%Y-%m-%d", time.gmtime())
+        if today != self._day:
+            self._day = today
+            self._counts.clear()
+            self._seen.clear()
+
+    async def __call__(self, request: Request) -> None:
+        limit = self._ceiling()
+        if limit <= 0:          # 0 disables
+            return
+        self._roll()
+        key = RateLimiter._client_ip(request)
+        used = self._counts.get(key, 0)
+        if used >= limit:
+            logger.warning(
+                "Per-client daily cap reached: %s used %d today — refusing.",
+                key, used,
+            )
+            raise HTTPException(
+                status_code=429,
+                detail=("You've reached the daily limit for this demo. "
+                        "It resets at midnight UTC."),
+                headers={"Retry-After": "3600"},
+            )
+        if len(self._counts) >= self.MAX_CLIENTS and key not in self._counts:
+            oldest = min(self._seen, key=self._seen.get)
+            self._counts.pop(oldest, None)
+            self._seen.pop(oldest, None)
+        self._counts[key] = used + 1
+        self._seen[key] = time.monotonic()
+
+    def state(self) -> dict:
+        self._roll()
+        top = sorted(self._counts.values(), reverse=True)[:1]
+        return {
+            "day": self._day,
+            "clients": len(self._counts),
+            "limit": self._ceiling(),
+            "busiest_client": top[0] if top else 0,
+        }
+
+
 # Shared limiters for the public chat/search endpoints (both applied).
 public_rate_limit = RateLimiter()
 global_rate_limit = GlobalRateLimit()
 daily_budget = DailyBudget()
+# Bounds what any ONE client can take out of that shared budget.
+per_client_daily = PerClientDailyBudget()
 
 
 def _is_loopback(request: Request) -> bool:

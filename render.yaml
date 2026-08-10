@@ -30,3 +30,6 @@ services:
         value: "240"
       - key: DAILY_REQUEST_BUDGET
         value: "3000"
+      # No single client may take more than this slice of the budget above.
+      - key: PER_CLIENT_DAILY_BUDGET
+        value: "200"
