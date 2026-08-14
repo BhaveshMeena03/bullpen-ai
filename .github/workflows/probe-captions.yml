@@ -1,0 +1,48 @@
+# Throwaway probe: can a GitHub runner still reach YouTube captions?
+#
+# yt-dlp fetches the video page, which is what YouTube's bot check guards, and
+# from a datacenter IP that check now fires reliably ("Sign in to confirm
+# you're not a bot"). Captions come from a different endpoint (timedtext),
+# historically with weaker protection.
+#
+# Guessing is pointless -- residential IPs behave differently from CI ones, so
+# testing locally proves nothing about the runner. This runs the experiment
+# where the answer matters.
+#
+# Delete this workflow once the question is settled.
+name: probe captions
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Can we get captions without yt-dlp?
+        run: |
+          pip install -q youtube-transcript-api
+          python - <<'PY'
+          VIDEO = "NzpJTWJfdg4"   # Market Bubble #15, the one that just failed
+          try:
+              from youtube_transcript_api import YouTubeTranscriptApi as Y
+              segs = list(Y().fetch(VIDEO))
+              print(f"TRANSCRIPT_API: OK — {len(segs)} segments")
+              print("first:", str(segs[0])[:120])
+          except Exception as e:
+              print(f"TRANSCRIPT_API: FAILED — {type(e).__name__}: {str(e)[:300]}")
+          PY
+
+      - name: And for comparison, does yt-dlp still get blocked?
+        if: always()
+        run: |
+          pip install -q --upgrade yt-dlp
+          yt-dlp --skip-download --write-auto-sub --sub-lang en \
+                 -o "/tmp/probe.%(ext)s" \
+                 "https://www.youtube.com/watch?v=NzpJTWJfdg4" 2>&1 | tail -5 \
+            && echo "YTDLP: OK" || echo "YTDLP: blocked (expected)"
