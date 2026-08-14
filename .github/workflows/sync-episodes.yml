@@ -25,20 +25,19 @@ name: sync episodes
 
 on:
   schedule:
-    # Four times a day. Episodes drop on Thursdays, and a once-daily run means
-    # one that lands on Thursday evening is not indexed until Friday morning —
-    # up to a day of the site reporting a stale episode count while the video
-    # is public.
+    # Daily at 06:00 UTC. Episodes drop on Thursdays, so a Thursday upload is
+    # indexed by Friday morning at the latest.
     #
     # A run with nothing new to do costs one channel listing, which is NOT
-    # proxied (see fetch_episodes.latest_ids), so extra runs cost no proxy
-    # bandwidth at all. Only an actual fetch spends any, and that happens once
-    # per episode however often we look.
+    # proxied (see fetch_episodes.latest_ids), so a quiet day spends no proxy
+    # bandwidth. Only a real fetch does, and that happens once per episode
+    # however often we look — running more often would not cost anything, it
+    # would just add noise to the Actions tab.
     #
-    # GitHub schedules are best-effort and routinely fire late; observed runs
-    # land 40-100 minutes after the nominal time. Four attempts absorbs that
-    # without anyone caring which one succeeds.
-    - cron: "0 6,12,18,0 * * *"
+    # GitHub's scheduler is best-effort and fires late in practice; observed
+    # runs land 40-100 minutes after the nominal time. That is fine for a
+    # weekly show.
+    - cron: "0 6 * * *"
   workflow_dispatch:
     inputs:
       check:
