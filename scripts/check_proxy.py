@@ -35,6 +35,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[0]))
 # Testing the one that actually failed beats testing one that might not have.
 VIDEO = "NzpJTWJfdg4"
 
+# Imported rather than retyped: a hand-copied channel URL here once reported
+# a listing failure that was only ever a typo in this file.
+from fetch_episodes import CHANNEL  # noqa: E402
+
 
 def _ytdlp() -> str:
     local = Path(__file__).resolve().parents[1] / ".venv" / "bin" / "yt-dlp"
@@ -94,7 +98,7 @@ def main() -> int:
     print("\n  channel listing … ", end="", flush=True)
     listing = subprocess.run(
         [yt, "--flat-playlist", "--print", "%(id)s", "--playlist-end", "3",
-         "--proxy", proxy, "https://www.youtube.com/@MarketBubblePod/videos"],
+         "--proxy", proxy, CHANNEL],
         capture_output=True, text=True, check=False, env=env)
     ids = [x for x in listing.stdout.splitlines() if x.strip()]
     print(f"OK ({len(ids)} videos)" if ids else "FAILED")

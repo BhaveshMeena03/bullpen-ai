@@ -250,9 +250,14 @@ def latest_ids(n: int, cookies_browser: str | None = None) -> list[str]:
     cookie_args = ["--cookies-from-browser", cookies_browser] if cookies_browser else []
     env = {**os.environ, "PATH": f"/opt/homebrew/bin:{os.environ.get('PATH', '')}"}
     out = subprocess.run(
+        # Deliberately NOT proxied. The 14 Aug CI run listed the channel
+        # fine and printed "1 new episode(s): ['NzpJTWJfdg4']" before the
+        # per-video fetch was refused -- so the bot check guards the video,
+        # not the listing. Since the listing runs daily and a fetch only when
+        # an episode appears, proxying it would spend roughly 80% of the
+        # bandwidth on the one call that does not need it.
         [YTDLP, "--flat-playlist", "--print", "%(id)s",
-         "--remote-components", "ejs:github", *cookie_args, *_proxy_args(),
-         CHANNEL],
+         "--remote-components", "ejs:github", *cookie_args, CHANNEL],
         capture_output=True, text=True, check=False, env=env,
     )
     ids = [ln.strip() for ln in out.stdout.splitlines() if ln.strip()][:n]
