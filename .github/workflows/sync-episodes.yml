@@ -63,6 +63,12 @@ jobs:
 
       - name: Sync
         env:
+          # Residential exit IP. Without it YouTube refuses this runner: both
+          # the video page and the captions endpoint answer with the bot
+          # check, measured on 14 Aug 2026. Unset, the sync still runs and
+          # still detects new episodes -- it just cannot fetch them, which is
+          # the notify-only behaviour this workflow had before.
+          YTDLP_PROXY: ${{ secrets.YTDLP_PROXY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
           PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}

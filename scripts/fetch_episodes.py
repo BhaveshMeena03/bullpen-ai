@@ -49,6 +49,16 @@ def _ytdlp() -> str:
 
 
 YTDLP = _ytdlp()
+
+
+def _proxy_args() -> list[str]:
+    """--proxy flags for yt-dlp, or nothing when YTDLP_PROXY is unset.
+
+    Read at call time rather than import time so a test or a shell can set it
+    without reimporting the module.
+    """
+    proxy = os.environ.get("YTDLP_PROXY", "").strip()
+    return ["--proxy", proxy] if proxy else []
 CHANNEL = "https://www.youtube.com/@MarketBubble/videos"
 OUT = ROOT / "data" / "episodes.json"
 
@@ -177,7 +187,16 @@ def fetch(
     # --remote-components pulls yt-dlp's solver; --cookies-from-browser and a
     # JS runtime (deno, on PATH) get past the bot check. See README.
     cookie_args = ["--cookies-from-browser", cookies_browser] if cookies_browser else []
-    common = ["--remote-components", "ejs:github", *cookie_args]
+    # A residential proxy is what makes this work anywhere but a laptop. From a
+    # datacenter IP -- GitHub Actions, Fly, any VPS -- YouTube answers "Sign in
+    # to confirm you're not a bot" for the video page AND the captions
+    # endpoint, both measured. So the scheduled sync could detect a new episode
+    # and never be able to ingest it, which is exactly what happened on 14 Aug.
+    #
+    # Optional on purpose: unset, everything behaves as before, so a local run
+    # needs no configuration and no secret.
+    proxy_args = _proxy_args()
+    common = ["--remote-components", "ejs:github", *cookie_args, *proxy_args]
     env = {**os.environ, "PATH": f"/opt/homebrew/bin:{os.environ.get('PATH', '')}"}
     title = video_id
     for attempt in range(1, attempts + 1):
@@ -232,7 +251,8 @@ def latest_ids(n: int, cookies_browser: str | None = None) -> list[str]:
     env = {**os.environ, "PATH": f"/opt/homebrew/bin:{os.environ.get('PATH', '')}"}
     out = subprocess.run(
         [YTDLP, "--flat-playlist", "--print", "%(id)s",
-         "--remote-components", "ejs:github", *cookie_args, CHANNEL],
+         "--remote-components", "ejs:github", *cookie_args, *_proxy_args(),
+         CHANNEL],
         capture_output=True, text=True, check=False, env=env,
     )
     ids = [ln.strip() for ln in out.stdout.splitlines() if ln.strip()][:n]
