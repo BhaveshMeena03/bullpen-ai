@@ -488,13 +488,19 @@
 
     // Deliberately NOT wrapped in quotation marks. The text is an
     // auto-generated caption, and they are wrong often enough to matter:
-    // this very card, on its first test, rendered a list of streamer names
-    // as "Cupsy Orangey Scented Keiny Septic Nyro Devices". Elsewhere the
-    // captions dropped "name" from "communism by another name" and "with"
-    // from "killing two birds with one stone". Putting quotation marks
-    // around that and attaching a host's name to it publishes a misquote —
-    // the same failure the answer path is checked for, moved onto the user.
-    // So it reads as an excerpt, labelled, next to a link that settles it.
+    // measured against the transcripts, the captions dropped "name" from
+    // "communism by another name" and "with" from "killing two birds with
+    // one stone". Putting quotation marks around that and attaching a
+    // host's name to it publishes a misquote — the same failure the answer
+    // path is checked for, moved onto the user. So it reads as an excerpt,
+    // labelled, beside a link that settles it.
+    //
+    // A caption can also merely LOOK broken. "Cupsy Orangey Scented Keiny
+    // Septic Nyro Devices" reads like garbled speech and was cited here as
+    // the example, wrongly — they are real Fortnite pros, transcribed
+    // correctly, and the answer names them as such. Which cuts the same
+    // way: a card cannot tell a mangled caption from an unfamiliar one, so
+    // it should not present either as a verbatim quote.
     var quote=cleanSnippet(h.text||"").replace(/\s+/g," ").trim();
     x.fillStyle="#e6e8ea"; x.font="500 40px Georgia,serif";
     var lines=wrapText(x,quote,W), max=7, y=230;
