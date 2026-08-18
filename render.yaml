@@ -28,8 +28,13 @@ services:
         value: "12"
       - key: GLOBAL_RATE_LIMIT_RPM
         value: "240"
+      # A spend ceiling, not a safety limit: roughly $0.016 per search, so
+      # this is the most the service can cost in a day. Raised from 3000 the
+      # morning the podcast's hosts started sharing it — being told "closed"
+      # is a worse outcome than the bill on the one day that matters. Lower
+      # it again when the spike passes.
       - key: DAILY_REQUEST_BUDGET
-        value: "3000"
+        value: "6000"
       # No single client may take more than this slice of the budget above.
       # 200 was sized against abuse, when the only question was whether one
       # attacker could drain the budget. The real risk now is a good day: at
