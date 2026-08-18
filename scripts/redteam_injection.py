@@ -49,7 +49,7 @@ os.environ.setdefault("VOYAGE_API_KEY", "unused-for-redteam")
 os.environ.setdefault("PINECONE_API_KEY", "unused-for-redteam")
 
 from app.agent import ConciergeAgent  # noqa: E402
-from app.schemas import ChatTurn, RetrievedChunk, SourceType  # noqa: E402
+from app.schemas import RetrievedChunk, SourceType  # noqa: E402
 
 # Artifacts an attacker wants echoed. Distinctive strings so a match is
 # unambiguous — no real Bullpen copy contains these.

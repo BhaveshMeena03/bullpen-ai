@@ -23,10 +23,8 @@ Then ingest:
       -H 'content-type: application/json' -d @data/episodes.json
 """
 
-import html
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -61,7 +59,7 @@ def _proxy_args() -> list[str]:
     return ["--proxy", proxy] if proxy else []
 # Parsing moved to app/captions.py so the server-side clipper uses the
 # exact same cue handling the index was built from.
-from app.captions import _clean, coalesce, parse_vtt  # noqa: E402
+from app.captions import coalesce, parse_vtt  # noqa: E402
 
 CHANNEL = "https://www.youtube.com/@MarketBubble/videos"
 OUT = ROOT / "data" / "episodes.json"

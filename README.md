@@ -103,6 +103,8 @@ app/                    backend package
   assets.py             token normalization + aggregation (shared logic)
   assets_store.py       per-episode token data in Pinecone
   security.py           per-IP rate limiting + admin-token auth
+  captions.py           WebVTT parsing (shared: ingest + clipper)
+  clipper.py            captioned video clips from search moments
   config.py             pydantic-settings (all secrets via env / .env)
   schemas.py            request/response models
 widget/                 embeddable chat widget (vanilla JS, no build step)
@@ -111,7 +113,9 @@ demo/                   concierge.html · podcast.html · assets.html + mock ser
 scripts/                episodes: fetch/ingest/summarize + weekly sync
                         concierge: fetch_bullpen_docs, ingest_concierge
                         tokens: extract_assets · red-team harness
-tests/                  130 tests (no API keys needed)
+evals/                  live-service evals: coverage, retrieval,
+                        faithfulness (answers audited against sources)
+tests/                  238 tests (no API keys needed)
 data/                   seed + official Bullpen docs + fetched transcripts
 .github/workflows/      CI: ruff + pytest on every push
 Dockerfile              non-root container with healthcheck
@@ -323,7 +327,7 @@ Then ingest `data/episodes.json` via `/v1/podcast/ingest`.
 ## Testing
 
 ```bash
-.venv/bin/python -m pytest tests/            # 130 offline tests, no keys needed
+.venv/bin/python -m pytest tests/            # 238 offline tests, no keys needed
 ANTHROPIC_API_KEY=sk-ant-... .venv/bin/python scripts/redteam.py   # live red-team
 ```
 
@@ -331,6 +335,11 @@ ANTHROPIC_API_KEY=sk-ant-... .venv/bin/python scripts/redteam.py   # live red-te
   contract (no `thinking` param, no sampling params, fallback beta, cache
   breakpoint placement), API layer with stubbed model (SSE framing,
   refusal path, error mapping, CORS, validation), and demo routing.
+- `evals/run_faithfulness.py` — audits LIVE answers against the exact
+  sources they were built from: quoted text must appear in a retrieved
+  window (fragment-wise, so ellipsis and caption repairs don't false-flag),
+  cited timestamps must be near a returned moment, and a judge shown both
+  sides checks every specific claim. Writes `evals/FAITHFULNESS_REPORT.md`.
 - `scripts/redteam.py` — ~25 adversarial probes against the LIVE model
   through the production code path: financial-advice traps, seed-phrase
   phishing, jailbreaks, prompt injection planted in retrieved documents,
