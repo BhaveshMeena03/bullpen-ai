@@ -79,15 +79,13 @@
   .hit-wrap{margin-bottom:10px}
   /* The actions sit OUTSIDE the anchor. A button nested inside a link is
      invalid, and every click on it would navigate to YouTube instead. */
-  .hit-actions{display:flex;gap:8px;padding:6px 4px 0}
+  /* Always visible. These were revealed on hover, to keep the result list
+     clean — which hid them from everyone who was not already looking for
+     them. The person who asked for the feature could not find it on the
+     live page. A control nobody knows about is the same as one that was
+     never built, and tidiness is not worth that. */
+  .hit-actions{display:flex;gap:8px;padding:8px 4px 0}
   .hit-actions .share{font-size:11px;padding:3px 10px}
-  /* Revealed on hover on a mouse, always visible on touch — where there is
-     no hover, a hidden control is simply a missing one. */
-  @media (hover:hover){
-    .hit-actions{opacity:0;transition:opacity .15s}
-    .hit-wrap:hover .hit-actions,
-    .hit-wrap:focus-within .hit-actions{opacity:1}
-  }
   .hit-top{display:flex;align-items:center;gap:10px;margin-bottom:6px;
     flex-wrap:wrap}
   .play{color:var(--green);font-weight:700;font-size:13px;white-space:nowrap}
