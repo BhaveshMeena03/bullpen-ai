@@ -41,7 +41,10 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-SIZE = 720
+# The canvas is a parameter, not a constant. A clip made on a laptop should
+# be the best the source allows; one made on a small server has to be the
+# cheapest thing that still looks right on a phone. Same code, one number.
+DEFAULT_SIZE = 720          # server default: half the bytes of 1080
 BG = "#0b0e11"
 GREEN = "#16c784"
 CAPTION_WORDS = 5
@@ -89,21 +92,26 @@ def _font(candidates: list[str], size: int):
     return ImageFont.load_default()
 
 
-def _encoder() -> list[str]:
+def _encoder(size: int = DEFAULT_SIZE) -> list[str]:
     """Hardware encode on a Mac, x264 on the server.
 
     Checked once against the actual binary rather than assumed from the
     platform: the ffmpeg in the container is a different build from the
     one on a laptop, and guessing wrong fails at render time.
+
+    Bitrate scales with the canvas. 2500k is right for 720 and visibly
+    soft at 1080, and the only reason to hold 1080 down would be an egress
+    bill that a local run does not have.
     """
+    rate = f"{int(2500 * (size / DEFAULT_SIZE) ** 2)}k"
     try:
         out = subprocess.run(["ffmpeg", "-hide_banner", "-encoders"],
                              capture_output=True, text=True, timeout=10).stdout
     except Exception:  # noqa: BLE001
         out = ""
     if "h264_videotoolbox" in out:
-        return ["-c:v", "h264_videotoolbox", "-b:v", "2500k"]
-    return ["-c:v", "libx264", "-preset", "veryfast", "-b:v", "1200k",
+        return ["-c:v", "h264_videotoolbox", "-b:v", rate]
+    return ["-c:v", "libx264", "-preset", "veryfast", "-b:v", rate,
             "-pix_fmt", "yuv420p"]
 
 
@@ -178,47 +186,65 @@ def _outlined(draw, xy, text, font, fill, outline=3):
     draw.text((x, y), text, font=font, fill=fill)
 
 
-def make_backdrop(title: str, stamp: str, path: Path) -> None:
+def make_backdrop(title: str, stamp: str, path: Path,
+                  size: int = DEFAULT_SIZE) -> None:
     from PIL import Image, ImageDraw
 
-    img = Image.new("RGB", (SIZE, SIZE), BG)
+    k = size / DEFAULT_SIZE          # type scales with the canvas
+    img = Image.new("RGB", (size, size), BG)
     draw = ImageDraw.Draw(img)
-    draw.rectangle([0, 0, SIZE, 7], fill=GREEN)
+    draw.rectangle([0, 0, size, int(7 * k)], fill=GREEN)
 
-    font = _font(FONT_CANDIDATES_BOLD, 27)
-    y = 34
-    for line in _wrap(draw, title, font, SIZE - 90)[:2]:
+    font = _font(FONT_CANDIDATES_BOLD, int(27 * k))
+    y = 34 * k
+    for line in _wrap(draw, title, font, size - 90 * k)[:2]:
         w = draw.textlength(line, font=font)
-        draw.text(((SIZE - w) / 2, y), line, font=font, fill="#e6e8ea")
-        y += 34
+        draw.text(((size - w) / 2, y), line, font=font, fill="#e6e8ea")
+        y += 34 * k
 
-    foot_font = _font(FONT_CANDIDATES_REGULAR, 18)
+    foot_font = _font(FONT_CANDIDATES_REGULAR, int(18 * k))
     foot = f"{stamp}   ·   search.lexthedev.com"
     w = draw.textlength(foot, font=foot_font)
-    draw.text(((SIZE - w) / 2, SIZE - 44), foot, font=foot_font, fill=GREEN)
+    draw.text(((size - w) / 2, size - 44 * k), foot, font=foot_font, fill=GREEN)
     img.save(path)
 
 
-def make_caption(text: str, path: Path) -> None:
+def make_caption(text: str, path: Path, size: int = DEFAULT_SIZE) -> None:
     from PIL import Image, ImageDraw
 
-    img = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+    k = size / DEFAULT_SIZE
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    font = _font(FONT_CANDIDATES_BOLD, 35)
-    lines = _wrap(draw, text, font, SIZE - 100)[:3]
-    y = SIZE - 168 - (len(lines) - 1) * 40
+    font = _font(FONT_CANDIDATES_BOLD, int(35 * k))
+    lines = _wrap(draw, text, font, size - 100 * k)[:3]
+    y = size - 168 * k - (len(lines) - 1) * 40 * k
     for line in lines:
         w = draw.textlength(line, font=font)
-        _outlined(draw, ((SIZE - w) / 2, y), line, font, "white")
-        y += 40
+        _outlined(draw, ((size - w) / 2, y), line, font, "white",
+                  outline=max(2, int(3 * k)))
+        y += 40 * k
     img.save(path)
 
 
 # ─── the work ─────────────────────────────────────────────────────────────
 
+def _ytdlp_binary() -> str:
+    """Prefer the venv's yt-dlp over whatever is on PATH.
+
+    In the container they are the same thing. Run from a script under a
+    different interpreter they are not, and a bare "yt-dlp" raises
+    FileNotFoundError — which is how moving this function out of the
+    script and into the shared module broke the script.
+    """
+    local = Path(__file__).resolve().parent.parent / ".venv" / "bin" / "yt-dlp"
+    if local.exists():
+        return str(local)
+    return shutil.which("yt-dlp") or "yt-dlp"
+
+
 def fetch_section(url: str, start: float, end: float, dest: Path,
                   proxy: str | None = None) -> None:
-    cmd = ["yt-dlp", "--quiet", "--no-warnings",
+    cmd = [_ytdlp_binary(), "--quiet", "--no-warnings",
            "--download-sections", f"*{start:.2f}-{end:.2f}",
            "--force-keyframes-at-cuts",
            "-f", "bv*[height<=720]+ba/b[height<=720]/b",
@@ -233,15 +259,15 @@ def fetch_section(url: str, start: float, end: float, dest: Path,
         raise RuntimeError(f"could not fetch that section: {tail[:180]}")
 
 
-def render(source: Path, captions, backdrop: Path,
-           workdir: Path, out: Path) -> None:
+def render(source: Path, captions, backdrop: Path, workdir: Path,
+           out: Path, size: int = DEFAULT_SIZE) -> None:
     inputs = ["-i", str(source), "-loop", "1", "-i", str(backdrop)]
-    steps = [f"[0:v]scale={SIZE}:-2[vid]",
+    steps = [f"[0:v]scale={size}:-2[vid]",
              "[1:v][vid]overlay=(W-w)/2:(H-h)/2:shortest=1[base]"]
     label = "base"
     for i, (start, end, text) in enumerate(captions):
         png = workdir / f"cap{i:04d}.png"
-        make_caption(text, png)
+        make_caption(text, png, size)
         inputs += ["-i", str(png)]
         nxt = f"c{i}"
         steps.append(f"[{label}][{i + 2}:v]overlay=0:0:"
@@ -250,7 +276,7 @@ def render(source: Path, captions, backdrop: Path,
 
     result = subprocess.run(
         ["ffmpeg", "-y", *inputs, "-filter_complex", ";".join(steps),
-         "-map", f"[{label}]", "-map", "0:a?", *_encoder(),
+         "-map", f"[{label}]", "-map", "0:a?", *_encoder(size),
          "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
          "-shortest", str(out)],
         capture_output=True, text=True, timeout=300)
