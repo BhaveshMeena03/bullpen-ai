@@ -74,8 +74,20 @@
     color:var(--muted);margin:0 0 12px}
   .hit{display:block;text-decoration:none;color:inherit;background:var(--panel);
     border:1px solid var(--line);border-radius:12px;padding:14px 16px;
-    margin-bottom:10px;transition:border-color .15s}
+    transition:border-color .15s}
   .hit:hover{border-color:var(--green)}
+  .hit-wrap{margin-bottom:10px}
+  /* The actions sit OUTSIDE the anchor. A button nested inside a link is
+     invalid, and every click on it would navigate to YouTube instead. */
+  .hit-actions{display:flex;gap:8px;padding:6px 4px 0}
+  .hit-actions .share{font-size:11px;padding:3px 10px}
+  /* Revealed on hover on a mouse, always visible on touch — where there is
+     no hover, a hidden control is simply a missing one. */
+  @media (hover:hover){
+    .hit-actions{opacity:0;transition:opacity .15s}
+    .hit-wrap:hover .hit-actions,
+    .hit-wrap:focus-within .hit-actions{opacity:1}
+  }
   .hit-top{display:flex;align-items:center;gap:10px;margin-bottom:6px;
     flex-wrap:wrap}
   .play{color:var(--green);font-weight:700;font-size:13px;white-space:nowrap}
@@ -353,14 +365,19 @@
     lastHits=list||[];  // for the shareable card's top-timestamp line
     if(list && list.length){
       var html='<h3>Jump to the moment</h3>';
-      list.forEach(function(h){
-        html+='<a class="hit" href="'+escAttr(safeUrl(h.deep_link))+'" target="_blank" rel="noopener">'
+      list.forEach(function(h,i){
+        html+='<div class="hit-wrap">'
+          +'<a class="hit" href="'+escAttr(safeUrl(h.deep_link))+'" target="_blank" rel="noopener">'
           +'<div class="hit-top"><span class="play">▶ '+esc(h.timestamp)+'</span>'
           +'<span class="ep">'+esc(h.title)+'</span>'
           +(h.published_at?'<span class="aired" title="'+escAttr(h.published_at)+'">'
               +esc(airedLabel(h.published_at))+'</span>':'')
           +'<span class="watch">watch on YouTube →</span></div>'
-          +'<div class="quote">'+esc(cleanSnippet(h.text))+'</div></a>';
+          +'<div class="quote">'+esc(cleanSnippet(h.text))+'</div></a>'
+          +'<div class="hit-actions">'
+          +'<button class="share" data-act="x" data-i="'+i+'">post on X</button>'
+          +'<button class="share" data-act="img" data-i="'+i+'">save clip</button>'
+          +'</div></div>';
       });
       hits.innerHTML=html;
     } else {
@@ -369,6 +386,20 @@
   }
 
   var lastQuery="", lastHits=[];
+
+  // Delegated once on the container, because renderHits replaces its
+  // innerHTML on every search and per-button listeners would be rebound
+  // (and leak) each time.
+  hits.addEventListener("click",function(ev){
+    var btn=ev.target.closest ? ev.target.closest("button[data-act]") : null;
+    if(!btn) return;
+    var h=lastHits[parseInt(btn.getAttribute("data-i"),10)];
+    if(!h) return;
+    if(btn.getAttribute("data-act")==="x"){ postMoment(h); return; }
+    momentCard(h);
+    var was=btn.textContent; btn.textContent="saved ✓";
+    setTimeout(function(){ btn.textContent=was; },2000);
+  });
 
   // Render the current answer into a branded 1080x1080 PNG the user can
   // download and attach to a tweet. Pure client-side canvas — no backend,
@@ -383,17 +414,45 @@
     if(line) lines.push(line);
     return lines;
   }
-  function downloadCard(){
-    var C=document.createElement("canvas"); C.width=1080; C.height=1080;
-    var x=C.getContext("2d"), PAD=72, W=C.width-PAD*2;
+  // Where the page is actually being served from. Hard-coding this was a
+  // slow leak: the footer still read "marketbubble-search.onrender.com"
+  // long after the move to search.lexthedev.com, so every image anyone
+  // saved and posted advertised a domain that no longer answers. A shared
+  // card is the one artefact that outlives a redirect.
+  var SITE=location.host;
+
+  // Background, top rule and wordmark — identical on both cards, so they
+  // read as one product rather than two things that happen to be green.
+  function cardChrome(x,C){
+    var PAD=72;
     x.fillStyle="#0b0e11"; x.fillRect(0,0,C.width,C.height);
     x.fillStyle="#16c784"; x.fillRect(0,0,C.width,10);
-    // brand
     x.font="700 30px -apple-system,Segoe UI,Roboto,sans-serif";
     x.fillStyle="#e6e8ea"; x.fillText("MARKET ",PAD,110);
     var mw=x.measureText("MARKET ").width;
     x.fillStyle="#16c784"; x.fillText("BUBBLE",PAD+mw,110);
-    x.fillStyle="#8a939e"; x.fillText(" · search",PAD+mw+x.measureText("BUBBLE").width,110);
+    x.fillStyle="#8a939e";
+    x.fillText(" · search",PAD+mw+x.measureText("BUBBLE").width,110);
+  }
+
+  function cardFooter(x,C,text){
+    x.fillStyle="#8a939e"; x.font="400 26px -apple-system,Segoe UI,Roboto,sans-serif";
+    x.fillText(text,72,C.height-72);
+  }
+
+  function saveCanvas(C,name){
+    C.toBlob(function(blob){
+      var a=document.createElement("a");
+      a.href=URL.createObjectURL(blob);
+      a.download=name; a.click();
+      setTimeout(function(){ URL.revokeObjectURL(a.href); },5000);
+    },"image/png");
+  }
+
+  function downloadCard(){
+    var C=document.createElement("canvas"); C.width=1080; C.height=1080;
+    var x=C.getContext("2d"), PAD=72, W=C.width-PAD*2;
+    cardChrome(x,C);
     // question
     var y=200;
     x.fillStyle="#16c784"; x.font="700 46px -apple-system,Segoe UI,Roboto,sans-serif";
@@ -414,16 +473,68 @@
       var h=lastHits[0];
       x.fillText("▶ "+h.timestamp+"  "+(h.title||"").slice(0,42),PAD,y);
     }
-    // footer
-    x.fillStyle="#8a939e"; x.font="400 26px -apple-system,Segoe UI,Roboto,sans-serif";
-    x.fillText("marketbubble-search.onrender.com — ask anything, jump to the moment",
-               PAD,C.height-PAD);
-    C.toBlob(function(blob){
-      var a=document.createElement("a");
-      a.href=URL.createObjectURL(blob);
-      a.download="market-bubble-answer.png"; a.click();
-      setTimeout(function(){ URL.revokeObjectURL(a.href); },5000);
-    },"image/png");
+    cardFooter(x,C,SITE+" — ask anything, jump to the moment");
+    saveCanvas(C,"market-bubble-answer.png");
+  }
+
+  // ── One moment, shared on its own ──────────────────────────────────────
+  // The answer card shares what the tool said. This shares what a HOST
+  // said, which is the thing anyone actually wants to post. 1200x675 rather
+  // than square because it goes out as a link-preview-sized image on X.
+  function momentCard(h){
+    var C=document.createElement("canvas"); C.width=1200; C.height=675;
+    var x=C.getContext("2d"), PAD=72, W=C.width-PAD*2;
+    cardChrome(x,C);
+
+    // Deliberately NOT wrapped in quotation marks. The text is an
+    // auto-generated caption, and they are wrong often enough to matter:
+    // this very card, on its first test, rendered a list of streamer names
+    // as "Cupsy Orangey Scented Keiny Septic Nyro Devices". Elsewhere the
+    // captions dropped "name" from "communism by another name" and "with"
+    // from "killing two birds with one stone". Putting quotation marks
+    // around that and attaching a host's name to it publishes a misquote —
+    // the same failure the answer path is checked for, moved onto the user.
+    // So it reads as an excerpt, labelled, next to a link that settles it.
+    var quote=cleanSnippet(h.text||"").replace(/\s+/g," ").trim();
+    x.fillStyle="#e6e8ea"; x.font="500 40px Georgia,serif";
+    var lines=wrapText(x,quote,W), max=7, y=230;
+    lines.slice(0,max).forEach(function(l,i){
+      if(i===max-1 && lines.length>max) l=l.replace(/\s\S*$/,"")+" …";
+      x.fillText(l,PAD,y); y+=54;
+    });
+    y+=6;
+    x.fillStyle="#8a939e"; x.font="400 22px -apple-system,Segoe UI,Roboto,sans-serif";
+    x.fillText("auto-generated caption — play the timestamp to hear it",PAD,y);
+    y+=20;
+
+    // Attribution: episode and the exact second, which is what makes the
+    // card checkable rather than just a nice-looking claim.
+    y=Math.max(y+24,C.height-170);
+    x.fillStyle="#16c784"; x.font="600 30px -apple-system,Segoe UI,Roboto,sans-serif";
+    x.fillText("▶ "+(h.timestamp||""),PAD,y);
+    var tw=x.measureText("▶ "+(h.timestamp||"")).width;
+    x.fillStyle="#c7ccd2"; x.font="400 28px -apple-system,Segoe UI,Roboto,sans-serif";
+    var ep=(h.title||""), aired=airedLabel(h.published_at);
+    x.fillText(wrapText(x,ep,W-tw-30)[0]+(aired?"  ·  "+aired:""),PAD+tw+30,y);
+
+    cardFooter(x,C,SITE+" — search every episode by meaning");
+    saveCanvas(C,"market-bubble-"+(h.timestamp||"moment").replace(/:/g,"-")+".png");
+  }
+
+  // Posting the YouTube deep link rather than our own URL is deliberate:
+  // it unfurls as a player that starts at the quoted second, so the post is
+  // self-verifying, and the traffic goes to the podcast. A tool that sends
+  // people to the show is easier for the show to welcome.
+  function postMoment(h){
+    var quote=cleanSnippet(h.text||"").replace(/\s+/g," ").trim();
+    if(quote.length>170) quote=quote.slice(0,167).replace(/\s\S*$/,"")+"…";
+    // No quotation marks, same reason as the card: this is a caption, not a
+    // transcript anyone checked. "From" attributes the moment without
+    // claiming the wording is exact.
+    var text=quote+"\n\nFrom "+(h.title||"Market Bubble")+" · "+(h.timestamp||"");
+    window.open("https://x.com/intent/post?text="+encodeURIComponent(text)
+      +"&url="+encodeURIComponent(safeUrl(h.deep_link)),
+      "_blank","noopener");
   }
 
   function addShareButton(){

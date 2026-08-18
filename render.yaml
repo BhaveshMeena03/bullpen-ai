@@ -31,5 +31,11 @@ services:
       - key: DAILY_REQUEST_BUDGET
         value: "3000"
       # No single client may take more than this slice of the budget above.
+      # 200 was sized against abuse, when the only question was whether one
+      # attacker could drain the budget. The real risk now is a good day: at
+      # 200 apiece, fifteen enthusiastic people exhaust the whole 3000 and
+      # everyone after them is told the service is closed. 60 still allows a
+      # thorough evaluation — more than anyone reaches by browsing — while
+      # letting the same budget reach fifty times as many people.
       - key: PER_CLIENT_DAILY_BUDGET
-        value: "200"
+        value: "60"
