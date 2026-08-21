@@ -29,11 +29,19 @@ import sys
 import tempfile
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[0]))
+# Both directories, and it needs both. The repo root is for app.captions,
+# which fetch_episodes started importing when the VTT parser moved there;
+# scripts/ is for the sibling import below. Adding only scripts/ was enough
+# until that move, and then this file broke with "No module named 'app'" --
+# invisibly, because nothing runs it except a person checking a proxy.
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "scripts"))
 
-# Market Bubble #15 -- the video the 14 Aug workflow run was blocked on.
-# Testing the one that actually failed beats testing one that might not have.
-VIDEO = "NzpJTWJfdg4"
+# Market Bubble #16 -- the video the 21 Aug run was blocked on, three times,
+# while the identical command succeeded from a laptop seconds later. Testing
+# the one that actually failed beats testing one that might not have.
+VIDEO = "2uOI23N1yXY"
 
 # Imported rather than retyped: a hand-copied channel URL here once reported
 # a listing failure that was only ever a typo in this file.
