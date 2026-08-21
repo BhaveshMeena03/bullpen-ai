@@ -25,18 +25,28 @@ name: sync episodes
 
 on:
   schedule:
-    # Daily at 06:00 UTC. Episodes drop on Thursdays, so a Thursday upload is
-    # indexed by Friday morning at the latest.
+    # Twice daily, and the afternoon slot is the one that matters.
+    #
+    # This used to run only at 06:00 UTC, on the assumption that episodes
+    # drop on Thursdays. They do not: 19 of the 23 indexed episodes went up
+    # on a Friday, and the last eight in a row did. Episode #16 landed at
+    # roughly 13:00 UTC on a Friday, six hours after that morning run had
+    # already reported "no new episodes", so it sat unindexed until the
+    # following day. The job was working perfectly and scheduled to miss.
+    #
+    # 14:00 UTC fires after the usual drop. GitHub's scheduler is best-effort
+    # and lands 40-100 minutes late in practice, which here is a feature: it
+    # pushes the real execution to roughly 14:40-15:40 UTC and buys margin
+    # for an episode that goes up late.
+    #
+    # The 06:00 run stays as a safety net. It catches anything published off
+    # the usual schedule and retries a failed afternoon run.
     #
     # A run with nothing new to do costs one channel listing, which is NOT
-    # proxied (see fetch_episodes.latest_ids), so a quiet day spends no proxy
+    # proxied (see fetch_episodes.latest_ids), so a quiet run spends no proxy
     # bandwidth. Only a real fetch does, and that happens once per episode
-    # however often we look — running more often would not cost anything, it
-    # would just add noise to the Actions tab.
-    #
-    # GitHub's scheduler is best-effort and fires late in practice; observed
-    # runs land 40-100 minutes after the nominal time. That is fine for a
-    # weekly show.
+    # however often we look.
+    - cron: "0 14 * * *"
     - cron: "0 6 * * *"
   workflow_dispatch:
     inputs:
