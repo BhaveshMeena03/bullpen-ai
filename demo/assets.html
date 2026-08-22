@@ -8,6 +8,7 @@
 <meta property="og:title" content="Every token analyzed on Market Bubble">
 <meta property="og:description" content="Ranked by real analysis, not name-drops. Jump to the exact moment.">
 <meta property="og:type" content="website">
+<link rel="stylesheet" href="/demo/ui.css">
 <style>
   :root{
     --bg:#0b0e11;--panel:#12161c;--line:#232a33;--text:#e6e8ea;
@@ -22,16 +23,8 @@
     gap:14px;margin-bottom:18px;flex-wrap:wrap}
   .brand{font-weight:700;letter-spacing:.5px;font-size:14px}
   .brand span{color:var(--green)}
-  .navbtn{display:inline-flex;align-items:center;gap:8px;background:#16c78418;
-    border:1px solid #16c78466;color:var(--green);border-radius:10px;
-    padding:10px 18px;font-size:15px;font-weight:700;text-decoration:none;
-    white-space:nowrap;transition:background .15s,border-color .15s}
-  .navbtn:hover{background:#16c78430;border-color:var(--green)}
-  .navbtn .arrow{transition:transform .15s}
-  .navbtn:hover .arrow{transform:translateX(-3px)}
   @media(max-width:560px){
     .topbar{flex-direction:column;align-items:flex-start;gap:10px}
-    .navbtn{width:100%;justify-content:center}
   }
   h1{font-size:30px;line-height:1.2;margin-bottom:8px}
   h1 em{color:var(--green);font-style:normal}
@@ -75,6 +68,26 @@
 
   .moments{display:none;border-top:1px solid var(--line);padding:6px 16px 12px}
   .row.open .moments{display:block}
+
+  /* Live market strip — only rendered when a ticker resolves to a verified
+     mint, so its absence is silent rather than an error state. */
+  .mk{display:none}
+  .row.open .mk{display:block}
+  .mkbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+    padding:11px 16px;border-top:1px solid var(--line);background:#0e1319}
+  .mkpx{font-weight:700;font-size:15px}
+  .mkch{font-size:13px;font-weight:600}
+  .mkch.up{color:var(--green)}
+  .mkch.down{color:#e5605e}
+  .mkliq{font-size:12px;color:var(--muted)}
+  .mkoff{font-size:12px;color:var(--muted);border:1px dashed var(--line);
+    border-radius:8px;padding:4px 10px}
+  .mkgo{display:inline-flex;align-items:center;gap:6px;background:#16c78418;
+    border:1px solid #16c78466;color:var(--green);border-radius:8px;
+    padding:5px 11px;font-size:12px;font-weight:600;text-decoration:none}
+  .mkgo:hover{background:#16c78428}
+  .mknfa{font-size:11px;color:var(--muted);margin-left:auto}
+  @media(max-width:560px){ .mknfa{margin-left:0;width:100%} }
   .mo{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid #1b212a;
     align-items:flex-start}
   .mo:last-child{border-bottom:none}
@@ -105,9 +118,8 @@
   <div class="topbar">
     <div class="brand">MARKET <span>BUBBLE</span> · tokens</div>
     <span style="display:inline-flex;gap:10px;flex-wrap:wrap">
-    <a class="navbtn" href="/demo/podcast.html"><span class="arrow">←</span>
-      🔍 Search every episode</a>
-    <a class="navbtn" href="/demo/concierge.html">🐂 Bullpen Concierge</a>
+    <a class="btn btn-primary btn-back" href="/demo/podcast.html"><span class="arw">←</span><svg class="ico" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="4.75" stroke="currentColor" stroke-width="1.7"/><path d="M10.6 10.6 14 14" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><path d="M6 5.3l3 1.7-3 1.7z" fill="currentColor"/></svg>Search every episode</a>
+    <a class="btn btn-ghost" href="/demo/concierge.html"><svg class="ico" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M14 7.4c0 2.9-2.7 5.3-6 5.3-.7 0-1.4-.1-2-.3L2.5 13.5l.9-2.5A5 5 0 0 1 2 7.4C2 4.5 4.7 2.1 8 2.1s6 2.4 6 5.3Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>Bullpen Concierge</a>
     </span>
   </div>
 
@@ -219,6 +231,7 @@ function render(){
         '<span class="num"><b>' + esc(a.analysis) + '</b> analysis</span>' +
         '<span class="num">' + esc(a.mentions) + ' refs</span>' +
       '</div>' +
+      '<div class="mk" data-sym="' + esc(a.symbol) + '"></div>' +
       '<div class="moments">' + moments(a.moments) + '</div>' +
     '</div>';
   }).join("");
@@ -228,6 +241,7 @@ function render(){
       row.classList.toggle("open");
       row.querySelector(".caret").textContent =
         row.classList.contains("open") ? "▾" : "▸";
+      if(row.classList.contains("open")) loadMarket(row);
     });
   });
 }
@@ -269,6 +283,68 @@ document.getElementById("tail").addEventListener("click", function(){
   this.classList.toggle("on", SHOW_TAIL);
   render();
 });
+
+/* Live market data is fetched per row, on first expand — 201 lookups on page
+   load would hammer the upstream and stall the page for data most visitors
+   never scroll to. Absent market data is a normal state, not an error: a
+   ticker only resolves when it maps to a verified mint with real liquidity. */
+function loadMarket(row){
+  var box = row.querySelector(".mk");
+  if(!box || box.dataset.loaded) return;
+  box.dataset.loaded = "1";
+  var sym = box.getAttribute("data-sym") || "";
+  fetch(API + "/v1/assets/" + encodeURIComponent(sym))
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){ box.innerHTML = marketHtml(d && d.market); })
+    .catch(function(){ box.innerHTML = ""; });
+}
+
+function money(n){
+  if(typeof n !== "number" || !isFinite(n)) return "";
+  if(n >= 1e9) return "$" + (n/1e9).toFixed(2) + "B";
+  if(n >= 1e6) return "$" + (n/1e6).toFixed(1) + "M";
+  if(n >= 1e3) return "$" + Math.round(n/1e3) + "K";
+  return "$" + n.toFixed(2);
+}
+
+/* Crypto prices span nine orders of magnitude here — $77,267 and $0.00000317
+   in the same column. Group the thousands, and give sub-dollar prices enough
+   significant figures to actually distinguish them. */
+function price(n){
+  if(typeof n !== "number" || !isFinite(n)) return "";
+  if(n >= 1) return "$" + n.toLocaleString("en-US",
+    {minimumFractionDigits:2, maximumFractionDigits:2});
+  if(n >= 0.01) return "$" + n.toFixed(4);
+  return "$" + n.toPrecision(3);
+}
+
+/* Price and tradeability are separate answers, and the strip says so.
+   Everything we can price gets a price. Only an asset that resolved to a
+   verified Solana mint gets a button — the rest say plainly that they are
+   priced but not tradeable here, rather than leaving a silent gap the
+   reader has to interpret. */
+function marketHtml(m){
+  if(!m || typeof m.price_usd !== "number") return "";
+  var ch = typeof m.change_24h_pct === "number" ? m.change_24h_pct : null;
+  var chCls = ch === null ? "" : (ch >= 0 ? "up" : "down");
+  var chTxt = ch === null ? "" : (ch >= 0 ? "+" : "") + ch.toFixed(1) + "%";
+  var t = m.trade;
+  var url = t ? safeUrl(t.swap_url) : "";
+
+  return '<div class="mkbar">' +
+    '<span class="mkpx">' + esc(price(m.price_usd)) + '</span>' +
+    (chTxt ? '<span class="mkch ' + chCls + '">' + esc(chTxt) + '</span>' : '') +
+    (t && typeof t.liquidity_usd === "number"
+      ? '<span class="mkliq">' + esc(money(t.liquidity_usd)) + ' liquidity</span>'
+      : '') +
+    (url
+      ? '<a class="mkgo" href="' + esc(url) + '" target="_blank" ' +
+        'rel="noopener noreferrer nofollow">Trade on Jupiter \u2197</a>'
+      : '<span class="mkoff">Price only \u00b7 not tradeable on Solana</span>') +
+    '<span class="mknfa">Live price' +
+      (m.source ? ' via ' + esc(m.source) : '') + '. Not advice.</span>' +
+  '</div>';
+}
 
 fetch(API + "/v1/assets")
   .then(function(r){ return r.json(); })

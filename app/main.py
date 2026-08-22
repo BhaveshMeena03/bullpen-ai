@@ -22,6 +22,7 @@ from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from voyageai import error as voyage_error
 
+from . import market
 from .agent import REFUSAL_MESSAGE, ConciergeAgent
 from .assets import aggregate as aggregate_assets
 from .assets_store import AssetStore
@@ -59,6 +60,8 @@ STATS: dict = {
     "podcast_searches": 0,
     "concierge_chats": 0,
     "episode_summary_views": 0,
+    "asset_dashboard_views": 0,
+    "asset_detail_views": 0,
     "unanswered_chats": 0,
     "refusals": 0,
 }
@@ -133,6 +136,10 @@ async def lifespan(app: FastAPI):
     app.state.podcast = PodcastIndex()
     app.state.summaries = SummaryStore()
     app.state.assets = AssetStore()
+    # Bounded per-ticker cache for live market lookups, and the CoinGecko
+    # symbol table. Both fill lazily — startup must not wait on a third party.
+    app.state._market_cache = {}
+    app.state._cg_table = None
     yield
 
 
@@ -495,16 +502,8 @@ async def podcast_ingest(
     return {"windows_indexed": count}
 
 
-@app.get("/v1/assets", dependencies=[Depends(public_rate_limit)])
-async def assets(request: Request) -> dict:
-    """Assets discussed across the episodes.
-
-    Reads the per-episode hits stored in Pinecone by the weekly sync and
-    aggregates them here, so a new episode shows up without a redeploy.
-    Falls back to the committed data/assets.json when nothing is stored yet
-    (fresh install, or the store hasn't been populated).
-    """
-    _track("asset_dashboard_views")
+async def _assets_report(request: Request) -> dict:
+    """The aggregated asset report, cached. Shared by the list and detail views."""
     store = request.app.state.assets
 
     # Short TTL cache: aggregation is pure CPU but the Pinecone fetch isn't.
@@ -530,6 +529,103 @@ async def assets(request: Request) -> dict:
 
     app.state._assets_cache = (now, report)
     return report
+
+
+@app.get("/v1/assets", dependencies=[Depends(public_rate_limit)])
+async def assets(request: Request) -> dict:
+    """Assets discussed across the episodes.
+
+    Reads the per-episode hits stored in Pinecone by the weekly sync and
+    aggregates them here, so a new episode shows up without a redeploy.
+    Falls back to the committed data/assets.json when nothing is stored yet
+    (fresh install, or the store hasn't been populated).
+    """
+    _track("asset_dashboard_views")
+    return await _assets_report(request)
+
+
+@app.get("/v1/assets/{symbol}", dependencies=[Depends(public_rate_limit)])
+async def asset_detail(symbol: str, request: Request) -> dict:
+    """One asset: what the hosts said about it, plus live Solana market data.
+
+    This is the surface an agent calls to answer "what has Market Bubble said
+    about $X?". It reports and cites; it never advises, and the market block
+    is present only when the ticker resolves to a Jupiter-verified mint with
+    real liquidity. An unresolved ticker yields `market: null`, never a guess.
+    """
+    ticker = market.clean_symbol(symbol)
+    if ticker is None:
+        raise HTTPException(status_code=404, detail="Unknown asset.")
+
+    report = await _assets_report(request)
+    row = next((a for a in report.get("assets", [])
+                if str(a.get("symbol", "")).upper() == ticker), None)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Unknown asset.")
+
+    _track("asset_detail_views")
+    return {
+        "symbol": row.get("symbol"),
+        "name": row.get("name"),
+        "asset_class": row.get("asset_class"),
+        "mentions": row.get("mentions"),
+        "analysis": row.get("analysis"),
+        "moments": row.get("moments", []),
+        "market": await _market_for(ticker, row.get("asset_class")),
+        "disclaimer": "What was said on the podcast, with timestamps. "
+                      "Not advice, not a recommendation, not a price forecast.",
+    }
+
+
+# Symbols CoinGecko cannot price and Jupiter will never list. Skipping them
+# saves two upstream round trips per row that can only ever return nothing.
+_UNPRICEABLE_CLASSES = {"stock", "index", "commodity", "other"}
+
+_CG_TTL_SECONDS = 600
+_MARKET_TTL_SECONDS = 60
+
+
+async def _coingecko_table() -> dict:
+    """The symbol table, refreshed on a TTL. Stale beats empty; never raises."""
+    now = asyncio.get_event_loop().time()
+    cached = getattr(app.state, "_cg_table", None)
+    if cached and now - cached[0] < _CG_TTL_SECONDS:
+        return cached[1]
+    try:
+        table = await market.fetch_coingecko_table()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("coingecko table refresh failed: %s", exc)
+        return cached[1] if cached else {}
+    if not table and cached:
+        return cached[1]                 # a failed refresh must not erase data
+    app.state._cg_table = (now, table)
+    return table
+
+
+async def _market_for(ticker: str, asset_class: str | None) -> dict | None:
+    """Price, and a trade route only where one is earned. Never raises.
+
+    Market data is decoration; the citations are the product. A third party
+    being down, slow or wrong must never take out the page that quotes the
+    podcast, so every failure path here resolves to None.
+    """
+    if asset_class in _UNPRICEABLE_CLASSES:
+        return None
+    cache: dict = app.state._market_cache
+    now = asyncio.get_event_loop().time()
+    hit = cache.get(ticker)
+    if hit and now - hit[0] < _MARKET_TTL_SECONDS:
+        return hit[1]
+    try:
+        table = await _coingecko_table()
+        data = await market.quote(ticker, coingecko_table=table)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("market lookup failed for %s: %s", ticker, exc)
+        data = None
+    if len(cache) >= 256:                # bounded: the ticker space is not
+        cache.clear()
+    cache[ticker] = (now, data)
+    return data
 
 
 @app.get("/v1/podcast/episodes", dependencies=[Depends(public_rate_limit)])
