@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from anthropic import AsyncAnthropic  # noqa: E402
 
+from app.announce import announce  # noqa: E402
 from app.assets_store import AssetStore  # noqa: E402
 from app.config import get_settings  # noqa: E402
 from app.podcast import PodcastIndex  # noqa: E402
@@ -169,6 +170,9 @@ async def main(argv: list[str]) -> int:
 
     log(f"{len(new_ids)} new episode(s): {new_ids}")
     added = 0
+    # Counts posts, not episodes, and is passed into announce() so the cap
+    # holds across a run that ingests several at once.
+    announced = 0
     skipped: list[str] = []
 
     for vid in new_ids:
@@ -220,6 +224,20 @@ async def main(argv: list[str]) -> int:
                 f"summary are fine; re-run extract_assets.py --all --store")
 
         added += 1
+
+        # 5. announce it, last and least. This runs only after the episode is
+        #    actually searchable, so a post can never point at something that
+        #    is not there yet. Idempotency is inherited rather than tracked:
+        #    Pinecone decides what counts as new, so an episode reaches this
+        #    line exactly once. announce() never raises and returns False
+        #    when it is disabled, which is the normal case locally.
+        try:
+            if announce(episode.title, sent=announced):
+                announced += 1
+                log(f"  {vid}: announced on X")
+        except Exception as exc:  # noqa: BLE001
+            log(f"  {vid}: announce FAILED ({exc}) — the episode is indexed, "
+                f"which is the part that matters")
 
     log(f"DONE: added {added} new episode(s).")
     if skipped:
