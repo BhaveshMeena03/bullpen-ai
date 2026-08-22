@@ -75,24 +75,40 @@ def clean_symbol(symbol: object) -> str | None:
     return s.upper() if _SYMBOL_RE.match(s) else None
 
 
+def _ticker(value: object) -> str:
+    """Normalise a ticker for comparison.
+
+    A leading '$' is decoration, not identity. Jupiter lists dogwifhat with
+    the symbol "$WIF" while the extractor stores "WIF", so an exact compare
+    rejected a verified token with $5.6M of liquidity and the dashboard
+    showed no market data for one of the best known assets on Solana.
+
+    This is not a loosening of the rule. assets.canonical() already strips
+    the same character on the way in, so the two sides were normalising
+    differently; this makes them agree. Two genuinely different tickers
+    still cannot match.
+    """
+    return str(value or "").strip().lstrip("$").lower()
+
+
 def pick_token(candidates: list[dict], symbol: str, *,
                min_liquidity: float = MIN_LIQUIDITY_USD) -> dict | None:
     """The verified Solana token for `symbol`, or None if not confident.
 
     Rules, in order — every one of them can only ever reject:
-      * symbol must match exactly (case-insensitive); no fuzzy matching
+      * symbol must match exactly once normalised; no fuzzy matching
       * the token must be Jupiter-verified
       * liquidity must clear `min_liquidity`
     Among survivors the deepest liquidity wins, which is deterministic and
     is also the one a swap would actually route through.
     """
-    want = (symbol or "").strip().lower() if isinstance(symbol, str) else ""
+    want = _ticker(symbol)
     if not want:
         return None
 
     viable = [
         c for c in candidates
-        if str(c.get("symbol", "")).strip().lower() == want
+        if _ticker(c.get("symbol")) == want
         and c.get("isVerified") is True
         and valid_mint(c.get("id"))
         and _as_float(c.get("liquidity")) >= min_liquidity

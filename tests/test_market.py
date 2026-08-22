@@ -99,6 +99,26 @@ def test_symbol_match_is_case_insensitive():
     assert pick_token([tok(symbol="Bonk")], "bonk") is not None
 
 
+def test_a_leading_dollar_sign_is_not_part_of_the_identity():
+    """The real WIF case, from production.
+
+    Jupiter lists dogwifhat with the symbol "$WIF" while the extractor
+    stores "WIF", so an exact compare rejected a verified token holding
+    $5.6M of liquidity, and the dashboard showed no market data at all for
+    one of the best known assets on Solana. assets.canonical() already
+    strips the same character on the way in; the two sides were normalising
+    differently.
+    """
+    assert pick_token([tok(symbol="$WIF")], "WIF") is not None
+    assert pick_token([tok(symbol="WIF")], "$WIF") is not None
+
+
+def test_stripping_the_dollar_sign_does_not_make_different_tickers_match():
+    """The loosening above must not become fuzzy matching."""
+    assert pick_token([tok(symbol="$WIF")], "WIFE") is None
+    assert pick_token([tok(symbol="$BONK")], "BONKK") is None
+
+
 def test_unverified_token_is_rejected():
     """The scam-collision case: right symbol, not verified."""
     assert pick_token([tok(verified=False)], "PENGU") is None
