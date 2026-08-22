@@ -1,0 +1,77 @@
+/* Shared button system.
+ *
+ * Lives here rather than inline because the same rules were pasted into
+ * three pages and had already drifted apart between them.
+ *
+ * Two variants only. A page with two equally-weighted buttons asks the
+ * visitor to choose without telling them anything; primary/ghost says which
+ * door is the interesting one. Colours fall back to literals so this file
+ * still renders correctly if a page forgets to define the tokens.
+ */
+
+.btn{
+  --btn-green:var(--green,#16c784);
+  position:relative;
+  display:inline-flex;align-items:center;gap:9px;
+  height:42px;padding:0 17px;
+  border-radius:11px;
+  font-size:14.5px;font-weight:650;letter-spacing:.1px;
+  text-decoration:none;white-space:nowrap;
+  border:1px solid transparent;
+  transition:background .16s ease,border-color .16s ease,
+             box-shadow .16s ease,transform .16s ease;
+}
+.btn:focus-visible{
+  outline:2px solid var(--btn-green);
+  outline-offset:3px;
+}
+
+/* Primary — filled. Dark ink on green, which is the only pairing here that
+   clears contrast at this weight; green-on-dark would fail at 14.5px. */
+.btn-primary{
+  background:var(--btn-green);
+  color:#06210f;
+  box-shadow:0 1px 0 rgba(255,255,255,.22) inset,
+             0 6px 18px -8px rgba(22,199,132,.65);
+}
+.btn-primary:hover{
+  background:#22d891;
+  box-shadow:0 1px 0 rgba(255,255,255,.28) inset,
+             0 10px 26px -8px rgba(22,199,132,.8);
+  transform:translateY(-1px);
+}
+.btn-primary:active{transform:translateY(0)}
+
+/* Ghost — the quieter door. */
+.btn-ghost{
+  background:#16c78414;
+  border-color:#16c78455;
+  color:var(--btn-green);
+}
+.btn-ghost:hover{
+  background:#16c7842b;
+  border-color:var(--btn-green);
+  transform:translateY(-1px);
+}
+.btn-ghost:active{transform:translateY(0)}
+
+/* Icons inherit colour, so one file works on both variants — and they render
+   identically everywhere, which emoji do not. */
+.btn .ico{width:16px;height:16px;flex:none;display:block}
+
+/* Arrow leans toward its destination on hover. .btn-back points the other
+   way, so it animates the other way. */
+.btn .arw{transition:transform .16s ease;display:block}
+.btn:hover .arw{transform:translateX(3px)}
+.btn-back:hover .arw{transform:translateX(-3px)}
+
+@media(max-width:560px){
+  .btn{width:100%;justify-content:center}
+}
+
+/* Motion is decoration; respect a system-level request to drop it. */
+@media(prefers-reduced-motion:reduce){
+  .btn,.btn .arw{transition:none}
+  .btn:hover{transform:none}
+  .btn:hover .arw{transform:none}
+}

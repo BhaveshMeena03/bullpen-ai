@@ -17,6 +17,7 @@
 <meta name="twitter:title" content="Bullpen Concierge — answers from the docs, with the receipts">
 <meta name="twitter:description" content="Wallets, funding, order types and the $ANSEM claim, answered from Bullpen's official docs and citing the page it used. Says &quot;I don't have that&quot; instead of guessing.">
 <meta name="twitter:image" content="https://concierge.lexthedev.com/demo/og-concierge.png">
+<link rel="stylesheet" href="/demo/ui.css">
 <style>
   :root{
     --bg:#0b0e11;--panel:#12161c;--line:#232a33;--text:#e6e8ea;
@@ -36,11 +37,6 @@
     gap:14px;margin-bottom:14px;flex-wrap:wrap}
   .brand{font-weight:800;letter-spacing:.5px;font-size:15px}
   .brand span{color:var(--green)}
-  .navbtn{display:inline-flex;align-items:center;gap:8px;background:#16c78418;
-    border:1px solid #16c78466;color:var(--green);border-radius:10px;
-    padding:9px 16px;font-size:14px;font-weight:700;text-decoration:none;
-    white-space:nowrap;transition:background .15s,border-color .15s}
-  .navbtn:hover{background:#16c78430;border-color:var(--green)}
 
   h1{font-size:26px;line-height:1.2;margin-bottom:6px}
   h1 em{color:var(--green);font-style:normal}
@@ -126,7 +122,7 @@
 <div class="wrap">
   <div class="topbar">
     <div class="brand">BULLPEN <span>Concierge</span></div>
-    <a class="navbtn" href="/demo/podcast.html">🎧 Market Bubble search →</a>
+    <a class="btn btn-primary" href="/demo/podcast.html"><svg class="ico" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="4.75" stroke="currentColor" stroke-width="1.7"/><path d="M10.6 10.6 14 14" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><path d="M6 5.3l3 1.7-3 1.7z" fill="currentColor"/></svg>Market Bubble search<span class="arw">→</span></a>
   </div>
 
   <h1>Ask the <em>Bullpen Concierge</em>.</h1>
