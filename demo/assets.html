@@ -75,6 +75,24 @@
   .row.open .mk{display:block}
   .mkbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;
     padding:11px 16px;border-top:1px solid var(--line);background:#0e1319}
+
+  /* Loading skeleton. Same bar, same padding, same gaps, so the real strip
+     replaces it without the row changing height or anything shifting. */
+  .sk{display:block;height:13px;border-radius:5px;
+    background:linear-gradient(90deg,#1a212a 25%,#232c37 37%,#1a212a 63%);
+    background-size:400% 100%;animation:skpulse 1.3s ease-in-out infinite}
+  .sk-px{width:74px;height:16px}
+  .sk-ch{width:44px}
+  .sk-liq{width:104px}
+  .sk-go{width:132px;height:28px;border-radius:9px}
+  @keyframes skpulse{0%{background-position:100% 0}100%{background-position:0 0}}
+  /* Respect a reader who has asked the OS for less motion. */
+  @media (prefers-reduced-motion:reduce){ .sk{animation:none} }
+
+  /* The real strip fades in, so data arriving reads as a transition rather
+     than a flicker. */
+  .mkin{animation:mkfade .18s ease-out}
+  @keyframes mkfade{from{opacity:0}to{opacity:1}}
   .mkpx{font-weight:700;font-size:15px}
   .mkch{font-size:13px;font-weight:600}
   .mkch.up{color:var(--green)}
@@ -293,9 +311,25 @@ function loadMarket(row){
   if(!box || box.dataset.loaded) return;
   box.dataset.loaded = "1";
   var sym = box.getAttribute("data-sym") || "";
+
+  /* Show the shape of the answer immediately. The lookup takes a beat --
+     around half a second warm, longer on the first token of a session while
+     the upstream caches fill -- and an empty strip for that long reads as
+     broken rather than loading. A skeleton in the same layout means the row
+     never appears to jump: the price simply replaces its own placeholder. */
+  box.innerHTML = '<div class="mkbar mkskel">' +
+    '<span class="sk sk-px"></span><span class="sk sk-ch"></span>' +
+    '<span class="sk sk-liq"></span><span class="sk sk-go"></span></div>';
+
   fetch(API + "/v1/assets/" + encodeURIComponent(sym))
     .then(function(r){ return r.ok ? r.json() : null; })
-    .then(function(d){ box.innerHTML = marketHtml(d && d.market); })
+    .then(function(d){
+      box.innerHTML = marketHtml(d && d.market);
+      /* Fade the real strip in, so the swap from skeleton to data is a
+         transition rather than a flicker. */
+      var bar = box.querySelector(".mkbar");
+      if(bar){ bar.classList.add("mkin"); }
+    })
     .catch(function(){ box.innerHTML = ""; });
 }
 
