@@ -86,12 +86,24 @@ class Settings(BaseSettings):
     # Whole answers, keyed on the question. Support traffic is mostly repeats,
     # and without this the thousandth person to ask pays what the first did.
     #
-    # 24h because documentation changes on the order of days, not minutes,
-    # and the ingest scripts clear the cache anyway — so the TTL only bounds
-    # how long a stale answer could survive if someone edits the source and
-    # forgets to re-ingest. Set entries to 0 to disable.
-    answer_cache_max_entries: int = 500
-    answer_cache_ttl_seconds: float = 86_400.0
+    # The real invalidation is ingestion, not time: both ingest endpoints
+    # clear the cache, so a corrected document takes effect immediately. A
+    # cached answer therefore cannot be staler than the index it came from
+    # — if the source changed upstream and nothing was re-ingested, the
+    # index is wrong too, and expiring the cache only pays to regenerate the
+    # same outdated answer.
+    #
+    # So the TTL is a backstop, not the mechanism, and it started far too
+    # short. At a few visitors a day, entries written at 24h expire long
+    # before anyone asks again and the cache never pays off. Seven days lets
+    # the popular questions actually accumulate hits.
+    #
+    # 2000 entries is roughly 4MB of answers — nothing, against a service
+    # that already holds an embedding client and an HTTP pool. Eviction is
+    # least-recently-used, so the ceiling only ever drops questions nobody
+    # is asking. Set entries to 0 to disable.
+    answer_cache_max_entries: int = 2_000
+    answer_cache_ttl_seconds: float = 604_800.0
 
     # --- Retrieval ----------------------------------------------------------
     retrieval_top_k: int = 6
