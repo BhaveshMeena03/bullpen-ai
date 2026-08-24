@@ -200,6 +200,13 @@ def _format_context(chunks: list[RetrievedChunk]) -> str:
 
 
 class ConciergeAgent:
+    # Read through the class rather than the module constant so a second
+    # support surface can subclass this and supply its own instructions
+    # without duplicating the request assembly, caching layout, streaming
+    # and error handling below — the parts that were expensive to get right
+    # and have nothing to do with which product is being supported.
+    system_prompt: str = SYSTEM_PROMPT
+
     def __init__(self) -> None:
         settings = get_settings()
         self._settings = settings
@@ -245,7 +252,7 @@ class ConciergeAgent:
             "system": [
                 {
                     "type": "text",
-                    "text": SYSTEM_PROMPT,
+                    "text": self.system_prompt,
                     "cache_control": {"type": "ephemeral"},
                 }
             ],

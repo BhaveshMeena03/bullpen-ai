@@ -3,32 +3,36 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Bullpen Concierge — ask about wallets, trading, the $ANSEM claim</title>
-<meta name="description" content="An AI support assistant for the BullpenFi terminal — funding, wallets, perps, prediction markets, and the $ANSEM claim, answered from Bullpen's official docs.">
+<title>ClawPump Support — answers from the docs, with sources</title>
+<meta name="description" content="An independent support assistant for ClawPump — agents, skills, gasless launches, creator fees and the MCP server, answered from ClawPump's public documentation.">
 <!-- Social preview (X/Discord/Telegram unfurl). Without an og:image and a
      twitter:card, X renders a bare grey stub instead of a card. No og:url:
      naming a canonical lets a scraper resolve a fresh link back to whatever
      it cached against that URL. -->
-<meta property="og:title" content="Bullpen Concierge — answers from the docs, with the receipts">
-<meta property="og:description" content="Wallets, funding, order types and the $ANSEM claim, answered from Bullpen's official docs and citing the page it used. Says &quot;I don't have that&quot; instead of guessing.">
-<meta property="og:image" content="https://concierge.lexthedev.com/demo/og-concierge.png">
+<meta property="og:title" content="ClawPump Support — answers from the docs, with sources">
+<meta property="og:description" content="Agents, skills, gasless launches, creator fees and MCP — answered from ClawPump's docs, citing the page it used. Says &quot;I don't have that&quot; instead of guessing.">
+<meta property="og:image" content="https://concierge.lexthedev.com/demo/og-clawpump.png">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Bullpen Concierge — answers from the docs, with the receipts">
-<meta name="twitter:description" content="Wallets, funding, order types and the $ANSEM claim, answered from Bullpen's official docs and citing the page it used. Says &quot;I don't have that&quot; instead of guessing.">
-<meta name="twitter:image" content="https://concierge.lexthedev.com/demo/og-concierge.png">
+<meta name="twitter:title" content="ClawPump Support — answers from the docs, with sources">
+<meta name="twitter:description" content="Agents, skills, gasless launches, creator fees and MCP — answered from ClawPump's docs, citing the page it used. Says &quot;I don't have that&quot; instead of guessing.">
+<meta name="twitter:image" content="https://concierge.lexthedev.com/demo/og-clawpump.png">
 <link rel="stylesheet" href="/demo/ui.css">
 <style>
   :root{
-    --bg:#0b0e11;--panel:#12161c;--line:#232a33;--text:#e6e8ea;
-    --muted:#8a939e;--green:#16c784;--amber:#e8c157;
+    /* ClawPump's palette, taken from their own stylesheet: #14F195 is
+       Solana green, #0C0F0B the near-black they build on. Matching it is
+       deliberate — this is a support tool for their product, and looking
+       like a different product would make it read as a knock-off. */
+    --bg:#0c0f0b;--panel:#131810;--line:#1f2a1c;--text:#f5f5f5;
+    --muted:#8d9a88;--green:#14f195;--green-dim:#12d884;--amber:#e8c157;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
   body{background:var(--bg);color:var(--text);
     font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     display:flex;flex-direction:column;min-height:100vh}
-  .banner{width:100%;background:#2b2410;color:#e8c157;font-size:12px;
+  .banner{width:100%;background:#221c0c;color:#e8c157;font-size:12px;
     text-align:center;padding:7px 14px;line-height:1.4}
   .wrap{width:100%;max-width:840px;margin:0 auto;padding:22px 20px 0;
     flex:1;display:flex;flex-direction:column;min-height:0}
@@ -56,7 +60,7 @@
      elements, pre-wrap would honour the model's own line breaks and the
      answer would wrap at its width instead of the bubble's. */
   .msg.streaming{white-space:pre-wrap}
-  .user{align-self:flex-end;background:var(--green);color:#08210f;
+  .user{align-self:flex-end;background:var(--green);color:#04180d;
     border-bottom-right-radius:4px;font-weight:500}
   .bot{align-self:flex-start;background:var(--panel);border:1px solid var(--line);
     border-bottom-left-radius:4px}
@@ -72,8 +76,8 @@
     display:block;overflow-x:auto}
   .bot table.md th,.bot table.md td{border:1px solid var(--line);
     padding:6px 10px;text-align:left}
-  .bot table.md th{background:#1b2129;color:var(--text)}
-  .bot code{background:#0b0e11;border:1px solid var(--line);border-radius:4px;
+  .bot table.md th{background:#182014;color:var(--text)}
+  .bot code{background:#080b07;border:1px solid var(--line);border-radius:4px;
     padding:1px 5px;font-size:12.5px}
   .srcs{align-self:flex-start;display:flex;flex-wrap:wrap;gap:5px;margin-top:-6px}
   .src{font-size:11px;color:var(--muted);background:var(--panel);
@@ -82,15 +86,15 @@
 
   .chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
   .chip{font-size:13px;background:transparent;color:var(--green);
-    border:1px solid #16c78455;border-radius:16px;padding:7px 13px;cursor:pointer}
-  .chip:hover{background:#16c78418}
+    border:1px solid #14f19544;border-radius:16px;padding:7px 13px;cursor:pointer}
+  .chip:hover{background:#14f1951a;border-color:#14f19588}
 
   form{display:flex;gap:10px;padding:12px 0 10px;
     border-top:1px solid var(--line);position:sticky;bottom:0;background:var(--bg)}
   #q{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:12px;
     color:var(--text);padding:13px 15px;font-size:15px;outline:none}
   #q:focus{border-color:var(--green)}
-  #send{background:var(--green);color:#08210f;border:none;border-radius:12px;
+  #send{background:var(--green);color:#04180d;border:none;border-radius:12px;
     font-weight:700;font-size:15px;padding:0 20px;cursor:pointer}
   #send:disabled{opacity:.5;cursor:default}
   .foot{color:#5c6670;font-size:11.5px;text-align:center;padding:0 0 14px}
@@ -102,6 +106,12 @@
      for the conversation. */
   @media (max-width: 560px){
     .banner{font-size:11px;padding:6px 12px}
+    /* The topbar link stretches to full width on a phone, which turns a
+       secondary action into the loudest thing above the fold and pushes the
+       conversation down by a button's height plus its glow. Shrink it back
+       to its own width and sit it beside the wordmark. */
+    .topbar{flex-direction:row;align-items:center;gap:10px}
+    .topbar .btn{padding:7px 12px;font-size:12.5px;box-shadow:none}
     .wrap{padding:14px 16px 0}
     h1{font-size:21px}
     /* The intro repeats what the chips and the greeting already say. */
@@ -114,46 +124,49 @@
 </head>
 <body>
 <div class="banner">
-  AI support assistant for the BullpenFi terminal · answers from Bullpen's
-  official docs · informational, <b>never financial advice</b> · an independent
-  project, not affiliated with BullpenFi
+  Answers from ClawPump's public docs · informational, <b>never financial
+  advice</b> · <b>an independent project, not affiliated with ClawPump</b> ·
+  official site is clawpump.tech only
 </div>
 
 <div class="wrap">
   <div class="topbar">
-    <div class="brand">BULLPEN <span>Concierge</span></div>
-    <a class="btn btn-primary" href="/demo/podcast.html"><svg class="ico" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="4.75" stroke="currentColor" stroke-width="1.7"/><path d="M10.6 10.6 14 14" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><path d="M6 5.3l3 1.7-3 1.7z" fill="currentColor"/></svg>Market Bubble search<span class="arw">→</span></a>
-    <a class="btn btn-ghost" href="/demo/clawpump.html"><svg class="ico" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1.6 3 4.2v4.1c0 3 2.1 5 5 6.1 2.9-1.1 5-3.1 5-6.1V4.2L8 1.6Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="m5.9 8 1.5 1.6L10.2 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>ClawPump support<span class="arw">→</span></a>
+    <div class="brand">CLAWPUMP <span>support</span></div>
+    <a class="btn btn-primary" href="https://clawpump.tech/docs" target="_blank" rel="noopener">Official ClawPump docs<span class="arw">→</span></a>
+    <a class="btn btn-ghost" href="/demo/concierge.html"><svg class="ico" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M14 7.4c0 2.9-2.7 5.3-6 5.3-.7 0-1.4-.1-2-.3L2.5 13.5l.9-2.5A5 5 0 0 1 2 7.4C2 4.5 4.7 2.1 8 2.1s6 2.4 6 5.3Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>Bullpen Concierge<span class="arw">→</span></a>
   </div>
 
-  <h1>Ask the <em>Bullpen Concierge</em>.</h1>
-  <p class="sub">Wallets, funding, perps, prediction markets, the $ANSEM claim —
-    answered from Bullpen's documentation, with sources. It never gives
-    financial advice and will never ask for your seed phrase.</p>
+  <h1>Ask anything about <em>ClawPump</em>.</h1>
+  <p class="sub">Agents, skills, gasless launches, creator fees, the MCP server
+    and the AnsemHack Clawrena — answered from ClawPump's public docs, with
+    sources. It says "I don't have that" instead of guessing, never gives
+    financial advice, and will never ask for your seed phrase.</p>
 
   <div class="chips" id="chips"></div>
 
   <div class="chat" id="chat"></div>
 
   <form id="f">
-    <input id="q" placeholder="Ask about funding, order types, the claim…"
+    <input id="q" placeholder="Ask about agents, skills, fees, launching…"
       autocomplete="off" maxlength="2000">
     <button id="send" type="submit">Send</button>
   </form>
-  <div class="foot">Support assistant · Never share your seed phrase — with anyone.</div>
+  <div class="foot">Independent support tool · not operated by ClawPump · never share your seed phrase with anyone.</div>
 </div>
 
 <script>
 var API = "";
-var GREETING = "Hey! I'm the Bullpen Concierge. I can walk you through setting " +
-  "up and funding a wallet, trading perps or prediction markets, and the " +
-  "$ANSEM claim — all answered from Bullpen's docs. What do you need?";
+var GREETING = "Hey — I'm an independent support bot for ClawPump, built on " +
+  "their public docs. I can explain agents and skills, gasless launches, how " +
+  "creator fees reach your wallet, the MCP server, and the AnsemHack " +
+  "Clawrena. I'm not run by the ClawPump team and can't see your account. " +
+  "What do you need?";
 var STARTERS = [
-  "How do I fund my Bullpen wallet?",
-  "What collateral do I need for Polymarket?",
-  "How does margin and leverage work?",
-  "How do I claim the $ANSEM airdrop?",
-  "Who is Ansem?"
+  "How much of the trading fees do I keep?",
+  "Do I need SOL to launch a token?",
+  "How do I get my creator fees paid out?",
+  "How do I connect ClawPump to Claude?",
+  "What is the AnsemHack Clawrena?"
 ];
 
 var convo = [], busy = false;  // NOT `history` — collides with window.history
@@ -334,7 +347,7 @@ function send(text){
   typer.set("…");
   var pending = null;
 
-  fetch(API + "/v1/chat/stream", {
+  fetch(API + "/v1/clawpump/chat/stream", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ message: text, history: convo })

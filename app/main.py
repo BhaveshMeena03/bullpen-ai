@@ -26,6 +26,8 @@ from . import market
 from .agent import REFUSAL_MESSAGE, ConciergeAgent
 from .assets import aggregate as aggregate_assets
 from .assets_store import AssetStore
+from .clawpump import NAMESPACE as CLAWPUMP_NAMESPACE
+from .clawpump import ClawPumpAgent
 from .config import get_settings
 from .ingest import IngestionPipeline
 from .podcast import REFUSAL_ANSWER as PODCAST_REFUSAL
@@ -38,6 +40,7 @@ from .schemas import (
     IngestDocument,
     PodcastSearchRequest,
     PodcastSearchResponse,
+    RetrievedChunk,
 )
 from .security import (
     RateLimiter,
@@ -132,6 +135,7 @@ async def lifespan(app: FastAPI):
     # Build heavyweight clients once, at startup, and share them.
     app.state.retriever = Retriever()
     app.state.agent = ConciergeAgent()
+    app.state.clawpump_agent = ClawPumpAgent()
     app.state.pipeline = IngestionPipeline()
     app.state.podcast = PodcastIndex()
     app.state.summaries = SummaryStore()
@@ -213,6 +217,10 @@ def get_retriever(request: Request) -> Retriever:
 
 def get_agent(request: Request) -> ConciergeAgent:
     return request.app.state.agent
+
+
+def get_clawpump_agent(request: Request) -> ClawPumpAgent:
+    return request.app.state.clawpump_agent
 
 
 def get_pipeline(request: Request) -> IngestionPipeline:
@@ -314,6 +322,43 @@ async def chat(
         ) from exc
 
 
+@app.post("/v1/clawpump/chat", response_model=ChatResponse,
+          dependencies=[Depends(public_rate_limit), Depends(global_rate_limit),
+                        Depends(daily_budget), Depends(per_client_daily)])
+async def clawpump_chat(
+    body: ChatRequest,
+    retriever: Retriever = Depends(get_retriever),
+    agent: ClawPumpAgent = Depends(get_clawpump_agent),
+) -> ChatResponse:
+    """Support answers grounded ONLY in ClawPump's documentation.
+
+    Shares the retriever with the Bullpen concierge — same index, same
+    embedding model — and separates the two by namespace. `body.filters` is
+    deliberately not forwarded: on this route the caller does not get to
+    influence what is searched, because the one thing that must never happen
+    here is answering from another product's docs.
+    """
+    _track("concierge_chats")
+    chunks = await retriever.search(body.message, namespace=CLAWPUMP_NAMESPACE)
+    try:
+        response = await agent.answer(
+            body.message, body.history, chunks, brief=body.brief
+        )
+        _classify_outcome(body.message, chunks, response.answer, response.refused)
+        return response
+    except anthropic.RateLimitError as exc:
+        raise HTTPException(
+            status_code=429, detail="Upstream rate limit; retry shortly."
+        ) from exc
+    except anthropic.APIStatusError as exc:
+        logger.error("Anthropic API error %s: %s", exc.status_code, exc.message)
+        raise HTTPException(status_code=502, detail="Model provider error.") from exc
+    except anthropic.APIConnectionError as exc:
+        raise HTTPException(
+            status_code=503, detail="Model provider unreachable."
+        ) from exc
+
+
 @app.post("/v1/chat/stream", dependencies=[Depends(public_rate_limit), Depends(global_rate_limit),
                         Depends(daily_budget), Depends(per_client_daily)])
 async def chat_stream(
@@ -323,6 +368,26 @@ async def chat_stream(
 ) -> StreamingResponse:
     _track("concierge_chats", stream=True)
     chunks = await retriever.search(body.message, filters=body.filters)
+    return _sse(_chat_event_source(agent, body, chunks))
+
+
+def _sse(source) -> StreamingResponse:
+    return StreamingResponse(
+        source,
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+def _chat_event_source(agent: ConciergeAgent, body: ChatRequest,
+                       chunks: list[RetrievedChunk]):
+    """The SSE body for a chat answer, shared by every support surface.
+
+    Extracted rather than copied: the refusal handling, the disconnect case
+    and the guarantee that a terminal event is always emitted are the parts
+    that took the longest to get right here, and a second surface with its
+    own near-copy is where they quietly drift apart.
+    """
 
     async def event_source():
         # Sources first so the UI can render citations immediately.
@@ -356,11 +421,20 @@ async def chat_stream(
             logger.exception("Chat stream failure: %s", exc)
             yield f"event: error\ndata: {json.dumps({'detail': 'stream failed'})}\n\n"
 
-    return StreamingResponse(
-        event_source(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
+    return event_source()
+
+
+@app.post("/v1/clawpump/chat/stream",
+          dependencies=[Depends(public_rate_limit), Depends(global_rate_limit),
+                        Depends(daily_budget), Depends(per_client_daily)])
+async def clawpump_chat_stream(
+    body: ChatRequest,
+    retriever: Retriever = Depends(get_retriever),
+    agent: ClawPumpAgent = Depends(get_clawpump_agent),
+) -> StreamingResponse:
+    _track("concierge_chats", stream=True)
+    chunks = await retriever.search(body.message, namespace=CLAWPUMP_NAMESPACE)
+    return _sse(_chat_event_source(agent, body, chunks))
 
 
 @app.post("/v1/ingest", dependencies=[Depends(require_admin)])

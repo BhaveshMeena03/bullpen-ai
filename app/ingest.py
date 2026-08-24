@@ -166,8 +166,16 @@ class IngestionPipeline:
                     chunk.metadata[key] = value
         return chunks
 
-    async def ingest(self, docs: list[IngestDocument]) -> int:
-        """Ingest a batch of documents. Returns the number of chunks upserted."""
+    async def ingest(self, docs: list[IngestDocument],
+                     namespace: str | None = None) -> int:
+        """Ingest a batch of documents. Returns the number of chunks upserted.
+
+        `namespace` writes into an isolated partition of the index. It must
+        match the namespace the corresponding retriever reads from, and
+        exists so a second product's documentation cannot be returned as an
+        answer about the first. None keeps the original behaviour — the
+        default namespace, where the Bullpen docs already live.
+        """
         all_chunks: list[Chunk] = []
         for doc in docs:
             all_chunks.extend(self._chunk(doc))
@@ -199,7 +207,11 @@ class IngestionPipeline:
         # Pinecone's client is synchronous; batch and offload to a thread.
         def _upsert() -> None:
             for start in range(0, len(vectors), 100):
-                self.index.upsert(vectors=vectors[start:start + 100])
+                batch = vectors[start:start + 100]
+                if namespace:
+                    self.index.upsert(vectors=batch, namespace=namespace)
+                else:
+                    self.index.upsert(vectors=batch)
 
         await asyncio.wait_for(
             asyncio.to_thread(_upsert),

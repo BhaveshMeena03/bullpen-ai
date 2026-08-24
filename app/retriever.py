@@ -48,7 +48,24 @@ class Retriever:
         query: str,
         filters: dict | None = None,
         top_k: int | None = None,
+        namespace: str | None = None,
     ) -> list[RetrievedChunk]:
+        """Nearest chunks to `query`, optionally confined to one namespace.
+
+        `namespace` is the isolation boundary between knowledge bases that
+        must never answer for each other. The Bullpen docs live in the
+        default namespace and are reached by passing None, which is what
+        every caller did before this argument existed; a second product's
+        documentation goes in its own namespace and is unreachable without
+        naming it.
+
+        A metadata filter would not have been enough. Filters narrow results
+        *after* the vector search, so an unfiltered or mis-spelled filter
+        silently falls back to searching everything — the failure mode being
+        the support bot for one product confidently answering from another
+        product's documentation. A namespace cannot leak that way: vectors
+        outside it are not searched at all.
+        """
         top_k = top_k or self._settings.retrieval_top_k
 
         query_vector = await embed_query(
@@ -68,12 +85,18 @@ class Retriever:
         )
 
         def _query():
-            return self.index.query(
-                vector=query_vector,
-                top_k=fetch_k,
-                filter=self._build_filter(filters),
-                include_metadata=True,
-            )
+            kwargs = {
+                "vector": query_vector,
+                "top_k": fetch_k,
+                "filter": self._build_filter(filters),
+                "include_metadata": True,
+            }
+            # Omitted rather than passed as None: the client treats an
+            # explicit None differently from an absent key on some versions,
+            # and the default-namespace path is the one already in production.
+            if namespace:
+                kwargs["namespace"] = namespace
+            return self.index.query(**kwargs)
 
         # Bounded for the same reason the writes are: the Pinecone client has
         # no read timeout, so a half-open socket would pin this thread forever.
