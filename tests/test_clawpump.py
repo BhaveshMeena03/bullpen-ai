@@ -165,3 +165,26 @@ def test_prompt_keeps_the_core_guardrails():
     for rule in ("NO financial advice", "NO price predictions",
                  "NEVER ask for, accept or handle private keys"):
         assert rule in SYSTEM_PROMPT
+
+
+def test_prompt_pins_the_discord_support_invite():
+    """"Where do I get help" is the most-asked support question.
+
+    The link crawl only follows internal paths, so the Discord invite in the
+    site footer was invisible to every automated source and the bot answered
+    "I don't have that" to the one question it most needed to get right.
+    Contact details are pinned by hand on purpose — they must never come
+    from scraped text — which is exactly why a missing one has to be caught
+    by a test rather than by a user.
+    """
+    assert "discord.gg/wuDMEAwDQx" in SYSTEM_PROMPT
+
+
+def test_only_one_contract_address_is_pinned():
+    """The $CLAW mint is stated so people do not go looking for it somewhere
+    less careful. Exactly one address may be pinned; a second would mean the
+    reviewed list had started collecting scraped values."""
+    import re
+    assert "739dnZEG4yaBWFsY8L8ZwrfhGG6dhtCSercW8Umspump" in SYSTEM_PROMPT
+    addresses = set(re.findall(r"\b[1-9A-HJ-NP-Za-km-z]{32,44}\b", SYSTEM_PROMPT))
+    assert addresses == {"739dnZEG4yaBWFsY8L8ZwrfhGG6dhtCSercW8Umspump"}

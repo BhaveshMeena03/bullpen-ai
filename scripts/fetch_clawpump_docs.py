@@ -242,6 +242,41 @@ def _crawl_links(client: httpx.Client, seeds: list[str]) -> set[str]:
     return real
 
 
+_CHANNEL_RE = re.compile(
+    r'href="(https://(?:discord\.gg|discord\.com/invite|t\.me|github\.com/[Cc]lawpump'
+    r'|x\.com/clawpumptech)[^"]*)"')
+
+
+def report_channels(client: httpx.Client, paths: list[str]) -> None:
+    """Print the official off-site channels linked from ClawPump's pages.
+
+    These are NOT ingested, on purpose. Contact details are the one thing a
+    support bot must never repeat from scraped text — a poisoned Discord
+    invite in a retrieved chunk reads exactly like a real one, and the whole
+    value of the pinned <official_channels> list in the prompt is that a
+    human reviewed every entry.
+
+    But "not ingested" turned into "invisible". The link crawl only follows
+    internal paths, so the Discord invite in the site footer was never seen
+    by anything, and the bot answered "I don't have that" to the single most
+    common support question there is. Printing them on every refresh puts
+    new or changed channels in front of whoever runs this, who can then
+    decide to pin them. The review stays manual; only the noticing is
+    automated.
+    """
+    found: set[str] = set()
+    for path in paths:
+        try:
+            found |= set(_CHANNEL_RE.findall(client.get(f"{BASE}{path}").text))
+        except httpx.HTTPError:
+            continue
+    if found:
+        print("\n  official channels linked from the site — pin any that are")
+        print("  missing from <official_channels> in app/clawpump.py:")
+        for url in sorted(found):
+            print(f"    {url}")
+
+
 def main() -> None:
     docs: list[dict] = []
     with httpx.Client(timeout=40, follow_redirects=True,
@@ -269,6 +304,8 @@ def main() -> None:
             )
             docs.append(doc.model_dump())
             print(f"  ok  {title[:46]:48s} {len(body):6d} chars")
+
+        report_channels(client, pages)
 
     OUT.write_text(json.dumps(docs, indent=2, ensure_ascii=False))
     total = sum(len(d["text"]) for d in docs)
