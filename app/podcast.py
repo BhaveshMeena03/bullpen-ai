@@ -45,9 +45,13 @@ Rules:
 1. Answer strictly from the excerpts. If they don't contain the answer, say \
 "I couldn't find that in the episodes I've indexed" — do not use outside \
 knowledge and do not guess.
-2. Cite the moment: mention which episode and roughly when \
-("around 14:30 in <episode>"). The interface shows clickable timestamps \
-alongside your answer, so refer to them naturally.
+2. Cite the moment. Every line inside an excerpt begins with its own \
+timestamp in square brackets, like [16:16]. Cite the timestamp of the line \
+you actually used, NOT the `at` attribute on the excerpt — that is only \
+where the passage begins, and it can be a minute or more before the moment \
+you are describing. Mention the episode too ("around 16:16 in <episode>"). \
+The interface shows clickable timestamps alongside your answer, so refer to \
+them naturally.
 3. Mind the dates. If excerpts from different dates disagree, say so and \
 give the order ("in May he argued X; by July he'd shifted to Y") rather than \
 blending them into one view nobody held. When a question is about what \
@@ -83,25 +87,49 @@ def _windows(
 ) -> list[tuple[float, str]]:
     """Pack consecutive segments into windows of <= max_chars, returning
     (start_seconds, text) per window. Windows overlap by a few segments so
-    an answer that straddles a boundary is still retrievable."""
-    windows: list[tuple[float, str]] = []
+    an answer that straddles a boundary is still retrievable.
+
+    Returns (start_seconds, text, stamped) — the same passage twice.
+
+    `text` is what gets embedded and what a reader sees, and it is exactly
+    what it has always been. `stamped` is the same lines with each one
+    prefixed by its own timestamp, and it exists only to be handed to the
+    model when it writes an answer.
+
+    They are separate on purpose. A window is minutes of speech carrying a
+    single start time, so a model given only that could cite nothing else:
+    an answer about the BlackRock exchange at 16:16 was cited as 15:39,
+    because 15:39 was where the passage began. Every citation was landing
+    up to a minute early, on a product that promises the exact second.
+
+    Putting the timestamps into the embedded text would have fixed that and
+    quietly changed retrieval — roughly a tenth of each window would become
+    non-semantic tokens, and every vector would shift. Keeping the embedded
+    text identical means the ranking after this change is provably the same
+    ranking as before it.
+    """
+    windows: list[tuple[float, str, str]] = []
     i = 0
     n = len(segments)
     while i < n:
         start_t = segments[i].t
         parts: list[str] = []
+        stamped_parts: list[str] = []
         length = 0
         j = i
         while j < n and length + len(segments[j].text) + 1 <= max_chars:
             speaker = f"{segments[j].speaker}: " if segments[j].speaker else ""
             line = f"{speaker}{segments[j].text}"
             parts.append(line)
+            stamped_parts.append(f"[{_timestamp(segments[j].t)}] {line}")
             length += len(line) + 1
             j += 1
         if j == i:  # single segment longer than max_chars — take it whole
-            parts.append(segments[i].text[:max_chars])
+            clipped = segments[i].text[:max_chars]
+            parts.append(clipped)
+            stamped_parts.append(f"[{_timestamp(segments[i].t)}] {clipped}")
             j = i + 1
-        windows.append((start_t, "\n".join(parts)))
+        windows.append((start_t, "\n".join(parts), "\n".join(stamped_parts)))
         if j >= n:
             break
         i = max(j - overlap_segments, i + 1)
@@ -128,7 +156,7 @@ class PodcastIndex:
     async def ingest(self, episodes: list[Episode]) -> int:
         rows: list[dict] = []
         for ep in episodes:
-            for start_t, text in _windows(
+            for start_t, text, stamped in _windows(
                 ep.segments,
                 self._settings.chunk_max_chars,
                 overlap_segments=2,
@@ -141,6 +169,10 @@ class PodcastIndex:
                         "platform": ep.platform,
                         "start_seconds": start_t,
                         "text": text,
+                        # The same passage with per-line timestamps, read
+                        # only when building the excerpt a model answers
+                        # from. Never embedded, never shown to a reader.
+                        "text_ts": stamped,
                         # Without this every chunk is timeless, and a view
                         # from months ago ranks against a later correction
                         # on wording alone. Pinecone metadata rejects None,
@@ -245,6 +277,10 @@ class PodcastIndex:
                         md.get("url", ""), md.get("platform", "youtube"), start
                     ),
                     text=md.get("text", ""),
+                    # Only the model reads this. It falls back to the plain
+                    # text so vectors written before this existed still
+                    # answer correctly, just with the old coarse citation.
+                    text_ts=md.get("text_ts") or md.get("text", ""),
                     published_at=md.get("published_at"),
                     score=match.score,
                 )
@@ -283,7 +319,10 @@ class PodcastIndex:
         blocks = [
             f"<excerpt episode={quoteattr(h.title)} at={quoteattr(h.timestamp)}"
             + (f" aired={quoteattr(h.published_at)}" if h.published_at else "")
-            + f">\n{escape(h.text)}\n</excerpt>"
+            # Prefer the per-line timestamped copy so the model can cite the
+            # line it used. Falls back to the plain text for anything
+            # indexed before that field existed.
+            + f">\n{escape(h.text_ts or h.text)}\n</excerpt>"
             for h in hits
         ]
         return "<excerpts>\n" + "\n\n".join(blocks) + "\n</excerpts>"

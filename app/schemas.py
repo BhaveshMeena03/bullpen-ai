@@ -119,6 +119,12 @@ class PodcastHit(BaseModel):
     timestamp: str                 # "14:32"
     deep_link: str                 # url that jumps to start_seconds
     text: str
+    # The same passage with a timestamp on every line, used only when
+    # building the excerpt a model answers from so it can cite the line it
+    # actually used rather than where the passage began. Excluded from API
+    # responses: it would double the payload to show a reader the same words
+    # twice. Empty for vectors written before it existed.
+    text_ts: str = Field(default="", exclude=True)
     # When the episode aired. Optional because episodes indexed before
     # dates were captured have none, and a missing date should degrade the
     # answer rather than drop the hit.
