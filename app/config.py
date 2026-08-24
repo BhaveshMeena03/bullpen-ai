@@ -31,14 +31,30 @@ class Settings(BaseSettings):
     # facing and safety-sensitive — no financial advice, never touch a seed
     # phrase — so the extra guardrail margin is worth the small premium.)
     anthropic_model: str = "claude-sonnet-5"
-    # Per-surface override. The ClawPump bot answers documentation lookups
-    # where retrieval does the work and the model only has to synthesise, so
-    # it runs on Haiku: measured on the live corpus it matched Sonnet 8/8 on
-    # accuracy and 7/7 on the adversarial set, while being ~40% faster and
-    # ~3.3x cheaper. Market Bubble Search stays on the larger model, because
-    # it quotes transcripts precisely and reasons across episodes, which is
-    # where the difference actually shows.
-    clawpump_model: str = "claude-haiku-4-5"
+    # Per-surface override, currently the same model as everything else.
+    #
+    # This ran on Haiku for a while, on the strength of a benchmark that
+    # showed identical accuracy (8/8) and adversarial behaviour (7/7) at a
+    # third of the cost. That benchmark asked eight simple factual
+    # questions, which is exactly the workload the small model is good at,
+    # and it measured the wrong thing.
+    #
+    # Harder questions separated them. Asked for an agent that "only reads
+    # market data and never touches my wallet", Haiku listed token-sniper
+    # under skills that are safe to enable. The docs say that skill will
+    # "detect and buy new launches in 45ms" — so the answer told someone who
+    # had just asked for no wallet access to switch on the skill that buys
+    # things. Sonnet put it under Avoid, and also caught marketplace and
+    # x402, which Haiku missed entirely. On another question Sonnet noticed
+    # the docs state the MCP tool count three different ways and said so,
+    # where Haiku picked one and stated it flatly.
+    #
+    # The economics also stopped favouring it. With the answer cache, a
+    # repeated question costs nothing on either model, so the price gap only
+    # applies to first-time questions — a shrinking slice. Paying more on a
+    # shrinking slice to avoid advice that could cost someone money is not a
+    # close call.
+    clawpump_model: str = "claude-sonnet-5"
     anthropic_fallback_model: str = "claude-opus-4-8"  # used on Fable 5 only
     # Episode summaries are a one-time batch job per episode; Sonnet 5 is
     # excellent at summarization at 60% less cost than Opus.
