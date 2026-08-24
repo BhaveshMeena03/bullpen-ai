@@ -206,6 +206,9 @@ class ConciergeAgent:
     # and error handling below — the parts that were expensive to get right
     # and have nothing to do with which product is being supported.
     system_prompt: str = SYSTEM_PROMPT
+    # None means "use the configured default". A subclass sets this when its
+    # workload justifies a different tier.
+    model_override: str | None = None
 
     def __init__(self) -> None:
         settings = get_settings()
@@ -239,7 +242,7 @@ class ConciergeAgent:
             {"type": "text", "text": message, "cache_control": {"type": "ephemeral"}}
         )
         messages.append({"role": "user", "content": content})
-        model = self._settings.anthropic_model
+        model = self.model_override or self._settings.anthropic_model
         request: dict = {
             "model": model,
             # A ceiling as well as an instruction: the instruction is what the

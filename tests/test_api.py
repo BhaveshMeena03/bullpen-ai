@@ -151,7 +151,12 @@ class TestIngest:
         r = client.post("/v1/ingest", headers=admin_headers, json=[{
             "source_type": "tweet", "source_id": "t1", "text": "gm",
         }])
-        assert r.json() == {"chunks_upserted": 1}
+        body = r.json()
+        assert body["chunks_upserted"] == 1
+        # Ingesting also drops cached answers, since new documentation can
+        # make an existing one wrong. Asserted loosely so adding another
+        # field here is not a test failure.
+        assert "cached_answers_dropped" in body
 
     def test_ingest_rejects_bad_source_type(self, client, admin_headers):
         r = client.post("/v1/ingest", headers=admin_headers, json=[{

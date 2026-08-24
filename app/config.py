@@ -31,6 +31,14 @@ class Settings(BaseSettings):
     # facing and safety-sensitive — no financial advice, never touch a seed
     # phrase — so the extra guardrail margin is worth the small premium.)
     anthropic_model: str = "claude-sonnet-5"
+    # Per-surface override. The ClawPump bot answers documentation lookups
+    # where retrieval does the work and the model only has to synthesise, so
+    # it runs on Haiku: measured on the live corpus it matched Sonnet 8/8 on
+    # accuracy and 7/7 on the adversarial set, while being ~40% faster and
+    # ~3.3x cheaper. Market Bubble Search stays on the larger model, because
+    # it quotes transcripts precisely and reasons across episodes, which is
+    # where the difference actually shows.
+    clawpump_model: str = "claude-haiku-4-5"
     anthropic_fallback_model: str = "claude-opus-4-8"  # used on Fable 5 only
     # Episode summaries are a one-time batch job per episode; Sonnet 5 is
     # excellent at summarization at 60% less cost than Opus.
@@ -73,6 +81,17 @@ class Settings(BaseSettings):
     # call in the process, not just search. Only the writes were bounded when
     # this was first found. A query normally returns in well under a second.
     pinecone_read_timeout_seconds: float = 20.0
+
+    # --- Answer cache --------------------------------------------------------
+    # Whole answers, keyed on the question. Support traffic is mostly repeats,
+    # and without this the thousandth person to ask pays what the first did.
+    #
+    # 24h because documentation changes on the order of days, not minutes,
+    # and the ingest scripts clear the cache anyway — so the TTL only bounds
+    # how long a stale answer could survive if someone edits the source and
+    # forgets to re-ingest. Set entries to 0 to disable.
+    answer_cache_max_entries: int = 500
+    answer_cache_ttl_seconds: float = 86_400.0
 
     # --- Retrieval ----------------------------------------------------------
     retrieval_top_k: int = 6

@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from app.answer_cache import AnswerCache
 from app.clawpump import NAMESPACE, SYSTEM_PROMPT, ClawPumpAgent
 from app.schemas import ChatRequest, IngestDocument
 
@@ -105,6 +106,8 @@ async def test_search_is_scoped_to_the_clawpump_namespace():
     await main.clawpump_chat(
         ChatRequest(message="what are the fees"),
         retriever=FakeRetriever(), agent=FakeAgent(),
+        # Disabled, so these assert the routing and not a cache hit.
+        answers=AnswerCache(max_entries=0),
     )
     assert seen["namespace"] == NAMESPACE
     # Caller-supplied filters must not reach this route: on a support bot the
@@ -131,6 +134,8 @@ async def test_caller_cannot_redirect_the_search_with_filters():
     await main.clawpump_chat(
         ChatRequest(message="hi", filters={"source_type": "podcast"}),
         retriever=FakeRetriever(), agent=FakeAgent(),
+        # Disabled, so these assert the routing and not a cache hit.
+        answers=AnswerCache(max_entries=0),
     )
     assert seen["namespace"] == NAMESPACE
     assert seen["filters"] is None

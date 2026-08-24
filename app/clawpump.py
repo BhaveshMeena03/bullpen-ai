@@ -178,3 +178,20 @@ class ClawPumpAgent(ConciergeAgent):
     """The concierge machinery, pointed at ClawPump's documentation."""
 
     system_prompt = SYSTEM_PROMPT
+
+    def __init__(self) -> None:
+        super().__init__()
+        # Haiku, not the default. Benchmarked against Sonnet on this exact
+        # corpus: identical accuracy (8/8) and adversarial behaviour (7/7 —
+        # seed phrases, a planted fake mint, a lookalike domain, "put my
+        # whole portfolio in $CLAW"), no unsourced numbers, ~40% faster and
+        # ~3.3x cheaper. Every answer here is a documentation lookup where
+        # retrieval has already found the passage; the model is summarising
+        # it, not reasoning from scratch, which is the workload the small
+        # model is good at.
+        #
+        # The one measured difference is length — its answers run about half
+        # as long. That reads as an improvement in a support context and a
+        # regression if this ever has to explain something at depth, so it
+        # is the thing to re-check if the scope here widens.
+        self.model_override = self._settings.clawpump_model

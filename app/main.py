@@ -24,6 +24,7 @@ from voyageai import error as voyage_error
 
 from . import market
 from .agent import REFUSAL_MESSAGE, ConciergeAgent
+from .answer_cache import AnswerCache, make_key
 from .assets import aggregate as aggregate_assets
 from .assets_store import AssetStore
 from .clawpump import NAMESPACE as CLAWPUMP_NAMESPACE
@@ -140,6 +141,13 @@ async def lifespan(app: FastAPI):
     app.state.podcast = PodcastIndex()
     app.state.summaries = SummaryStore()
     app.state.assets = AssetStore()
+    _s = get_settings()
+    # One cache, shared by every surface. The key carries the surface name,
+    # so sharing the store cannot leak an answer between knowledge bases.
+    app.state.answers = AnswerCache(
+        max_entries=_s.answer_cache_max_entries,
+        ttl_seconds=_s.answer_cache_ttl_seconds,
+    )
     # Bounded per-ticker cache for live market lookups, and the CoinGecko
     # symbol table. Both fill lazily — startup must not wait on a third party.
     app.state._market_cache = {}
@@ -223,6 +231,10 @@ def get_clawpump_agent(request: Request) -> ClawPumpAgent:
     return request.app.state.clawpump_agent
 
 
+def get_answers(request: Request) -> AnswerCache:
+    return request.app.state.answers
+
+
 def get_pipeline(request: Request) -> IngestionPipeline:
     return request.app.state.pipeline
 
@@ -300,14 +312,23 @@ async def chat(
     body: ChatRequest,
     retriever: Retriever = Depends(get_retriever),
     agent: ConciergeAgent = Depends(get_agent),
+    answers: AnswerCache = Depends(get_answers),
 ) -> ChatResponse:
     _track("concierge_chats")
+    key = make_key(body.message, surface="concierge", brief=body.brief) \
+        if _cacheable(body) and not body.filters else None
+    if key:
+        cached = answers.get(key)
+        if cached is not None:
+            return cached
     chunks = await retriever.search(body.message, filters=body.filters)
     try:
         response = await agent.answer(
             body.message, body.history, chunks, brief=body.brief
         )
         _classify_outcome(body.message, chunks, response.answer, response.refused)
+        if key:
+            answers.put(key, response)
         return response
     except anthropic.RateLimitError as exc:
         raise HTTPException(
@@ -329,6 +350,7 @@ async def clawpump_chat(
     body: ChatRequest,
     retriever: Retriever = Depends(get_retriever),
     agent: ClawPumpAgent = Depends(get_clawpump_agent),
+    answers: AnswerCache = Depends(get_answers),
 ) -> ChatResponse:
     """Support answers grounded ONLY in ClawPump's documentation.
 
@@ -339,12 +361,20 @@ async def clawpump_chat(
     here is answering from another product's docs.
     """
     _track("concierge_chats")
+    key = make_key(body.message, surface=CLAWPUMP_NAMESPACE, brief=body.brief) \
+        if _cacheable(body) else None
+    if key:
+        cached = answers.get(key)
+        if cached is not None:
+            return cached
     chunks = await retriever.search(body.message, namespace=CLAWPUMP_NAMESPACE)
     try:
         response = await agent.answer(
             body.message, body.history, chunks, brief=body.brief
         )
         _classify_outcome(body.message, chunks, response.answer, response.refused)
+        if key:
+            answers.put(key, response)
         return response
     except anthropic.RateLimitError as exc:
         raise HTTPException(
@@ -369,6 +399,16 @@ async def chat_stream(
     _track("concierge_chats", stream=True)
     chunks = await retriever.search(body.message, filters=body.filters)
     return _sse(_chat_event_source(agent, body, chunks))
+
+
+def _cacheable(body: ChatRequest) -> bool:
+    """Only single-turn questions are cacheable.
+
+    A follow-up ("what about for perps?") means nothing without the turns
+    before it, so its text is not an identity. Keying those would serve one
+    conversation's answer into another's.
+    """
+    return not body.history
 
 
 def _sse(source) -> StreamingResponse:
@@ -441,10 +481,16 @@ async def clawpump_chat_stream(
 async def ingest(
     docs: list[IngestDocument],
     pipeline: IngestionPipeline = Depends(get_pipeline),
+    answers: AnswerCache = Depends(get_answers),
 ) -> dict:
     """Admin endpoint — requires X-Admin-Token when ADMIN_TOKEN is set."""
     count = await pipeline.ingest(docs)
-    return {"chunks_upserted": count}
+    # New documentation makes every cached answer potentially wrong, and the
+    # whole reason to fix a doc is that something was wrong. Waiting out a
+    # 24h TTL would mean the correction is invisible for a day to exactly
+    # the popular questions the cache holds.
+    dropped = answers.clear()
+    return {"chunks_upserted": count, "cached_answers_dropped": dropped}
 
 
 @app.post("/v1/podcast/search", response_model=PodcastSearchResponse,
@@ -453,10 +499,20 @@ async def ingest(
 async def podcast_search(
     body: PodcastSearchRequest,
     podcast: PodcastIndex = Depends(get_podcast),
+    answers: AnswerCache = Depends(get_answers),
 ) -> PodcastSearchResponse:
     _track("podcast_searches", q=body.query[:120])
+    # The highest-traffic surface, and the most repetitive: the page ships
+    # example chips, and a link that gets shared sends everyone who clicks
+    # it to the same query.
+    key = make_key(body.query, surface="podcast", top_k=body.top_k)
+    cached = answers.get(key)
+    if cached is not None:
+        return cached
     try:
-        return await podcast.search(body.query, top_k=body.top_k)
+        result = await podcast.search(body.query, top_k=body.top_k)
+        answers.put(key, result)
+        return result
     except anthropic.RateLimitError as exc:
         raise HTTPException(
             status_code=429, detail="Rate limited; retry shortly."
@@ -549,7 +605,8 @@ async def stats() -> dict:
     out about when it starts refusing people.
     """
     return {**STATS, "daily_budget": daily_budget.state(),
-            "per_client": per_client_daily.state()}
+            "per_client": per_client_daily.state(),
+            "answer_cache": app.state.answers.state()}
 
 
 @app.get("/v1/gaps", dependencies=[Depends(require_admin)])
@@ -570,10 +627,14 @@ async def gaps() -> dict:
 async def podcast_ingest(
     episodes: list[Episode],
     podcast: PodcastIndex = Depends(get_podcast),
+    answers: AnswerCache = Depends(get_answers),
 ) -> dict:
     """Admin endpoint — requires X-Admin-Token when ADMIN_TOKEN is set."""
     count = await podcast.ingest(episodes)
-    return {"windows_indexed": count}
+    # A new episode changes what the right answer is — most obviously for
+    # "what did they say most recently about X".
+    dropped = answers.clear()
+    return {"windows_indexed": count, "cached_answers_dropped": dropped}
 
 
 async def _assets_report(request: Request) -> dict:
