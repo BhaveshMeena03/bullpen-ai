@@ -257,8 +257,14 @@ class ConciergeAgent:
                 }
             ],
             "messages": messages,
-            "output_config": {"effort": self._settings.effort},
         }
+        # Haiku 4.5 is the small, fast model and supports neither of the
+        # depth controls the frontier models use — `output_config.effort`
+        # and adaptive thinking both return 400 on it. Gated together here
+        # so the two facts stay next to each other; splitting them is how
+        # the first fix shipped, passed nothing, and needed a second round.
+        if not model.startswith("claude-haiku"):
+            request["output_config"] = {"effort": self._settings.effort}
         if model.startswith("claude-fable"):
             # Fable 5: thinking always on — the param must be omitted.
             # Server-side fallback: a classifier refusal is re-served by
@@ -267,9 +273,17 @@ class ConciergeAgent:
             request["fallbacks"] = [
                 {"model": self._settings.anthropic_fallback_model}
             ]
-        else:
+        elif not model.startswith("claude-haiku"):
             # Opus 4.8 / Sonnet 5: request adaptive thinking explicitly so
             # the model reasons over the retrieved context before answering.
+            #
+            # Haiku is excluded because it does not support the parameter at
+            # all — the API returns 400 "adaptive thinking is not supported
+            # on this model", so EVERY request fails. config.py documents the
+            # model as env-swappable, which made this a trap: the swap looks
+            # supported, the service starts fine, and then every answer is a
+            # 502. Found by benchmarking Haiku against Sonnet, not in
+            # production, which is the only reason it was cheap.
             request["thinking"] = {"type": "adaptive"}
         return request
 
