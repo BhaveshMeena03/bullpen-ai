@@ -9,6 +9,11 @@
 <meta property="og:title" content="Market Bubble Search — ask the podcast anything">
 <meta property="og:description" content="Search every episode by meaning and jump to the exact moment on YouTube. Free, no login, open source.">
 <meta property="og:image" content="https://search.lexthedev.com/demo/og-image.png">
+<!-- Pins the canonical URL for the unfurl. Without it, a link carrying a
+     ?q= query or a tracking parameter can be treated as a different page
+     and previewed separately, which is how the same tool ends up with
+     several inconsistent cards in circulation. -->
+<meta property="og:url" content="https://search.lexthedev.com/demo/podcast.html">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Market Bubble Search — ask the podcast anything">
@@ -79,6 +84,16 @@
      never built, and tidiness is not worth that. */
   .hit-actions{display:flex;gap:8px;padding:8px 4px 0}
   .hit-actions .share{font-size:11px;padding:3px 10px}
+
+  /* On a phone these were 21px tall, which is half what a thumb needs and
+     well under the 44px Apple asks for. Most of the traffic to this page
+     arrives from a link in a timeline, so the touch size is the size that
+     matters, not the desktop one. */
+  @media (max-width:640px){
+    .hit-actions{gap:10px;padding:10px 4px 2px}
+    .hit-actions .share{font-size:12.5px;padding:0 16px;min-height:40px;
+      display:inline-flex;align-items:center}
+  }
   .hit-top{display:flex;align-items:center;gap:10px;margin-bottom:6px;
     flex-wrap:wrap}
   .play{color:var(--green);font-weight:700;font-size:13px;white-space:nowrap}
