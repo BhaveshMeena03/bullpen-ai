@@ -123,7 +123,26 @@ class Settings(BaseSettings):
 
     # --- Retrieval ----------------------------------------------------------
     retrieval_top_k: int = 6
-    retrieval_min_score: float = 0.30
+    # Floor on the RAW vector score, applied before reranking.
+    #
+    # Measured on this corpus, that score barely separates relevant from
+    # irrelevant: "what did se yong park say" — a guest who is genuinely in
+    # an indexed episode — scores 0.285, while "recipe for chocolate cake"
+    # scores 0.425 and "what is the capital of peru" 0.388. At a floor of
+    # 0.30 the real question was dropped and the nonsense sailed through,
+    # which is exactly backwards.
+    #
+    # Cosine similarity over long transcript windows behaves like that:
+    # everything is moderately similar to everything, and the spread between
+    # a good match and a bad one is smaller than the spread between one
+    # phrasing and another. The reranker is the component that actually
+    # judges relevance, and it never saw these because the floor ran first.
+    #
+    # So the floor is now only a guard against a degenerate embedding, and
+    # relevance is decided by the reranker and then by the model, which
+    # still answers "I couldn't find that" when the excerpts do not support
+    # an answer. Verified: nonsense queries still refuse.
+    retrieval_min_score: float = 0.05
     # Rerank: pull a wider candidate set from Pinecone, then re-score with
     # Voyage's reranker for actual relevance. Unset RERANK_MODEL to disable.
     rerank_model: str | None = "rerank-2.5-lite"
