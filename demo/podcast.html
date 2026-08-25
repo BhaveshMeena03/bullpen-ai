@@ -370,7 +370,25 @@
 
   var MONTHS=["Jan","Feb","Mar","Apr","May","Jun",
               "Jul","Aug","Sep","Oct","Nov","Dec"];
-  function airedLabel(iso){
+  // Where a result actually lives, read off the link rather than assumed.
+// Every card used to say "watch on YouTube", which was true until half the
+// catalogue started coming from X — after which a third of the cards
+// promised YouTube and opened x.com. The link was right the whole time;
+// only the label lied, which is the kind of small wrongness that makes
+// someone decide the whole thing is broken.
+//
+// X results also say so explicitly, because they cannot jump to the
+// timestamp: X has no ?t= for video. Better to set that expectation on the
+// card than to let someone click and land at 0:00 wondering what happened.
+function watchLabel(url){
+  var u = String(url || "");
+  if (/(^|\/\/)([^/]*\.)?(x\.com|twitter\.com)\//.test(u))
+    return "watch on X (no timestamp) →";
+  if (u.indexOf("spotify.com") !== -1) return "listen on Spotify →";
+  return "watch on YouTube →";
+}
+
+function airedLabel(iso){
     var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso||""));
     if(!m) return "";
     return MONTHS[parseInt(m[2],10)-1]+" "+m[1];
@@ -387,7 +405,7 @@
           +'<span class="ep">'+esc(h.title)+'</span>'
           +(h.published_at?'<span class="aired" title="'+escAttr(h.published_at)+'">'
               +esc(airedLabel(h.published_at))+'</span>':'')
-          +'<span class="watch">watch on YouTube →</span></div>'
+          +'<span class="watch">'+esc(watchLabel(h.deep_link))+'</span></div>'
           +'<div class="quote">'+esc(cleanSnippet(h.text))+'</div></a>'
           +'<div class="hit-actions">'
           +'<button class="share" data-act="x" data-i="'+i+'">post on X</button>'
