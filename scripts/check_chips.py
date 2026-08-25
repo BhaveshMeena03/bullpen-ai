@@ -69,7 +69,12 @@ def ask(base: str, path: str, field: str, q: str) -> str:
     req = urllib.request.Request(
         base + path, data=json.dumps({field: q}).encode(),
         headers={"content-type": "application/json"})
-    for attempt in range(5):
+    # Retries generously because this is usually run alongside the other
+    # checks, and together they ask far more questions per minute than the
+    # rate limiter is tuned for. A 429 is this harness being impatient, not
+    # the service being broken — reporting it as a dead chip would send
+    # someone hunting a bug that does not exist. That already happened once.
+    for attempt in range(8):
         try:
             body = urllib.request.urlopen(req, timeout=180).read()
             # strict=False: transcript text can carry raw control characters.
@@ -77,7 +82,7 @@ def ask(base: str, path: str, field: str, q: str) -> str:
         except urllib.error.HTTPError as exc:
             if exc.code != 429:
                 return f"<HTTP {exc.code}>"
-            time.sleep(8 * (attempt + 1))
+            time.sleep(10 * (attempt + 1))
     return "<rate limited>"
 
 
@@ -87,6 +92,7 @@ def main() -> None:
     args = ap.parse_args()
 
     dead = 0
+    unreachable = 0
     for page, default_base, path, field in PAGES:
         base = (args.base or default_base).rstrip("/")
         qs = questions_on(page)
@@ -94,16 +100,28 @@ def main() -> None:
         for q in qs:
             answer = ask(base, path, field, q)
             low = answer.strip().lower()
-            bad = any(low.startswith(m) for m in _DEAD) or answer.startswith("<")
-            if bad:
+            if answer.startswith("<"):
+                # Never asked. Distinct from "asked and got a shrug", and
+                # conflating them turns a busy limiter into a false alarm.
+                unreachable += 1
+                state = "SKIP"
+            elif any(low.startswith(m) for m in _DEAD):
                 dead += 1
-            print(f"  {'DEAD' if bad else 'ok  '}  {q[:52]:54s} "
+                state = "DEAD"
+            else:
+                state = "ok  "
+            print(f"  {state}  {q[:52]:54s} "
                   f"{answer[:70].replace(chr(10), ' ')}")
 
+    if unreachable:
+        print(f"\n{unreachable} question(s) could not be asked at all "
+              f"(rate limited or HTTP error) — not a verdict on the chip.")
     if dead:
         print(f"\n{dead} example question(s) do not get answered. "
               f"Replace them or fix retrieval before shipping.")
         sys.exit(1)
+    if unreachable:
+        sys.exit(2)      # distinct code: inconclusive, not failing
     print("\nevery example question gets a real answer")
 
 

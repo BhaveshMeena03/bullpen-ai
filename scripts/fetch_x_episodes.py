@@ -126,7 +126,7 @@ def overlap_with_existing(segments: list[dict],
     return best, where
 
 
-def build(url: str) -> dict | None:
+def build(url: str, recorded: str | None = None) -> dict | None:
     meta = probe(url)
     if meta is None:
         return None
@@ -146,8 +146,8 @@ def build(url: str) -> dict | None:
         return None
 
     ts = meta.get("timestamp")
-    published = (datetime.fromtimestamp(ts, UTC).strftime("%Y-%m-%d")
-                 if ts else None)
+    published = recorded or (datetime.fromtimestamp(ts, UTC).strftime("%Y-%m-%d")
+                             if ts else None)
     return {
         # Prefixed so an X segment can never collide with a YouTube id, and
         # so it is obvious in logs and citations where a hit came from.
@@ -168,6 +168,15 @@ def main() -> None:
     ap.add_argument("--urls", dest="url_file",
                     help="file with one URL per line (# comments allowed)")
     ap.add_argument("--out", default=str(OUT))
+    ap.add_argument("--date", metavar="YYYY-MM-DD",
+                    help="the date this was RECORDED, when it differs from "
+                         "when it was posted. A live broadcast is posted the "
+                         "day it airs, so its post date is right. A clip is "
+                         "posted whenever someone got around to cutting it, "
+                         "and taking that as the air date makes an old "
+                         "conversation look like the newest thing in the "
+                         "index — which matters, because the answers reason "
+                         "about recency ('what does he think now').")
     ap.add_argument("--max-overlap", type=float, default=SAME_RECORDING,
                     help="refuse a segment already this contained in an "
                          "indexed episode (default 0.35)")
@@ -190,7 +199,7 @@ def main() -> None:
     print(f"  {len(urls)} URL(s), {len(existing)} episode(s) already on file\n")
     added = 0
     for url in urls:
-        ep = build(url)
+        ep = build(url, args.date)
         if ep is None:
             continue
         others = [e for e in by_id.values() if e["episode_id"] != ep["episode_id"]]

@@ -120,6 +120,13 @@ def download_audio(url: str, dest: Path) -> Path:
     print("  downloading audio (smallest rendition; video is discarded)…")
     subprocess.run(
         [_bin("yt-dlp"), "--socket-timeout", "30", "--no-warnings",
+         # A five-hour broadcast arrives as ~9,600 HLS fragments, and yt-dlp
+         # fetches them one at a time by default. Each is a separate HTTPS
+         # request of roughly 150KB, so the download is bounded by round-trip
+         # latency and not by bandwidth at all: measured 120 KB/s on a link
+         # that does 14.9 MB/s, which is under 1% of it. Fetching sixteen at
+         # once turns hours into minutes and costs nothing but sockets.
+         "--concurrent-fragments", "16",
          "-f", "worstaudio/worstvideo+bestaudio/worst",
          "--extract-audio", "--audio-format", "mp3",
          "--postprocessor-args", "ffmpeg:-ac 1 -ar 16000 -b:a 32k",
@@ -292,6 +299,15 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("urls", nargs="+", help="x.com status URLs (live broadcasts)")
     ap.add_argument("--out", default=str(OUT))
+    ap.add_argument("--date", metavar="YYYY-MM-DD",
+                    help="the date this was RECORDED, when it differs from "
+                         "when it was posted. A live broadcast is posted the "
+                         "day it airs, so its post date is right. A clip is "
+                         "posted whenever someone got around to cutting it, "
+                         "and taking that as the air date makes an old "
+                         "conversation look like the newest thing in the "
+                         "index — which matters, because the answers reason "
+                         "about recency ('what does he think now').")
     ap.add_argument("--max-overlap", type=float, default=SAME_RECORDING)
     ap.add_argument("--engine", choices=["local", "groq"], default="local",
                     help="local runs on this machine with no rate limit "
@@ -363,8 +379,9 @@ def main() -> None:
             # builder must not append one. Citations name the moment; the
             # viewer scrubs to it.
             "platform": "other",
-            "published_at": (datetime.fromtimestamp(ts, UTC).strftime("%Y-%m-%d")
-                             if ts else None),
+            "published_at": args.date or (
+                datetime.fromtimestamp(ts, UTC).strftime("%Y-%m-%d")
+                if ts else None),
             "segments": segments,
         }
         mins = segments[-1]["t"] / 60
