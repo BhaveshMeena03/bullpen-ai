@@ -97,6 +97,24 @@
   .hit-top{display:flex;align-items:center;gap:10px;margin-bottom:6px;
     flex-wrap:wrap}
   .play{color:var(--green);font-weight:700;font-size:13px;white-space:nowrap}
+  /* A result on X cannot jump to its moment — X has no ?t= for video. Styling
+     it identically to a YouTube hit puts a green play button in front of
+     something that will not play from there, which reads as broken rather
+     than as a limitation. Same information, visibly different affordance:
+     no play triangle, muted rather than actionable, and a button that copies
+     the timestamp so scrubbing to it by hand is one paste instead of
+     remembering four digits. */
+  .play.noseek{color:var(--muted);font-weight:600;
+    display:inline-flex;align-items:center;gap:6px}
+  .play.noseek .ts{color:var(--text);font-weight:700;
+    font-variant-numeric:tabular-nums}
+  .copyts{background:transparent;border:1px solid var(--line);color:var(--muted);
+    border-radius:6px;font-size:10.5px;padding:1px 6px;cursor:pointer;
+    margin-left:2px;font-weight:500}
+  .copyts:hover{color:var(--green);border-color:var(--green)}
+  .copyts.done{color:var(--green);border-color:var(--green)}
+  .seeknote{color:var(--muted);font-size:11.5px;margin:-4px 0 10px;
+    line-height:1.45}
   .watch{margin-left:auto;color:var(--green);font-size:12px;white-space:nowrap}
   .ep{color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;
     white-space:nowrap;max-width:100%}
@@ -380,10 +398,30 @@
 // X results also say so explicitly, because they cannot jump to the
 // timestamp: X has no ?t= for video. Better to set that expectation on the
 // card than to let someone click and land at 0:00 wondering what happened.
+// The timestamp, presented according to whether it can actually be jumped
+// to. On YouTube it is a play button because clicking the card lands you on
+// the moment. On X it is not, because X ignores ?t= for video — so it drops
+// the triangle, goes muted, and offers to copy the time instead, which is
+// the only useful thing left to do with it.
+function timestampChip(h){
+  if (!canSeek(h.deep_link)) {
+    return '<span class="play noseek">at <span class="ts">'
+      + esc(h.timestamp) + '</span>'
+      + '<button class="copyts" data-ts="' + escAttr(h.timestamp) + '"'
+      + ' title="copy the timestamp, then scrub to it on X">copy</button>'
+      + '</span>';
+  }
+  return '<span class="play">\u25B6 ' + esc(h.timestamp) + '</span>';
+}
+
+function canSeek(url){
+  var u = String(url || "");
+  return !/(^|\/\/)([^/]*\.)?(x\.com|twitter\.com)\//.test(u);
+}
+
 function watchLabel(url){
   var u = String(url || "");
-  if (/(^|\/\/)([^/]*\.)?(x\.com|twitter\.com)\//.test(u))
-    return "watch on X (no timestamp) →";
+  if (!canSeek(u)) return "watch on X (no timestamp) →";
   if (u.indexOf("spotify.com") !== -1) return "listen on Spotify →";
   return "watch on YouTube →";
 }
@@ -397,11 +435,23 @@ function airedLabel(iso){
   function renderHits(list){
     lastHits=list||[];  // for the shareable card's top-timestamp line
     if(list && list.length){
-      var html='<h3>Jump to the moment</h3>';
+      // The heading has to match what the results can actually do. When
+      // every hit is on X it cannot be "jump to the moment", because X has
+      // no timestamp parameter for video and nothing here will jump. A
+      // heading that promises something the cards below cannot deliver is
+      // the same small dishonesty as the old "watch on YouTube" label.
+      var seekable = list.filter(function(h){ return canSeek(h.deep_link); }).length;
+      var head = seekable === list.length ? 'Jump to the moment'
+                                          : 'Where it was said';
+      var note = seekable < list.length
+        ? '<div class="seeknote">X doesn\u2019t support jumping to a timestamp in '
+          + 'video \u2014 copy the time and scrub to it.</div>'
+        : '';
+      var html='<h3>'+head+'</h3>'+note;
       list.forEach(function(h,i){
         html+='<div class="hit-wrap">'
           +'<a class="hit" href="'+escAttr(safeUrl(h.deep_link))+'" target="_blank" rel="noopener">'
-          +'<div class="hit-top"><span class="play">▶ '+esc(h.timestamp)+'</span>'
+          +'<div class="hit-top">'+timestampChip(h)
           +'<span class="ep">'+esc(h.title)+'</span>'
           +(h.published_at?'<span class="aired" title="'+escAttr(h.published_at)+'">'
               +esc(airedLabel(h.published_at))+'</span>':'')
