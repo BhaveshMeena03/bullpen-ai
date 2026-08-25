@@ -14,9 +14,9 @@ from pathlib import Path
 import pytest
 
 from app.answer_cache import AnswerCache
-from app.usage import UsageLedger
 from app.clawpump import NAMESPACE, SYSTEM_PROMPT, ClawPumpAgent
 from app.schemas import ChatRequest, IngestDocument
+from app.usage import UsageLedger
 
 DATA = Path(__file__).resolve().parent.parent / "data"
 
