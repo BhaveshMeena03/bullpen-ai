@@ -45,6 +45,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from app.captions import parse_vtt  # noqa: E402
+from app.dedupe import SAME_RECORDING, overlap  # noqa: E402
 
 OUT = ROOT / "data" / "episodes.json"
 
@@ -108,37 +109,18 @@ def title_from(meta: dict) -> str:
     return (meta.get("uploader") or "Market Bubble") + " broadcast"
 
 
-def _norm(text: str) -> str:
-    import re as _re
-    return _re.sub(r"\s+", " ",
-                   _re.sub(r"[^a-z0-9 ]", " ", text.lower())).strip()
-
-
-def overlap_with_existing(segments: list[dict], existing: list[dict]) -> tuple[float, str]:
+def overlap_with_existing(segments: list[dict],
+                          existing: list[dict]) -> tuple[float, str]:
     """How much of this transcript is already indexed, and where.
 
-    Added after nearly ingesting a 59-minute Orangie interview that turned
-    out to be 62% contained in the YouTube upload of episode #16. Two
-    copies of the same words is not merely wasteful: the duplicate competes
-    for the same retrieval slots, so a search returns one moment twice
-    instead of two moments — and it can cite the X copy, which has no
-    timestamp deep-link, when YouTube has the identical passage WITH one.
-
-    Sampled rather than exhaustive; this only needs to tell "basically the
-    same recording" from "genuinely new".
+    Thin wrapper over app.dedupe so there is one definition of "already
+    indexed" in the codebase. Having had two, with different thresholds,
+    is how a 62%-overlapping interview got refused while an equally
+    overlapping pair sat happily in the index.
     """
-    import random
-    mine = _norm(" ".join(s["text"] for s in segments))
-    words = mine.split()
-    if len(words) < 200:
-        return 0.0, ""
-    random.seed(7)          # deterministic, so re-runs agree with each other
-    starts = random.sample(range(0, len(words) - 10), min(300, len(words) - 10))
     best, where = 0.0, ""
     for ep in existing:
-        other = _norm(" ".join(s["text"] for s in ep["segments"]))
-        hits = sum(1 for i in starts if " ".join(words[i:i + 7]) in other)
-        ratio = hits / len(starts)
+        ratio = overlap(segments, ep.get("segments") or [])
         if ratio > best:
             best, where = ratio, f"{ep['episode_id']} ({ep['title'][:40]})"
     return best, where
@@ -186,7 +168,7 @@ def main() -> None:
     ap.add_argument("--urls", dest="url_file",
                     help="file with one URL per line (# comments allowed)")
     ap.add_argument("--out", default=str(OUT))
-    ap.add_argument("--max-overlap", type=float, default=0.35,
+    ap.add_argument("--max-overlap", type=float, default=SAME_RECORDING,
                     help="refuse a segment already this contained in an "
                          "indexed episode (default 0.35)")
     args = ap.parse_args()
