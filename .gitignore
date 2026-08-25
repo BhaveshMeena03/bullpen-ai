@@ -15,3 +15,4 @@ evals/search_results.jsonl
 
 # Rendered clips are build output, not source.
 clips/
+data/.usage.json

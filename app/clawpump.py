@@ -178,9 +178,10 @@ class ClawPumpAgent(ConciergeAgent):
     """The concierge machinery, pointed at ClawPump's documentation."""
 
     system_prompt = SYSTEM_PROMPT
+    surface = "clawpump-support"
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, ledger=None) -> None:
+        super().__init__(ledger=ledger)
         # Haiku, not the default. Benchmarked against Sonnet on this exact
         # corpus: identical accuracy (8/8) and adversarial behaviour (7/7 —
         # seed phrases, a planted fake mint, a lookalike domain, "put my

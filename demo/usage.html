@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Model spend — all projects</title>
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="/demo/ui.css">
+<style>
+  :root{
+    --bg:#0b0e11;--panel:#12161c;--line:#232a33;--text:#e6e8ea;
+    --muted:#8a939e;--green:#16c784;--amber:#e8c157;--red:#e06c6c;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);min-height:100vh;padding:0 16px;
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:900px;margin:0 auto;padding:34px 0 70px}
+  h1{font-size:26px;font-weight:800;margin-bottom:6px}
+  .sub{color:var(--muted);font-size:14px;margin-bottom:26px;max-width:640px}
+  .mono{font-variant-numeric:tabular-nums;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));
+    gap:12px;margin-bottom:28px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:13px;
+    padding:15px 17px}
+  .card .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.7px;
+    color:var(--muted);margin-bottom:7px}
+  .card .val{font-size:25px;font-weight:800;font-variant-numeric:tabular-nums}
+  .card .val.g{color:var(--green)}
+  .card .hint{font-size:11.5px;color:var(--muted);margin-top:5px}
+
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.8px;
+    color:var(--muted);margin:26px 0 11px}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th{text-align:left;color:var(--muted);font-weight:600;font-size:11.5px;
+    text-transform:uppercase;letter-spacing:.6px;padding:0 10px 8px 0}
+  td{padding:9px 10px 9px 0;border-top:1px solid var(--line);
+    font-variant-numeric:tabular-nums}
+  td.num,th.num{text-align:right}
+  .bar{height:5px;background:#1b222b;border-radius:3px;overflow:hidden;
+    margin-top:5px;min-width:70px}
+  .bar i{display:block;height:100%;background:var(--green)}
+  .surface{color:var(--text);font-weight:600}
+  .model{color:var(--muted);font-size:12px}
+  .empty{color:var(--muted);padding:22px 0}
+  .note{background:#1a1710;border:1px solid #3a3016;color:#d7c48c;
+    border-radius:10px;padding:11px 14px;font-size:12.5px;margin-bottom:24px}
+  @media(max-width:560px){
+    .wrap{padding:22px 0 50px} h1{font-size:21px}
+    td,th{font-size:12.5px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Model spend</h1>
+  <p class="sub">Every project on this service, priced from Anthropic's published
+    rates using the token counts on real responses.</p>
+
+  <div class="note">
+    An estimate, not your account balance — Anthropic publishes no API for
+    reading one. It counts what <em>this service</em> spent, so anything you run
+    from your own machine (scripts, evals, benchmarks) is not in here.
+  </div>
+
+  <div class="cards" id="cards"></div>
+
+  <h2>By day</h2>
+  <div id="days"><div class="empty">loading…</div></div>
+
+  <h2>By project</h2>
+  <div id="surfaces"><div class="empty">loading…</div></div>
+</div>
+
+<script>
+// Everything renders through textContent or this escaper. Values here come
+// from our own API, but the habit is what stops the one day it does not.
+function esc(s){ return String(s == null ? "" : s)
+  .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+  .replace(/"/g,"&quot;"); }
+function usd(n){
+  n = Number(n) || 0;
+  // Sub-cent totals read as "$0.00", which looks like nothing happened when
+  // something did. Show enough digits to see a real number.
+  if (n > 0 && n < 0.01) return "$" + n.toFixed(4);
+  return "$" + n.toFixed(2);
+}
+function num(n){ return (Number(n)||0).toLocaleString(); }
+
+function card(lbl, val, hint, green){
+  return '<div class="card"><div class="lbl">' + esc(lbl) + '</div>' +
+    '<div class="val' + (green ? ' g' : '') + '">' + esc(val) + '</div>' +
+    (hint ? '<div class="hint">' + esc(hint) + '</div>' : '') + '</div>';
+}
+
+function render(d){
+  var days = d.days || [];
+  var today = days[0] || {usd:0, calls:0, cache_hits:0};
+  var runway = d.days_per_100_usd
+    ? Math.round(d.days_per_100_usd) + " days"
+    : "—";
+
+  document.getElementById("cards").innerHTML =
+    card("Today", usd(today.usd), num(today.calls) + " model calls") +
+    card("Last 30 days", usd(d.last_30d_usd)) +
+    card("Saved by cache", usd(d.saved_usd),
+         (function(n){ return num(n) + (n === 1 ? " answer" : " answers") +
+           " served free"; })(
+           days.reduce(function(a,x){return a+(x.cache_hits||0)},0)), true) +
+    card("$100 lasts", runway,
+         d.days_per_100_usd
+           ? usd(d.avg_usd_per_active_day) + "/day average"
+           : "needs ~25 calls to estimate (" +
+             num(d.runway_sample_calls || 0) + " so far)");
+
+  // --- by day ---
+  var max = Math.max.apply(null, days.map(function(x){return x.usd}).concat([0.0001]));
+  var rows = days.slice(0, 14).map(function(x){
+    return '<tr><td class="mono">' + esc(x.day) + '</td>' +
+      '<td class="num mono">' + esc(usd(x.usd)) + '</td>' +
+      '<td class="num mono">' + esc(num(x.calls)) + '</td>' +
+      '<td class="num mono" style="color:var(--green)">' +
+        esc(num(x.cache_hits)) + '</td>' +
+      '<td style="width:34%"><div class="bar"><i style="width:' +
+        Math.max(2, (x.usd / max) * 100).toFixed(1) + '%"></i></div></td></tr>';
+  }).join("");
+  document.getElementById("days").innerHTML = rows
+    ? '<table><thead><tr><th>Day</th><th class="num">Spend</th>' +
+      '<th class="num">Calls</th><th class="num">Cached</th><th></th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table>'
+    : '<div class="empty">Nothing recorded yet.</div>';
+
+  // --- by project, summed across every day held ---
+  var totals = {};
+  days.forEach(function(day){
+    Object.keys(day.surfaces || {}).forEach(function(name){
+      var s = day.surfaces[name];
+      var t = totals[name] || (totals[name] =
+        {usd:0, calls:0, hits:0, models:{}});
+      t.usd += s.usd; t.calls += s.calls; t.hits += s.cache_hits;
+      Object.keys(s.models || {}).forEach(function(m){
+        t.models[m] = (t.models[m] || 0) + s.models[m].calls;
+      });
+    });
+  });
+  var names = Object.keys(totals).sort(function(a,b){
+    return totals[b].usd - totals[a].usd; });
+  var srows = names.map(function(n){
+    var t = totals[n];
+    var models = Object.keys(t.models).sort().join(", ");
+    return '<tr><td><span class="surface">' + esc(n) + '</span><br>' +
+      '<span class="model">' + esc(models || "—") + '</span></td>' +
+      '<td class="num mono">' + esc(usd(t.usd)) + '</td>' +
+      '<td class="num mono">' + esc(num(t.calls)) + '</td>' +
+      '<td class="num mono" style="color:var(--green)">' +
+        esc(num(t.hits)) + '</td></tr>';
+  }).join("");
+  document.getElementById("surfaces").innerHTML = srows
+    ? '<table><thead><tr><th>Project</th><th class="num">Spend</th>' +
+      '<th class="num">Calls</th><th class="num">Cached</th>' +
+      '</tr></thead><tbody>' + srows + '</tbody></table>'
+    : '<div class="empty">Nothing recorded yet.</div>';
+}
+
+fetch("/v1/usage")
+  .then(function(r){ if(!r.ok) throw new Error(r.status); return r.json(); })
+  .then(render)
+  .catch(function(e){
+    document.getElementById("days").innerHTML =
+      '<div class="empty">Could not load usage (' + esc(e.message) + ').</div>';
+    document.getElementById("surfaces").innerHTML = "";
+  });
+</script>
+</body>
+</html>

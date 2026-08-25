@@ -11,6 +11,7 @@ import pytest
 
 from app.answer_cache import AnswerCache, make_key, normalise
 from app.schemas import ChatRequest
+from app.usage import UsageLedger
 
 # --- keys ------------------------------------------------------------------
 
@@ -147,7 +148,8 @@ async def test_second_identical_question_skips_the_model():
     body = ChatRequest(message="what are the fees")
     for _ in range(2):
         r = await main.clawpump_chat(body, retriever=FakeRetriever(),
-                                     agent=FakeAgent(), answers=cache)
+                                     agent=FakeAgent(), answers=cache,
+                                     usage=UsageLedger())
         assert r.answer == "65%"
     assert calls["n"] == 1
 
@@ -178,7 +180,9 @@ async def test_a_follow_up_is_never_answered_from_cache():
                  {"role": "assistant", "content": "65%"}],
     )
     await main.clawpump_chat(body, retriever=FakeRetriever(),
-                             agent=FakeAgent(), answers=cache)
+                             agent=FakeAgent(), answers=cache,
+                                 usage=UsageLedger())
     await main.clawpump_chat(body, retriever=FakeRetriever(),
-                             agent=FakeAgent(), answers=cache)
+                             agent=FakeAgent(), answers=cache,
+                                 usage=UsageLedger())
     assert calls["n"] == 2

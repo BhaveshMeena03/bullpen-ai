@@ -209,11 +209,32 @@ class ConciergeAgent:
     # None means "use the configured default". A subclass sets this when its
     # workload justifies a different tier.
     model_override: str | None = None
+    # Name this surface reports as in the spend ledger.
+    surface: str = "concierge"
 
-    def __init__(self) -> None:
+    def __init__(self, ledger=None) -> None:
         settings = get_settings()
         self._settings = settings
         self._client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+        # Optional so tests and scripts can build an agent without one.
+        self._ledger = ledger
+
+    def _record(self, model: str, usage) -> None:
+        """Book one model call against this surface. Never let accounting
+        break an answer — a failure here costs a row in a report."""
+        if self._ledger is None or usage is None:
+            return
+        try:
+            self._ledger.record(self.surface, model, {
+                "input_tokens": getattr(usage, "input_tokens", 0),
+                "output_tokens": getattr(usage, "output_tokens", 0),
+                "cache_read_input_tokens":
+                    getattr(usage, "cache_read_input_tokens", 0),
+                "cache_creation_input_tokens":
+                    getattr(usage, "cache_creation_input_tokens", 0),
+            })
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("usage accounting failed: %s", exc)
 
     def _build_request(
         self,
@@ -307,6 +328,8 @@ class ConciergeAgent:
                 response.stop_details.category if response.stop_details else None
             )
             logger.warning("Refusal after fallback chain (category=%s)", category)
+            # A refusal still consumed input tokens, so it still costs money.
+            self._record(response.model, response.usage)
             return ChatResponse(
                 answer=REFUSAL_MESSAGE,
                 sources=[],
@@ -317,6 +340,7 @@ class ConciergeAgent:
         answer = "".join(
             block.text for block in response.content if block.type == "text"
         )
+        self._record(response.model, response.usage)
         return ChatResponse(
             answer=answer,
             sources=chunks,
@@ -346,6 +370,7 @@ class ConciergeAgent:
                 yield text
             final = await stream.get_final_message()
 
+        self._record(final.model, final.usage)
         if final.stop_reason == "refusal":
             logger.warning("Refusal at end of stream; partial output invalid")
             # Sentinel consumed by the SSE layer in main.py.

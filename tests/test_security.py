@@ -40,6 +40,10 @@ class TestRateLimiter:
 class _Stub:
     """Minimal stand-ins so TestClient can start the app without real keys."""
 
+    def __init__(self, *args, **kwargs):
+        # The real classes take a usage ledger; ignore it here.
+        pass
+
     async def search(self, *a, **k):
         return []
 

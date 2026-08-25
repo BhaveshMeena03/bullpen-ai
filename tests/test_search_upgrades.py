@@ -46,6 +46,10 @@ HIT = PodcastHit(
 
 
 class StubPodcast:
+    def __init__(self, *args, **kwargs):
+        # The real class takes a usage ledger; ignore it here.
+        pass
+
     mode = "ok"
 
     async def retrieve(self, query, top_k=None):
@@ -66,6 +70,10 @@ class StubPodcast:
 
 
 class _Stub:
+
+    def __init__(self, *args, **kwargs):
+        # The real classes take a usage ledger; ignore it here.
+        pass
     async def search(self, *a, **k):
         return []
 

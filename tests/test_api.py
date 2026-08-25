@@ -25,6 +25,10 @@ class StubRetriever:
 class StubAgent:
     mode = "ok"
 
+    def __init__(self, *args, **kwargs):
+        # The real classes take a usage ledger; ignore it here.
+        pass
+
     async def answer(self, message, history, chunks, brief=False):
         if self.mode == "refusal":
             return ChatResponse(answer=REFUSAL_MESSAGE, sources=[], refused=True,

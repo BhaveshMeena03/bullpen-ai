@@ -137,7 +137,10 @@ def _windows(
 
 
 class PodcastIndex:
-    def __init__(self) -> None:
+    SURFACE = "market-bubble-search"
+
+    def __init__(self, ledger=None) -> None:
+        self._ledger = ledger
         settings = get_settings()
         self._settings = settings
         self._voyage = voyageai.AsyncClient(api_key=settings.voyage_api_key)
@@ -366,6 +369,22 @@ class PodcastIndex:
             request["thinking"] = {"type": "disabled"}
         return request
 
+    def _record(self, model: str, usage) -> None:
+        """Book one model call. Accounting must never break a search."""
+        if self._ledger is None or usage is None:
+            return
+        try:
+            self._ledger.record(self.SURFACE, model, {
+                "input_tokens": getattr(usage, "input_tokens", 0),
+                "output_tokens": getattr(usage, "output_tokens", 0),
+                "cache_read_input_tokens":
+                    getattr(usage, "cache_read_input_tokens", 0),
+                "cache_creation_input_tokens":
+                    getattr(usage, "cache_creation_input_tokens", 0),
+            })
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("usage accounting failed: %s", exc)
+
     async def retrieve(self, query: str, top_k: int | None = None) -> list[PodcastHit]:
         return await self._retrieve(query, top_k or self._settings.retrieval_top_k)
 
@@ -379,6 +398,7 @@ class PodcastIndex:
         response = await client.beta.messages.create(
             **self._build_request(query, hits)
         )
+        self._record(response.model, response.usage)
         if response.stop_reason == "refusal":
             return PodcastSearchResponse(
                 answer=self.REFUSAL_ANSWER, hits=[],
@@ -400,5 +420,6 @@ class PodcastIndex:
             async for text in stream.text_stream:
                 yield text
             final = await stream.get_final_message()
+        self._record(final.model, final.usage)
         if final.stop_reason == "refusal":
             yield "\x00REFUSAL\x00"

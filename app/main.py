@@ -52,6 +52,7 @@ from .security import (
     require_admin,
 )
 from .summaries import SummaryStore
+from .usage import UsageLedger
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -135,10 +136,14 @@ def _classify_outcome(query: str, chunks: list, answer: str, refused: bool) -> N
 async def lifespan(app: FastAPI):
     # Build heavyweight clients once, at startup, and share them.
     app.state.retriever = Retriever()
-    app.state.agent = ConciergeAgent()
-    app.state.clawpump_agent = ClawPumpAgent()
+    # Written next to the data files, so it survives a restart. A redeploy
+    # on an ephemeral filesystem still clears it — the ANALYTICS usage log
+    # lines are the durable record.
+    app.state.usage = UsageLedger(path=_ROOT / "data" / ".usage.json")
+    app.state.agent = ConciergeAgent(ledger=app.state.usage)
+    app.state.clawpump_agent = ClawPumpAgent(ledger=app.state.usage)
     app.state.pipeline = IngestionPipeline()
-    app.state.podcast = PodcastIndex()
+    app.state.podcast = PodcastIndex(ledger=app.state.usage)
     app.state.summaries = SummaryStore()
     app.state.assets = AssetStore()
     _s = get_settings()
@@ -235,6 +240,10 @@ def get_answers(request: Request) -> AnswerCache:
     return request.app.state.answers
 
 
+def get_usage(request: Request) -> UsageLedger:
+    return request.app.state.usage
+
+
 def get_pipeline(request: Request) -> IngestionPipeline:
     return request.app.state.pipeline
 
@@ -300,6 +309,17 @@ async def root(request: Request) -> RedirectResponse:
     return RedirectResponse(url=_HOST_LANDING.get(label, _DEFAULT_LANDING))
 
 
+@app.get("/v1/usage")
+async def usage_report(usage: UsageLedger = Depends(get_usage)) -> dict:
+    """Model spend per day and per surface, priced from published rates.
+
+    An estimate, not a mirror of the Anthropic console — there is no API for
+    an account balance. It is derived from the token counts on real
+    responses rather than from request counts, so it is close.
+    """
+    return usage.report()
+
+
 @app.get("/healthz")
 async def healthz() -> dict:
     return {"status": "ok"}
@@ -313,6 +333,7 @@ async def chat(
     retriever: Retriever = Depends(get_retriever),
     agent: ConciergeAgent = Depends(get_agent),
     answers: AnswerCache = Depends(get_answers),
+    usage: UsageLedger = Depends(get_usage),
 ) -> ChatResponse:
     _track("concierge_chats")
     key = make_key(body.message, surface="concierge", brief=body.brief) \
@@ -320,6 +341,7 @@ async def chat(
     if key:
         cached = answers.get(key)
         if cached is not None:
+            usage.record("concierge", cached.model, None, cached=True)
             return cached
     chunks = await retriever.search(body.message, filters=body.filters)
     try:
@@ -351,6 +373,7 @@ async def clawpump_chat(
     retriever: Retriever = Depends(get_retriever),
     agent: ClawPumpAgent = Depends(get_clawpump_agent),
     answers: AnswerCache = Depends(get_answers),
+    usage: UsageLedger = Depends(get_usage),
 ) -> ChatResponse:
     """Support answers grounded ONLY in ClawPump's documentation.
 
@@ -366,6 +389,7 @@ async def clawpump_chat(
     if key:
         cached = answers.get(key)
         if cached is not None:
+            usage.record("clawpump-support", cached.model, None, cached=True)
             return cached
     chunks = await retriever.search(body.message, namespace=CLAWPUMP_NAMESPACE)
     try:
@@ -500,6 +524,7 @@ async def podcast_search(
     body: PodcastSearchRequest,
     podcast: PodcastIndex = Depends(get_podcast),
     answers: AnswerCache = Depends(get_answers),
+    usage: UsageLedger = Depends(get_usage),
 ) -> PodcastSearchResponse:
     _track("podcast_searches", q=body.query[:120])
     # The highest-traffic surface, and the most repetitive: the page ships
@@ -508,6 +533,7 @@ async def podcast_search(
     key = make_key(body.query, surface="podcast", top_k=body.top_k)
     cached = answers.get(key)
     if cached is not None:
+        usage.record("market-bubble-search", cached.model, None, cached=True)
         return cached
     try:
         result = await podcast.search(body.query, top_k=body.top_k)
