@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from app.captions import collapse_repeats  # noqa: E402
+from app.episode_store import merge as merge_episodes  # noqa: E402
 
 OUT = ROOT / "data" / "episodes.json"
 
@@ -50,7 +51,9 @@ def main() -> None:
     if not args.apply:
         print("  reporting only — pass --apply to write")
         return
-    path.write_text(json.dumps(episodes, ensure_ascii=False))
+    # Rewrites every episode, so it replaces rather than merges — but
+    # still under the lock, so it cannot interleave with a fetch.
+    merge_episodes(episodes, path, replace_all=True)
     print("  written. Re-ingest: .venv/bin/python scripts/ingest_episodes.py")
 
 

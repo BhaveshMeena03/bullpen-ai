@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from app.dedupe import SAME_RECORDING, dedupe, describe  # noqa: E402
+from app.episode_store import merge as merge_episodes  # noqa: E402
 
 OUT = ROOT / "data" / "episodes.json"
 
@@ -48,7 +49,7 @@ def main() -> None:
         return
     if not dropped:
         return
-    path.write_text(json.dumps(kept, ensure_ascii=False))
+    merge_episodes(kept, path, replace_all=True)
     print(f"\n  {len(kept)} episode(s) kept -> {path.name}")
     print("  Re-ingest so the index matches: "
           ".venv/bin/python scripts/ingest_episodes.py")

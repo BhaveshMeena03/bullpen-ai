@@ -28,6 +28,7 @@ from anthropic import AsyncAnthropic  # noqa: E402
 from app.announce import announce  # noqa: E402
 from app.assets_store import AssetStore  # noqa: E402
 from app.config import get_settings  # noqa: E402
+from app.episode_store import merge as merge_episodes  # noqa: E402
 from app.podcast import PodcastIndex  # noqa: E402
 from app.schemas import Episode  # noqa: E402
 from app.summaries import SummaryStore  # noqa: E402
@@ -201,7 +202,11 @@ async def main(argv: list[str]) -> int:
 
         # 2. persist to the local record only after a successful ingest.
         indexed.append(raw)
-        OUT.write_text(json.dumps(indexed, indent=2, ensure_ascii=False))
+        # Just this episode, merged under a lock — not the whole `indexed`
+        # list, which was read when the run started and is stale by now.
+        # This is the cron: an X broadcast transcribed by hand while it runs
+        # is the expected case, not an unlucky one.
+        merge_episodes([raw], OUT)
 
         # 3. summarize (idempotent; a summary failure must not lose the ingest)
         try:

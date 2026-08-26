@@ -16,3 +16,8 @@ evals/search_results.jsonl
 # Rendered clips are build output, not source.
 clips/
 data/.usage.json
+
+# Lock and staging files from concurrent writes to data/episodes.json.
+# Local coordination only — nothing another checkout needs.
+*.lock
+*.json.tmp

@@ -58,6 +58,7 @@ sys.path.insert(0, str(ROOT))
 
 from app.captions import collapse_repeats  # noqa: E402
 from app.dedupe import SAME_RECORDING  # noqa: E402
+from app.episode_store import merge as merge_episodes  # noqa: E402
 from scripts.fetch_x_episodes import (  # noqa: E402
     OUT,
     overlap_with_existing,
@@ -333,6 +334,10 @@ def main() -> None:
     out_path = Path(args.out)
     existing = json.loads(out_path.read_text()) if out_path.exists() else []
     by_id = {e["episode_id"]: e for e in existing}
+    # Only what THIS run transcribed gets written back. The rest of by_id is
+    # a snapshot from before a transcription that may have run for hours, and
+    # writing it back is exactly how another process's work used to vanish.
+    written_ids: set[str] = set()
     print(f"  {len(existing)} episode(s) already on file\n")
 
     for url in args.urls:
@@ -376,6 +381,7 @@ def main() -> None:
             print(f"  note  {ratio:.0%} of this also appears in {where}")
 
         ts = meta.get("timestamp")
+        written_ids.add(episode_id)
         by_id[episode_id] = {
             "episode_id": episode_id,
             "title": title_from(meta),
@@ -392,10 +398,13 @@ def main() -> None:
         mins = segments[-1]["t"] / 60
         print(f"  added {len(segments)} segments, {mins:.0f} min")
 
-    merged = sorted(by_id.values(),
-                    key=lambda e: (e.get("published_at") or ""), reverse=True)
-    out_path.write_text(json.dumps(merged, ensure_ascii=False))
-    print(f"\n{len(merged)} episodes total -> {out_path.relative_to(ROOT)}")
+    # A transcription runs for many minutes; the file it read at startup is
+    # stale by the time it finishes. Merging under a lock, re-reading inside
+    # it, is what keeps a concurrent fetch from being silently reverted.
+    new = [e for e in by_id.values() if e["episode_id"] in written_ids]
+    merge_episodes(new, out_path)
+    total = len(json.loads(out_path.read_text()))
+    print(f"\n{total} episodes total -> {out_path.relative_to(ROOT)}")
     print("Now re-ingest:  .venv/bin/python scripts/ingest_episodes.py")
 
 

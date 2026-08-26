@@ -46,6 +46,7 @@ sys.path.insert(0, str(ROOT))
 
 from app.captions import parse_vtt  # noqa: E402
 from app.dedupe import SAME_RECORDING, overlap  # noqa: E402
+from app.episode_store import merge as merge_episodes  # noqa: E402
 
 OUT = ROOT / "data" / "episodes.json"
 
@@ -197,6 +198,10 @@ def main() -> None:
     by_id = {e["episode_id"]: e for e in existing}
 
     print(f"  {len(urls)} URL(s), {len(existing)} episode(s) already on file\n")
+    # Only what THIS run produced gets written back. Everything else in
+    # by_id is a stale snapshot read at startup, and re-writing it is the
+    # very thing that used to revert other processes' work.
+    written_ids: set[str] = set()
     added = 0
     for url in urls:
         ep = build(url, args.date)
@@ -215,15 +220,19 @@ def main() -> None:
         # track can simply be fetched again.
         state = "updated" if ep["episode_id"] in by_id else "added"
         by_id[ep["episode_id"]] = ep
+        written_ids.add(ep["episode_id"])
         added += 1
         mins = (ep["segments"][-1]["t"] / 60) if ep["segments"] else 0
         print(f"  {state:8s} {ep['title'][:48]:50s} "
               f"{len(ep['segments']):5d} cues  {mins:5.1f} min")
 
-    merged = sorted(by_id.values(),
-                    key=lambda e: (e.get("published_at") or ""), reverse=True)
-    out_path.write_text(json.dumps(merged, ensure_ascii=False))
-    print(f"\n{added} written · {len(merged)} episodes total -> "
+    # Merged under a lock, re-reading inside it. A run that started before
+    # another finished must not revert that other's work — which is exactly
+    # how an X clip fetched mid-transcription once vanished.
+    new = [e for e in by_id.values() if e["episode_id"] in written_ids]
+    merge_episodes(new, out_path)
+    total = len(json.loads(out_path.read_text()))
+    print(f"\n{added} written · {total} episodes total -> "
           f"{out_path.relative_to(ROOT)}")
     print("Now re-ingest:  .venv/bin/python scripts/ingest_episodes.py")
 

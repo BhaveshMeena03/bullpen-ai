@@ -33,6 +33,12 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+sys.path.insert(0, str(ROOT))
+
+from app.episode_store import merge as merge_episodes  # noqa: E402
+
+
 def _ytdlp() -> str:
     """Prefer the project venv, fall back to PATH.
 
@@ -205,7 +211,7 @@ def main(argv: list[str]) -> int:
             ep = from_vtt_file(Path(path_str), vid or Path(path_str).stem)
             if ep:
                 episodes.append(ep)
-        OUT.write_text(json.dumps(episodes, indent=2, ensure_ascii=False))
+        merge_episodes(episodes, OUT)
         total = sum(len(e["segments"]) for e in episodes)
         print(f"\nWrote {len(episodes)} episodes ({total} segments) -> {OUT}")
         return 0
@@ -235,11 +241,12 @@ def main(argv: list[str]) -> int:
         if ep:
             episodes.append(ep)
             # Incremental save — a long run that dies keeps its progress.
-            OUT.write_text(json.dumps(episodes, indent=2, ensure_ascii=False))
+            # One episode at a time, so a run that spans hours never writes
+            # back the stale snapshot it started from.
+            merge_episodes([ep], OUT)
         if i < len(ids) - 1:
             time.sleep(12)  # be polite; rapid pulls trip YouTube throttling
 
-    OUT.write_text(json.dumps(episodes, indent=2, ensure_ascii=False))
     total = sum(len(e["segments"]) for e in episodes)
     print(f"\nWrote {len(episodes)} episodes ({total} segments) -> {OUT}")
     return 0

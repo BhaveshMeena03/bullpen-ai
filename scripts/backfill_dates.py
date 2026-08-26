@@ -19,9 +19,16 @@ import argparse
 import json
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+sys.path.insert(0, str(ROOT))
+
+from app.episode_store import merge as merge_episodes  # noqa: E402
+
+
 def _ytdlp() -> str:
     """Prefer the project venv, fall back to PATH.
 
@@ -77,8 +84,9 @@ def main() -> int:
             failed += 1
             print(f"  [{i}/{len(todo)}] ??????????  {ep['title'][:52]}  (no date)")
         # Write after every lookup: a run interrupted at episode 19 should
-        # keep the first eighteen.
-        args.file.write_text(json.dumps(episodes, ensure_ascii=False))
+        # keep the first eighteen. Merging just the episode that changed
+        # keeps a concurrent fetch of a *different* episode intact.
+        merge_episodes([ep], args.file)
 
     have = sum(1 for e in episodes if e.get("published_at"))
     print(f"\n{filled} filled, {failed} failed — {have}/{len(episodes)} now dated")
