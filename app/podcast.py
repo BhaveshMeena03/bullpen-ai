@@ -13,6 +13,7 @@ plumbing as the rest of the app.
 import asyncio
 import hashlib
 import logging
+import re
 from xml.sax.saxutils import escape, quoteattr
 
 import voyageai
@@ -139,6 +140,57 @@ def _windows(
             break
         i = max(j - overlap_segments, i + 1)
     return windows
+
+
+_SEEKABLE_HOST = re.compile(r"^https?://(www\.)?(youtube\.com|youtu\.be|open\.spotify\.com)/")
+
+
+def _can_seek(link: str) -> bool:
+    """Whether a citation into this link can land on the moment."""
+    return bool(_SEEKABLE_HOST.match(link or ""))
+
+
+def _same_moment(a: str, b: str, threshold: float = 0.55) -> bool:
+    """Do two windows describe the same stretch of conversation?
+
+    Compared on the first words rather than the whole window, because the
+    two transcriptions differ — YouTube's auto-captions and Whisper render
+    the same speech with different punctuation, casing and occasional
+    different words. What stays stable is the sequence of ordinary words at
+    the start.
+    """
+    aw = re.sub(r"[^a-z0-9 ]", " ", a.lower()).split()[:18]
+    bw = re.sub(r"[^a-z0-9 ]", " ", b.lower()).split()[:18]
+    if len(aw) < 8 or len(bw) < 8:
+        return False
+    shared = len(set(aw) & set(bw))
+    return shared / min(len(aw), len(bw)) >= threshold
+
+
+def _prefer_seekable(hits: list[PodcastHit]) -> list[PodcastHit]:
+    """Where the same moment appears twice, keep the copy you can jump to.
+
+    Roughly half of every live broadcast is also in the YouTube upload of
+    that episode, so a single query can retrieve the same passage from
+    both. They are not equivalent: a YouTube citation carries ?t= and lands
+    on the second being quoted, while an X one cannot, because X has no
+    timestamp parameter for video. Returning the X copy when the YouTube
+    one exists costs the reader the entire point of the citation.
+
+    Order is otherwise untouched — this only drops a later duplicate, and
+    only when a seekable hit already covers it. A non-seekable hit with no
+    seekable twin stays, because half-covered is better than missing.
+    """
+    kept: list[PodcastHit] = []
+    for hit in hits:
+        if _can_seek(hit.deep_link):
+            kept.append(hit)
+            continue
+        covered = any(_can_seek(k.deep_link) and _same_moment(k.text, hit.text)
+                      for k in hits)
+        if not covered:
+            kept.append(hit)
+    return kept
 
 
 class PodcastIndex:
@@ -309,7 +361,7 @@ class PodcastIndex:
             )
             if order is not None:
                 hits = [hits[i] for i in order]
-        return hits[:top_k]
+        return _prefer_seekable(hits)[:top_k]
 
     @staticmethod
     def _format(hits: list[PodcastHit]) -> str:
