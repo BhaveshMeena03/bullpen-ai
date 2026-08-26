@@ -156,6 +156,27 @@ _OPENS_A_QUESTION = re.compile(
     )\b""")
 
 
+# How the bot wants answers, as against how the web page wants them. Sent in
+# the user turn rather than the system prompt, so SYSTEM_PROMPT's bytes stay
+# identical for every surface and its cache entry keeps working.
+#
+# Each line here is a reply that actually went wrong. "Your question is
+# pretty broad! Could you be more specific?" is a fine thing for a search
+# page to say and a wasted $0.209 in a reply thread nobody returns to.
+# "I couldn't find a comprehensive summary of everything PoorGoat said, but
+# here are the main things" spent a third of the 280 characters before
+# reaching the answer.
+REPLY_STYLE = """\
+This answer will be posted as a single social media reply, not shown on a \
+web page. So:
+- At most two sentences. There is no room for more.
+- Never ask a follow-up question and never ask the person to be more \
+specific. If the question is broad, pick the single most striking thing in \
+the excerpts and answer with that.
+- Do not open by saying what you could not find. Lead with what you can say.
+- Still cite the timestamp and name the episode."""
+
+
 def looks_like_a_question(text: str) -> bool:
     """Is this actually asking something?
 
@@ -354,7 +375,7 @@ class MentionBot:
                         mention.id, question[:60])
             return None
 
-        result = await self._index.search(question)
+        result = await self._index.search(question, instruction=REPLY_STYLE)
         if getattr(result, "refused", False):
             logger.info("%s refused by the model — staying quiet", mention.id)
             return None

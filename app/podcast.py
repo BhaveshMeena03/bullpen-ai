@@ -397,7 +397,8 @@ class PodcastIndex:
 
     REFUSAL_ANSWER = REFUSAL_ANSWER  # class alias for callers
 
-    def _build_request(self, query: str, hits: list[PodcastHit]) -> dict:
+    def _build_request(self, query: str, hits: list[PodcastHit],
+                       instruction: str | None = None) -> dict:
         # A search answer is short and grounded — keep the request minimal
         # and fast. Config knobs are model-specific, so add them per family:
         #  - Haiku 4.5: no `effort` (400s) and no thinking → cheapest/fastest
@@ -418,6 +419,12 @@ class PodcastIndex:
                         {"type": "text", "text": self._format(hits)},
                         {"type": "text", "text": query,
                          "cache_control": {"type": "ephemeral"}},
+                        # Per-surface style, added to the user turn rather
+                        # than the system prompt so SYSTEM_PROMPT's bytes —
+                        # and therefore its cache entry — stay identical
+                        # across every caller.
+                        *([{"type": "text", "text": instruction}]
+                          if instruction else []),
                     ],
                 }
             ],
@@ -454,14 +461,23 @@ class PodcastIndex:
         return await self._retrieve(query, top_k or self._settings.retrieval_top_k)
 
     async def search(
-        self, query: str, top_k: int | None = None
+        self, query: str, top_k: int | None = None,
+        instruction: str | None = None,
     ) -> PodcastSearchResponse:
+        """Answer `query` from the index.
+
+        `instruction` adds a per-surface style note for the model only. It is
+        deliberately not part of `query`: the query is what gets embedded,
+        and appending prose to it dilutes the vector and changes what comes
+        back — measured, on this corpus, as the difference between finding a
+        guest and missing them.
+        """
         hits = await self.retrieve(query, top_k)
         client = self._anthropic.with_options(
             timeout=self._settings.search_timeout_seconds
         )
         response = await client.beta.messages.create(
-            **self._build_request(query, hits)
+            **self._build_request(query, hits, instruction)
         )
         self._record(response.model, response.usage)
         if response.stop_reason == "refusal":

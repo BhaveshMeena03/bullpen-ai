@@ -224,7 +224,11 @@ class FakeIndex:
         self._answer, self._hits, self._refused = answer, hits, refused
         self.asked: list[str] = []
 
-    async def search(self, query, top_k=None):
+    async def search(self, query, top_k=None, instruction=None):
+        # instruction is the per-surface style note; recorded so a test can
+        # assert the bot asks for reply-shaped answers rather than page-shaped
+        # ones.
+        self.instructed = instruction
         self.asked.append(query)
 
         class R:
@@ -653,3 +657,32 @@ async def test_a_casual_ca_request_is_still_answered(tmp_path):
     assert await bot.tick("2026-08-26") == 1
     assert index.asked == []
     assert CA in client.posted[0][1]
+
+
+@pytest.mark.anyio
+async def test_the_bot_asks_for_a_reply_not_a_web_answer(tmp_path):
+    """The style note is what stops "your question is pretty broad! Could
+    you be more specific?" being posted as a reply — fine on a search page,
+    a wasted $0.209 in a thread nobody returns to."""
+    from app.x_bot import REPLY_STYLE
+
+    client = FakeClient([[mention("1")], [mention("2")]])
+    index = FakeIndex()
+    bot = MentionBot(client, index, state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-26")
+    await bot.tick("2026-08-26")
+    assert index.instructed == REPLY_STYLE
+
+
+def test_the_style_note_never_reaches_the_embedder():
+    """It goes to the model only. Appending prose to the query dilutes the
+    vector and changes what comes back — measured, on this corpus, as the
+    difference between finding a guest and missing them."""
+    import inspect
+
+    from app.podcast import PodcastIndex
+
+    source = inspect.getsource(PodcastIndex.search)
+    retrieve_line = next(ln for ln in source.splitlines()
+                         if "self.retrieve(" in ln)
+    assert "instruction" not in retrieve_line
