@@ -38,7 +38,7 @@ sys.path.insert(0, str(ROOT))
 from app.config import get_settings  # noqa: E402
 from app.podcast import PodcastIndex  # noqa: E402
 from app.x_api import OutOfCreditsError, XClient, XCredentials  # noqa: E402
-from app.x_bot import MentionBot  # noqa: E402
+from app.x_bot import MentionBot, weighted_length  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s  %(levelname)-7s %(message)s",
@@ -125,7 +125,10 @@ async def main() -> int:
                 continue
             for line in text.splitlines():
                 print(f"     | {line}")
-            print(f"     {len(text)}/280 chars")
+            # As X counts it, against the configured ceiling — not the
+            # hardcoded 280 this printed while composing 900-character
+            # replies that were entirely within budget.
+            print(f"     {weighted_length(text)}/{bot._post_limit} chars")
         print(f"\n  X spend this process: ${client.spent_usd:.3f}\n")
         return 0
 
