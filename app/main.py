@@ -377,7 +377,12 @@ async def root(request: Request) -> RedirectResponse:
     return RedirectResponse(url=_HOST_LANDING.get(label, _DEFAULT_LANDING))
 
 
-@app.get("/v1/usage")
+# Admin-gated. It reports what the service costs to run, how many calls each
+# surface takes and which models answer them — operational detail about a
+# business, sitting open to anyone who guessed the path. Nothing here is a
+# credential, which is why it was public; that is not the same as it being
+# nobody else's business.
+@app.get("/v1/usage", dependencies=[Depends(require_admin)])
 async def usage_report(usage: UsageLedger = Depends(get_usage)) -> dict:
     """Model spend per day and per surface, priced from published rates.
 

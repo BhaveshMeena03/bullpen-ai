@@ -163,14 +163,37 @@ function render(d){
     : '<div class="empty">Nothing recorded yet.</div>';
 }
 
-fetch("/v1/usage")
-  .then(function(r){ if(!r.ok) throw new Error(r.status); return r.json(); })
-  .then(render)
-  .catch(function(e){
-    document.getElementById("days").innerHTML =
-      '<div class="empty">Could not load usage (' + esc(e.message) + ').</div>';
-    document.getElementById("surfaces").innerHTML = "";
-  });
+// The endpoint is admin-gated, so the page has to carry the token. Kept in
+// sessionStorage rather than localStorage: it lives until the tab closes,
+// which is the right lifetime for something typed on a shared laptop.
+function token() {
+  var t = sessionStorage.getItem("adminToken");
+  if (!t) {
+    t = window.prompt("Admin token");
+    if (t) sessionStorage.setItem("adminToken", t);
+  }
+  return t || "";
+}
+
+function load() {
+  fetch("/v1/usage", { headers: { "X-Admin-Token": token() } })
+    .then(function(r){
+      if (r.status === 401 || r.status === 403) {
+        sessionStorage.removeItem("adminToken");   // wrong token, ask again
+        throw new Error("not authorised");
+      }
+      if (!r.ok) throw new Error(r.status);
+      return r.json();
+    })
+    .then(render)
+    .catch(function(e){
+      document.getElementById("days").innerHTML =
+        '<div class="empty">Could not load usage (' + esc(e.message) + ').</div>';
+      document.getElementById("surfaces").innerHTML = "";
+    });
+}
+
+load();
 </script>
 </body>
 </html>

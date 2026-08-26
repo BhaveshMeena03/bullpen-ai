@@ -549,3 +549,21 @@ def test_a_cached_search_does_not_spend_the_callers_allowance(monkeypatch):
             main_module.app.dependency_overrides.clear()
             per_client_daily._counts.clear()
     get_settings.cache_clear()
+
+
+def test_the_usage_report_is_not_public(admin_client):
+    """What the service costs to run, how many calls each surface takes and
+    which models answer them is operational detail about a business. Nothing
+    in it is a credential, which is why it was public; that is not the same
+    as it being nobody else's business."""
+    assert admin_client.get("/v1/usage").status_code in (401, 403)
+    ok = admin_client.get("/v1/usage", headers={"X-Admin-Token": "s3cret"})
+    assert ok.status_code == 200
+    assert "days" in ok.json()
+
+
+def test_every_endpoint_that_reveals_operations_is_gated(admin_client):
+    """A checklist, so a new one does not quietly ship open."""
+    for path in ("/v1/usage", "/v1/whoami", "/v1/gaps"):
+        assert admin_client.get(path).status_code in (401, 403), \
+            f"{path} answers without a token"
