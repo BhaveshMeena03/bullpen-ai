@@ -4,15 +4,21 @@ Each answer is checked against the exact material it was built from. Quotes are 
 
 | surface | questions | fabricated quotes | unverified | judged unsupported |
 |---|---:|---:|---:|---:|
-| market search | 12 | 0 | 0 | 3 |
+| market search | 12 | 0 | 1 | 4 |
 
 A non-zero **fabricated quotes** column is a release blocker: it means the tool put words in someone's mouth. The other two columns are for reading, not for gating.
 
 ### Market search
 
-- `why does ansem think eth is going to zero`
-  - judge: The answer claims Ansem said Ethereum will go 'to a thousand' in the next year, but the source shows conflicting statements: he says 'less than less than 500 bucks' and separately 'I think it's going 
+- `what did the helius guy say about solana`
+  - judge: The answer cites a timestamp [2:15:04] that does not exist in the provided sources, which are only up to 1:28:23, making it impossible to verify the quoted claim about Solana being 'the most performan
+- `the episode about someone suing the sec`
+  - judge: ungradeable judge output: ```json
+{
+  "verdict": "FAIL",
+  "why": "The answer states the court 'awarded da
 - `which stocks are the robot play`
-  - judge: The answer claims SpaceX is a 'robot play' and the 'main one they discussed,' but the sources show SpaceX was discussed as a general investment play, not specifically as a robotics stock or 'robot pla
-- `selling a crypto company to kraken`
-  - judge: The answer states the acquisition occurred in September 2025, but the sources indicate it was September 2026 (the episode aired 2026-05-22 and references 'Kraken acquired us in September').
+  - judge: The answer claims SpaceX IPO'd at $135 per share, but the sources only state it was 'priced at 135 a share' during the IPO process—not that it actually IPO'd at that price. The sources indicate it 'wa
+- `mizkif giving his chat money to trade`
+  - [unverified] figure: $100,000 — does not appear in any retrieved window
+  - judge: The answer attributes statements to 'Ansem' when the sources show these statements were made by someone else (the speaker on 'Kick' who is giving their chat $300,000), not by Ansem, who is a different

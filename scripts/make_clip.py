@@ -1,44 +1,33 @@
-"""Cut a shareable video clip from a moment in the podcast.
+"""Cut a captioned clip from any indexed episode, on this machine.
 
-Search finds the moment; this turns it into something postable. The still
-card the web page offers is fine attached to a link, but what people
-actually watch is a short video with the words burned on.
+    .venv/bin/python scripts/make_clip.py "what did luca netz say about pudgy penguins"
+    .venv/bin/python scripts/make_clip.py --episode x-2075316750439338088 --at 4:01:47
+    .venv/bin/python scripts/make_clip.py "..." --seconds 60 --height 720
 
-The expensive half of a clipper is transcription, and it is already done:
-the transcript was indexed with timestamps months ago, so the captions
-come out of data/episodes.json and line up with the speech because they
-are the same timing data.
+Local rather than a web feature, deliberately. The hosted service runs on a
+free tier with 0.1 CPU: ffmpeg encodes at about 2.6x realtime on this laptop
+at full CPU, so the same work there would take minutes per clip AND block
+every search request while it ran. Trading a search engine that works for a
+clip button that might is the wrong trade. This gets the actual value — a
+shareable clip of something nobody else has — at no hosting risk, and it
+proves whether clips are worth hosting before anything is paid for.
 
-    # find a moment, then cut it
-    .venv/bin/python scripts/make_clip.py --query "why gamers make the best traders"
-    .venv/bin/python scripts/make_clip.py --query "..." --pick 1
-
-    # or set the window yourself — 44:22, 1:02:03 and raw seconds all work
-    .venv/bin/python scripts/make_clip.py --episode TYX2FuacIhE --start 44:10 --end 45:05
-
-Output is a square MP4 in clips/ — 1:1 takes the most feed height on X
-without being cropped. 1080 here, because a laptop may as well produce the
-best the source allows; the server-side path in app/clipper.py defaults
-lower to keep egress down.
-
-The rendering itself lives in app/clipper.py so that this script and the
-service cannot drift into captioning the same episode differently.
-
-Runs locally on purpose. Fetching and re-encoding video needs real CPU and
-moves hundreds of megabytes; the free Render instance has neither, and the
-residential proxy is billed per gigabyte.
+Works for both sources. YouTube clips are a convenience, since a viewer
+could scrub there themselves. A clip from an X broadcast is the only way
+anyone gets that moment: about half of every live show never reaches the
+upload, and X cannot deep-link to a timestamp at all.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import re
+import shutil
 import sys
 import tempfile
+import time
+import urllib.request
 from pathlib import Path
-
-import httpx
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -46,129 +35,115 @@ sys.path.insert(0, str(ROOT))
 from app.clipper import (  # noqa: E402
     build_captions,
     fetch_section,
+    ffmpeg_available,
     make_backdrop,
     render,
     stamp,
 )
 
-DATA = ROOT / "data" / "episodes.json"
-OUT_DIR = ROOT / "clips"
-API = "https://search.lexthedev.com"
-
-# Full resolution locally. The service uses 720 to halve its bandwidth
-# bill; nothing is being paid for per-gigabyte here.
-SIZE = 1080
+EPISODES = ROOT / "data" / "episodes.json"
+SEARCH = "https://search.lexthedev.com"
 
 
-def load_episodes() -> dict:
-    if not DATA.exists():
-        sys.exit(f"{DATA} not found — run scripts/fetch_episodes.py first.")
-    return {e["episode_id"]: e for e in json.loads(DATA.read_text())}
+def parse_timestamp(value: str) -> float:
+    """"4:01:47", "56:47" or "3407" -> seconds."""
+    parts = [p for p in str(value).strip().split(":") if p != ""]
+    if not parts:
+        raise ValueError(f"could not read a timestamp from {value!r}")
+    seconds = 0.0
+    for part in parts:
+        seconds = seconds * 60 + float(part)
+    return seconds
 
 
-def find_moments(query: str, top_k: int = 5) -> list[dict]:
-    """Ask the live search where the moment is. Semantic, so the query can
-    be how you remember it rather than what was said."""
-    r = httpx.post(f"{API}/v1/podcast/search",
-                   json={"query": query, "top_k": top_k}, timeout=120)
-    r.raise_for_status()
-    return r.json().get("hits", [])
+def top_hit(query: str) -> dict:
+    """Ask the live search where the best moment for this question is."""
+    request = urllib.request.Request(
+        f"{SEARCH}/v1/podcast/search",
+        data=json.dumps({"query": query}).encode(),
+        headers={"content-type": "application/json"})
+    body = json.loads(urllib.request.urlopen(request, timeout=180).read(),
+                      strict=False)
+    hits = body.get("hits") or []
+    if not hits:
+        sys.exit(f"no results for {query!r}")
+    return hits[0]
 
 
-def parse_time(value: str) -> float:
-    """Accept 1:02:03, 44:22 or plain seconds.
-
-    Timestamps on the page and in search results are written the first
-    way, so requiring seconds would mean doing arithmetic to use the thing
-    you are looking at.
-    """
-    value = str(value).strip()
-    if ":" not in value:
-        return float(value)
-    parts = [float(p) for p in value.split(":")]
-    if len(parts) == 2:
-        return parts[0] * 60 + parts[1]
-    if len(parts) == 3:
-        return parts[0] * 3600 + parts[1] * 60 + parts[2]
-    raise ValueError(f"can't read {value!r} as a time")
-
-
-def main() -> int:
+def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--query", help="find the moment by meaning")
-    ap.add_argument("--pick", type=int, help="which search result to cut (1-based)")
-    ap.add_argument("--episode", help="episode id, if you already know it")
-    ap.add_argument("--start", help="where the clip begins, e.g. 44:22")
-    ap.add_argument("--end", help="where it ends, e.g. 45:05 (overrides --duration)")
-    ap.add_argument("--duration", type=float, default=50.0,
-                    help="clip length; X plays up to 2:20, but 40-60s holds")
+    ap.add_argument("query", nargs="?",
+                    help="a question; the top result becomes the clip")
+    ap.add_argument("--episode", help="episode id, instead of a query")
+    ap.add_argument("--at", help="timestamp, e.g. 4:01:47 (with --episode)")
+    ap.add_argument("--seconds", type=float, default=45.0,
+                    help="clip length (default 45)")
     ap.add_argument("--lead", type=float, default=3.0,
-                    help="seconds before the moment, so it doesn't open mid-word "
-                         "(ignored when --start is given: that is your call)")
-    ap.add_argument("--size", type=int, default=SIZE, help="output square, px")
+                    help="seconds of run-up before the moment, so it does "
+                         "not open mid-word (default 3)")
+    ap.add_argument("--height", type=int, default=1080,
+                    choices=[480, 720, 1080], help="output height")
+    ap.add_argument("--out", help="output file (default: ~/Desktop)")
     args = ap.parse_args()
 
-    episodes = load_episodes()
+    if not ffmpeg_available():
+        sys.exit("ffmpeg is not on PATH — brew install ffmpeg")
 
-    if args.query and not args.episode:
-        hits = find_moments(args.query)
-        if not hits:
-            sys.exit("no moments found for that query.")
-        if not args.pick:
-            print(f"\n  moments for {args.query!r}:\n")
-            for i, h in enumerate(hits, 1):
-                text = re.sub(r"\s+", " ", h["text"])[:96]
-                print(f"   {i}. {h['timestamp']:>8}  {h['title'][:52]}")
-                print(f"      {text}…\n")
-            print("  re-run with --pick N to cut one.\n")
-            return 0
-        hit = hits[args.pick - 1]
+    episodes = {e["episode_id"]: e for e in json.loads(EPISODES.read_text())}
+
+    if args.query:
+        hit = top_hit(args.query)
         episode_id = hit["episode_id"]
-        # Search suggests where the moment is; --start overrides it, because
-        # a retrieval window begins where a chunk boundary fell, not where
-        # the thought starts. Only the person watching knows that.
-        found_at = float(hit["start_seconds"])
-        start = parse_time(args.start) if args.start else max(0.0, found_at - args.lead)
-    elif args.episode and args.start is not None:
-        episode_id, start = args.episode, parse_time(args.start)
+        start = float(hit["start_seconds"])
+        print(f"  top result: {hit['title'][:56]} @ {hit['timestamp']}")
     else:
-        sys.exit("give --query (then --pick N), or --episode with --start.")
+        if not (args.episode and args.at):
+            sys.exit("give a query, or --episode with --at")
+        episode_id, start = args.episode, parse_timestamp(args.at)
 
     episode = episodes.get(episode_id)
-    if not episode:
-        sys.exit(f"{episode_id} is not in data/episodes.json.")
+    if episode is None:
+        sys.exit(f"{episode_id} is not in {EPISODES.name} — re-fetch it first")
 
-    end = parse_time(args.end) if args.end else start + args.duration
-    if end <= start:
-        sys.exit(f"--end ({stamp(end)}) must come after --start ({stamp(start)}).")
+    # A clip that opens mid-syllable reads as broken, so back up a little.
+    start = max(0.0, start - args.lead)
+    end = start + args.seconds
+    on_x = episode.get("platform") != "youtube"
 
-    OUT_DIR.mkdir(exist_ok=True)
-    out = OUT_DIR / f"{episode_id}-{int(start)}.mp4"
+    print(f"  {episode['title'][:60]}")
+    print(f"  {stamp(start)} → {stamp(end)}  ({args.seconds:.0f}s, "
+          f"{args.height}p, {'X broadcast' if on_x else 'YouTube'})")
 
-    print(f"  episode : {episode['title'][:66]}")
-    print(f"  window  : {stamp(start)} → {stamp(end)}  ({end - start:.0f}s)")
+    captions = build_captions(episode["segments"], start, end)
+    out = Path(args.out) if args.out else (
+        Path.home() / "Desktop" /
+        f"clip-{episode_id}-{int(start)}s-{args.height}p.mp4")
 
+    began = time.time()
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp)
-        raw = work / "raw.mp4"
-        print("  fetching the section …", flush=True)
-        import os
-        fetch_section(episode["url"], start, end, raw,
-                      os.environ.get("YTDLP_PROXY") or None)
-
-        captions = build_captions(episode["segments"], start, end)
-        print(f"  captions: {len(captions)} lines drawn from the transcript")
+        source = work / "src.mp4"
+        print("  downloading the section…")
+        fetch_section(episode["url"], start, end, source, height=args.height)
 
         backdrop = work / "backdrop.png"
-        make_backdrop(episode["title"], stamp(start), backdrop, args.size)
+        make_backdrop(episode["title"], stamp(start), backdrop, args.height)
 
-        print("  rendering …", flush=True)
-        render(raw, captions, backdrop, work, out, args.size)
+        print(f"  rendering {len(captions)} caption(s)…")
+        render(source, captions, backdrop, work, out, args.height)
 
-    print(f"\n  {out}  ({out.stat().st_size / 1_000_000:.1f} MB)")
-    print(f"  {episode['url']}&t={int(start)}s\n")
-    return 0
+    size_mb = out.stat().st_size / 1_048_576
+    print(f"\n  {out}")
+    print(f"  {size_mb:.1f} MB in {time.time() - began:.0f}s")
+    if on_x:
+        # Worth saying out loud: this is the half of the show that the
+        # YouTube upload cuts, and X cannot link to a timestamp, so the clip
+        # is the only way to point anyone at this moment.
+        print("  (from the live broadcast — this moment is not on YouTube, "
+              "and X cannot link to a timestamp)")
+    if shutil.which("open"):
+        print("  open it:  open " + str(out).replace(" ", "\\ "))
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()

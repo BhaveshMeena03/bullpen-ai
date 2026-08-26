@@ -243,13 +243,31 @@ def _ytdlp_binary() -> str:
 
 
 def fetch_section(url: str, start: float, end: float, dest: Path,
-                  proxy: str | None = None) -> None:
+                  proxy: str | None = None, height: int = DEFAULT_SIZE) -> None:
+    """Download just the requested seconds of a video, at most `height` tall.
+
+    Works for YouTube and for an X broadcast replay. The two need different
+    handling in two places:
+
+      player client   YouTube refuses a section download from some clients;
+                      mweb is the one that works. X has no such argument and
+                      rejects the whole flag, so it is only passed to
+                      YouTube URLs.
+      fragments       An X replay arrives as thousands of small HLS
+                      fragments fetched one at a time by default, which is
+                      bounded by round-trip latency rather than bandwidth.
+                      Sixteen at once is the difference between seconds and
+                      minutes even for a short section.
+    """
+    is_youtube = "youtube.com" in url or "youtu.be" in url
     cmd = [_ytdlp_binary(), "--quiet", "--no-warnings",
            "--download-sections", f"*{start:.2f}-{end:.2f}",
            "--force-keyframes-at-cuts",
-           "-f", "bv*[height<=720]+ba/b[height<=720]/b",
-           "--extractor-args", f"youtube:player_client={PLAYER_CLIENT}",
-           "--remote-components", "ejs:github"]
+           "-f", f"bv*[height<={height}]+ba/b[height<={height}]/b",
+           "--concurrent-fragments", "16"]
+    if is_youtube:
+        cmd += ["--extractor-args", f"youtube:player_client={PLAYER_CLIENT}",
+                "--remote-components", "ejs:github"]
     if proxy:
         cmd += ["--proxy", proxy]
     cmd += ["-o", str(dest), url]
