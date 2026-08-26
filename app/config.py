@@ -209,10 +209,39 @@ class Settings(BaseSettings):
     # X-Admin-Token header. Leave unset only for local development.
     admin_token: str | None = None
 
+    # --- X mention bot -----------------------------------------------------
+    # Tag the account with a question, it answers from the transcripts. OAuth
+    # 1.0a user context, because app-only tokens cannot post.
+    x_api_key: str | None = None
+    x_api_secret: str | None = None
+    x_access_token: str | None = None
+    x_access_secret: str | None = None
+    # The bot's own numeric id, used for the mentions endpoint and to keep it
+    # from answering itself.
+    x_bot_user_id: str | None = None
+    # Off unless deliberately switched on. The bot spends money on every
+    # reply, so it should never start just because credentials happen to be
+    # present in the environment.
+    x_bot_enabled: bool = False
+    # A reply is $0.015 and an answer is about $0.008, so 100 replies is
+    # roughly $2.30 a day. The cap is a spend guard: it bounds what a bug, or
+    # a raid, can cost before anyone notices.
+    x_bot_daily_reply_cap: int = 100
+    # Replies carry no URL. X charges $0.200 for a post containing one against
+    # $0.015 without — 13x, or the difference between $36 and $313 a month at
+    # fifty mentions a day. The citation (timestamp + episode) is the useful
+    # part anyway and the link lives in the bio. Turn this on only if someone
+    # else is funding the difference.
+    x_bot_include_links: bool = False
+    # Seconds between polls, jittered. Reads are deduplicated within a UTC
+    # day, so frequent polling costs nothing extra; the jitter is about not
+    # looking like a metronome, which is a documented suspension trigger.
+    x_bot_poll_seconds: float = 60.0
 
     @field_validator(
         "anthropic_api_key", "voyage_api_key", "pinecone_api_key",
-        "admin_token", mode="before",
+        "admin_token", "x_api_key", "x_api_secret", "x_access_token",
+        "x_access_secret", mode="before",
     )
     @classmethod
     def _sanitize_secret(cls, v):

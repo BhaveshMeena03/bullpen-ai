@@ -21,3 +21,8 @@ data/.usage.json
 # Local coordination only — nothing another checkout needs.
 *.lock
 *.json.tmp
+
+# Runtime state for the X bot: which mentions it has already answered.
+# Machine-local, and committing it would make one deploy re-answer another's
+# backlog.
+data/x_bot_state.json
