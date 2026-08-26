@@ -72,12 +72,19 @@ services:
       # present in the environment are never enough on their own.
       - key: X_BOT_ENABLED
         value: "false"
-      # off | seekable | always. A reply with a URL costs $0.200 against
-      # $0.015, whatever it links to — but only a YouTube link actually
-      # jumps to the moment. "seekable" pays for those and skips the X
-      # broadcast links, which open a four-hour video at 0:00 either way.
+      # off | seekable | always.
+      #
+      # A reply with a URL costs $0.200 against $0.015 whatever it links to,
+      # and only a YouTube link actually jumps to the moment — which is the
+      # argument for "seekable", and it is a real one.
+      #
+      # "always" anyway, because the saving is not the point yet. An X link
+      # renders a video card carrying the episode title and thumbnail, and a
+      # reply that looks like something beats a reply that saves $0.185
+      # while the people deciding whether this is worth funding are the ones
+      # reading it. Revisit when volume matters more than appearance.
       - key: X_BOT_INCLUDE_LINKS
-        value: "seekable"
+        value: "always"
       - key: X_BOT_DAILY_REPLY_CAP
         value: "25"
       # The ceiling the reply cap is not: a mention read costs $0.001
