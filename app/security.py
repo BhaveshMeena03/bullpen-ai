@@ -290,6 +290,26 @@ class PerClientDailyBudget:
         self._counts[key] = used + 1
         self._seen[key] = time.monotonic()
 
+    def refund(self, request: Request) -> None:
+        """Give the slot back when the request turned out to cost nothing.
+
+        The cap exists to bound spend, and a cached answer spends nothing.
+        Charging for it made the cache cheaper without making the service
+        any more available, which is half the reason it was built — and it
+        was found the way these things usually are: the person who owns the
+        site could not use his own demo, because a verification run had
+        already spent his allowance on answers that were free.
+
+        Called from the handler rather than the dependency because only the
+        handler knows whether the cache had it.
+        """
+        if self._ceiling() <= 0:
+            return
+        self._roll()
+        key = RateLimiter._client_ip(request)
+        if self._counts.get(key):
+            self._counts[key] -= 1
+
     def state(self) -> dict:
         self._roll()
         top = sorted(self._counts.values(), reverse=True)[:1]

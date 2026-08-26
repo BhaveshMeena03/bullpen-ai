@@ -180,7 +180,16 @@ class Settings(BaseSettings):
     # enthusiastic person does in a day, so only automation should meet it,
     # and draining the service now needs ~15 distinct addresses rather than
     # one patient script. 0 disables.
-    per_client_daily_budget: int = 200
+    # Raised from 200 after the owner of the site could not use his own demo:
+    # a verification run had already spent the allowance, and most of what it
+    # spent it on was free — cache hits and retrieval-only checks, which are
+    # now refunded (see RateLimiter.refund).
+    #
+    # Note this does not raise what the service can spend in a day. That
+    # ceiling is daily_request_budget below, across all callers. This number
+    # only decides how much of it one address may take, so the effect is on
+    # fairness, not on the bill.
+    per_client_daily_budget: int = 400
     daily_request_budget: int = 3000
     # 12/min per client. A person asks maybe 1-5 questions a minute, so this
     # is still 2-3x human speed and no real user will meet it. It was 30,

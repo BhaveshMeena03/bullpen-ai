@@ -330,6 +330,7 @@ async def healthz() -> dict:
                         Depends(daily_budget), Depends(per_client_daily)])
 async def chat(
     body: ChatRequest,
+    request: Request,
     retriever: Retriever = Depends(get_retriever),
     agent: ConciergeAgent = Depends(get_agent),
     answers: AnswerCache = Depends(get_answers),
@@ -342,6 +343,7 @@ async def chat(
         cached = answers.get(key)
         if cached is not None:
             usage.record("concierge", cached.model, None, cached=True)
+            per_client_daily.refund(request)
             return cached
     chunks = await retriever.search(body.message, filters=body.filters)
     try:
@@ -370,6 +372,7 @@ async def chat(
                         Depends(daily_budget), Depends(per_client_daily)])
 async def clawpump_chat(
     body: ChatRequest,
+    request: Request,
     retriever: Retriever = Depends(get_retriever),
     agent: ClawPumpAgent = Depends(get_clawpump_agent),
     answers: AnswerCache = Depends(get_answers),
@@ -390,6 +393,7 @@ async def clawpump_chat(
         cached = answers.get(key)
         if cached is not None:
             usage.record("clawpump-support", cached.model, None, cached=True)
+            per_client_daily.refund(request)
             return cached
     chunks = await retriever.search(body.message, namespace=CLAWPUMP_NAMESPACE)
     try:
@@ -522,6 +526,7 @@ async def ingest(
                         Depends(daily_budget), Depends(per_client_daily)])
 async def podcast_search(
     body: PodcastSearchRequest,
+    request: Request,
     podcast: PodcastIndex = Depends(get_podcast),
     answers: AnswerCache = Depends(get_answers),
     usage: UsageLedger = Depends(get_usage),
@@ -534,6 +539,9 @@ async def podcast_search(
     cached = answers.get(key)
     if cached is not None:
         usage.record("market-bubble-search", cached.model, None, cached=True)
+        # A cache hit costs nothing, so it must not spend the caller's
+        # daily allowance. See RateLimiter.refund.
+        per_client_daily.refund(request)
         return cached
     try:
         result = await podcast.search(body.query, top_k=body.top_k)

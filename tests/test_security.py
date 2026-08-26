@@ -439,3 +439,113 @@ class TestPerClientDailyBudget:
         for i in range(400):
             asyncio.run(budget(self._req(f"10.0.{i // 256}.{i % 256}")))
         assert len(budget._counts) <= 50
+
+
+class TestCachedAnswersAreFree:
+    """A cache hit costs nothing, so it must not spend the caller's day.
+
+    Found the way these things usually are: the person who owns the site
+    could not use his own demo. A verification run had spent his allowance,
+    and most of what it spent went on answers that were served from cache
+    for $0. The limiter is there to bound spend, so charging for a free
+    response made the cache cheaper without making the service any more
+    available — which was half the reason for building it.
+    """
+
+    def _req(self, ip: str):
+        from starlette.requests import Request
+
+        return Request({"type": "http", "headers": [], "client": (ip, 1234),
+                        "method": "GET", "path": "/", "scheme": "https"})
+
+    def test_a_refunded_request_does_not_count(self):
+        from app.security import PerClientDailyBudget
+
+        budget = PerClientDailyBudget(limit=3)
+        for _ in range(10):
+            asyncio.run(budget(self._req("1.2.3.4")))   # charged on the way in
+            budget.refund(self._req("1.2.3.4"))         # ...cache had it
+        asyncio.run(budget(self._req("1.2.3.4")))       # still has room
+
+    def test_refunds_are_per_client(self):
+        """One client's cache hit must not top up another's allowance."""
+        from app.security import PerClientDailyBudget
+
+        budget = PerClientDailyBudget(limit=2)
+        asyncio.run(budget(self._req("1.1.1.1")))
+        asyncio.run(budget(self._req("2.2.2.2")))
+        budget.refund(self._req("1.1.1.1"))
+        asyncio.run(budget(self._req("2.2.2.2")))       # 2.2.2.2 now at 2
+        with pytest.raises(HTTPException):
+            asyncio.run(budget(self._req("2.2.2.2")))
+
+    def test_refund_never_goes_negative(self):
+        """A refund with nothing charged must not hand out free credit."""
+        from app.security import PerClientDailyBudget
+
+        budget = PerClientDailyBudget(limit=1)
+        for _ in range(5):
+            budget.refund(self._req("1.2.3.4"))
+        asyncio.run(budget(self._req("1.2.3.4")))
+        with pytest.raises(HTTPException):
+            asyncio.run(budget(self._req("1.2.3.4")))
+
+    def test_refund_is_a_noop_when_disabled(self):
+        from app.security import PerClientDailyBudget
+
+        budget = PerClientDailyBudget(limit=0)
+        budget.refund(self._req("1.2.3.4"))     # must not raise
+
+
+def test_a_cached_search_does_not_spend_the_callers_allowance(monkeypatch):
+    """The wiring, not just the method.
+
+    RateLimiter.refund can be perfect and the bug still be live if a handler
+    forgets to call it — which is exactly the shape of the original problem,
+    since the limiter runs as a dependency and cannot see whether the cache
+    had the answer. So this goes through the real endpoint twice: the first
+    call is charged, the second is served from cache and must give the slot
+    back.
+    """
+    from app.answer_cache import AnswerCache
+    from app.schemas import PodcastSearchResponse
+    from app.security import per_client_daily
+
+    monkeypatch.setenv("ADMIN_TOKEN", "s3cret")
+    get_settings.cache_clear()
+
+    answer = PodcastSearchResponse(answer="he said it here", hits=[],
+                                   model="claude-haiku-4-5")
+
+    class _Index(_Stub):
+        calls = 0
+
+        async def search(self, *a, **k):
+            _Index.calls += 1
+            return answer
+
+    monkeypatch.setattr(main_module, "Retriever", _Stub)
+    monkeypatch.setattr(main_module, "ConciergeAgent", _Stub)
+    monkeypatch.setattr(main_module, "IngestionPipeline", _Stub)
+    monkeypatch.setattr(main_module, "PodcastIndex", _Index)
+
+    with TestClient(main_module.app) as client:
+        # One shared instance: a fresh AnswerCache per request would never
+        # hit, and the test would pass for the wrong reason.
+        shared = AnswerCache()
+        main_module.app.dependency_overrides[main_module.get_answers] = \
+            lambda: shared
+        try:
+            per_client_daily._counts.clear()
+            body = {"query": "what did ansem say about eth"}
+            assert client.post("/v1/podcast/search", json=body).status_code == 200
+            charged = dict(per_client_daily._counts)
+            assert client.post("/v1/podcast/search", json=body).status_code == 200
+            assert _Index.calls == 1, "second call should have been cached"
+            assert per_client_daily._counts == charged, (
+                "the cached answer cost nothing and must not have been "
+                "charged against the caller's daily allowance")
+        finally:
+            main_module.app.dependency_overrides.clear()
+            per_client_daily._counts.clear()
+    get_settings.cache_clear()
