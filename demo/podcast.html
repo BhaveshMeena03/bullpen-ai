@@ -136,6 +136,11 @@
     list-style:none;display:flex;align-items:center;gap:10px}
   details.epcard summary::-webkit-details-marker{display:none}
   details.epcard summary .tw{color:var(--green);font-size:12px;transition:transform .15s}
+  /* Marks the uncut broadcast, so two adjacent entries for one show read
+     as two versions rather than as a duplicate. */
+  .srcbadge{font-size:10.5px;font-weight:600;letter-spacing:.3px;
+    color:var(--muted);border:1px solid var(--line);border-radius:999px;
+    padding:2px 8px;margin-left:auto;white-space:nowrap;flex-shrink:0}
   details.epcard[open] summary .tw{transform:rotate(90deg)}
   .ep-body{padding:0 16px 16px;font-size:14px;color:#c7ccd2;white-space:normal;overflow-wrap:break-word}
   .ep-body h3,.ep-body strong{color:var(--text)}
@@ -359,10 +364,18 @@
           var d=document.createElement("details");
           d.className="epcard";
           var bodyHtml=linkifyTimestamps(md(ep.summary||""), ep.url||"");
-          d.innerHTML='<summary><span class="tw">▶</span>'+esc(ep.title)+
+          // Both cuts of an episode are listed: the YouTube upload and the
+          // full live broadcast, which runs roughly twice as long because
+          // the upload is edited down. They sit next to each other in the
+          // list and would otherwise read as the same show duplicated.
+          var live = !canSeek(ep.url || "");
+          var badge = live ? '<span class="srcbadge">full live · on X</span>' : '';
+          d.innerHTML='<summary><span class="tw">▶</span>'+esc(ep.title)+badge+
             '</summary><div class="ep-body">'+bodyHtml+
             '<a class="ep-link" href="'+escAttr(safeUrl(ep.url||""))+'" '+
-            'target="_blank" rel="noopener">Watch the full episode →</a></div>';
+            'target="_blank" rel="noopener">'
+            + (live ? 'Watch the full broadcast on X →'
+                    : 'Watch the full episode →') + '</a></div>';
           wrap.appendChild(d);
         });
         document.getElementById("eps").hidden=false;
