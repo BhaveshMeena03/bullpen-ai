@@ -73,6 +73,7 @@ def build(dry_run: bool, cap: int | None, links: bool | None):
         include_links=(links if links is not None
                        else settings.x_bot_include_links),
         contract_address=settings.x_bot_contract_address,
+        token_label=settings.x_bot_token_label,
     )
     return settings, client, bot
 

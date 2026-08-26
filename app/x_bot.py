@@ -112,10 +112,17 @@ _ASKS_FOR_CA = re.compile(
     )\b""")
 
 
-def pinned_answer(question: str, contract_address: str | None) -> str | None:
+def pinned_answer(question: str, contract_address: str | None,
+                  token_label: str | None = None) -> str | None:
     """A fixed reply for questions retrieval should not be asked.
 
     Returns None when nothing is pinned, so the normal path runs.
+
+    The reply names what the address is for. A bare "CA: 8VjF..." is read
+    out of context — quoted, screenshotted, seen weeks later in a reply
+    thread — and a 44-character string with nothing attached to it is
+    indistinguishable from any other 44-character string someone might post
+    under a token account.
 
     The address is only ever the configured one. It is never read out of the
     incoming post — a bot that echoed back whatever address someone sent it
@@ -124,7 +131,9 @@ def pinned_answer(question: str, contract_address: str | None) -> str | None:
     """
     if not contract_address or not _ASKS_FOR_CA.search(question or ""):
         return None
-    return f"CA: {contract_address}"
+    label = token_label or "This project"
+    return (f"{label} CA: {contract_address}\n\n"
+            f"That is the only official one.")
 
 
 def is_a_miss(answer: str) -> bool:
@@ -225,6 +234,7 @@ class MentionBot:
     def __init__(self, client: XClient, index, *, daily_reply_cap: int = 100,
                  include_links: bool = False, min_question_chars: int = 6,
                  contract_address: str | None = None,
+                 token_label: str | None = None,
                  state_path: Path = STATE_PATH) -> None:
         self._client = client
         self._index = index
@@ -232,6 +242,7 @@ class MentionBot:
         self.include_links = include_links
         self._min_question = min_question_chars
         self._contract_address = contract_address
+        self._token_label = token_label
         self._state_path = state_path
         self.state = BotState.load(state_path)
 
@@ -287,7 +298,8 @@ class MentionBot:
         # project rather than something said on the podcast. Answering it
         # from a constant costs nothing, cannot be paraphrased wrong, and
         # skips the model entirely.
-        pinned = pinned_answer(question, self._contract_address)
+        pinned = pinned_answer(question, self._contract_address,
+                                self._token_label)
         if pinned:
             posted = await self._client.reply(pinned, mention.id)
             logger.info("replied to %s with the pinned CA -> %s",

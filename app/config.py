@@ -250,6 +250,10 @@ class Settings(BaseSettings):
     # is a fact about the project, not something said on the podcast, and
     # it is the one answer that must never be paraphrased or half-right.
     x_bot_contract_address: str | None = None
+    # What that address is FOR. A bare "CA: 8VjF..." gets quoted and
+    # screenshotted out of context, where 44 characters with no name
+    # attached look like any other 44 characters.
+    x_bot_token_label: str | None = None
 
     @field_validator(
         "anthropic_api_key", "voyage_api_key", "pinecone_api_key",

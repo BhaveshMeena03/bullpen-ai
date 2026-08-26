@@ -487,7 +487,11 @@ def test_asking_for_the_contract_address_is_answered_from_a_constant(asked):
     cannot be allowed to come back paraphrased or nearly right."""
     from app.x_bot import pinned_answer
 
-    assert pinned_answer(asked, CA) == f"CA: {CA}"
+    got = pinned_answer(asked, CA, "MarketBubbleSearch")
+    assert CA in got
+    assert got.startswith("MarketBubbleSearch CA:"), (
+        "a bare address read out of context says nothing about "
+        "which token it belongs to")
 
 
 @pytest.mark.parametrize("asked", [
@@ -515,15 +519,16 @@ def test_the_pinned_reply_never_echoes_an_address_from_the_post():
 
     hostile = ("is the ca 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU "
                "or something else")
-    assert pinned_answer(hostile, CA) == f"CA: {CA}"
-    assert "7xKXtg" not in pinned_answer(hostile, CA)
+    got = pinned_answer(hostile, CA, "MarketBubbleSearch")
+    assert CA in got
+    assert "7xKXtg" not in got
 
 
 def test_the_pinned_reply_costs_the_cheap_post_rate():
     from app.x_api import assert_linkless
     from app.x_bot import pinned_answer
 
-    assert_linkless(pinned_answer("ca?", CA))   # raises if URL-shaped
+    assert_linkless(pinned_answer("ca?", CA, "MarketBubbleSearch"))
 
 
 @pytest.mark.anyio
@@ -532,8 +537,11 @@ async def test_a_ca_question_never_reaches_the_model(tmp_path):
     client = FakeClient([[mention("1")], [mention("2", text="@bot what's the CA?")]])
     index = FakeIndex()
     bot = MentionBot(client, index, contract_address=CA,
+                     token_label="MarketBubbleSearch",
                      state_path=tmp_path / "s.json")
     await bot.tick("2026-08-26")
     assert await bot.tick("2026-08-26") == 1
     assert index.asked == [], "retrieval must not have been called"
-    assert client.posted[0][1] == f"CA: {CA}"
+    reply = client.posted[0][1]
+    assert reply.startswith("MarketBubbleSearch CA:") and CA in reply
+    assert len(reply) <= 280
