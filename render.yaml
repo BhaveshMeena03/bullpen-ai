@@ -115,6 +115,13 @@ services:
       # to answer size would cut the back half of an episode off.
       - key: X_BOT_SUMMARY_LIMIT
         value: "4000"
+      # Nearly all the latency was here. Answering takes 4-8 seconds; at 60s
+      # a mention waited up to 84 just to be noticed. Polling is free — X
+      # charges per resource returned and deduplicates within the UTC day —
+      # so this is 20, not lower, because a reply three seconds after the
+      # question reads as a machine.
+      - key: X_BOT_POLL_SECONDS
+        value: "20"
       - key: X_BOT_CONTRACT_ADDRESS
         value: "8VjFid8BVGcTPpUzf4PAWsA5nHJ5h2GQNXPEjyr2mF7t"
       - key: X_BOT_TOKEN_LABEL

@@ -1593,3 +1593,18 @@ def test_a_summary_without_the_label_is_untouched():
 
     out = format_summary("This episode covers a green day.", "Ep 16", 4000)
     assert out.startswith("This episode covers a green day.")
+
+
+def test_polling_is_frequent_but_not_instant():
+    """Nearly all the latency was here: answering takes 4-8 seconds, and at
+    a 60s interval a mention waited up to 84 just to be noticed.
+
+    Polling costs nothing — X charges per resource returned and dedupes
+    within the UTC day — so the only reason not to go lower is that a reply
+    three seconds after the question reads as a machine, and "reply speed no
+    human could achieve" is a documented suspension trigger.
+    """
+    pauses = [MentionBot.pause_seconds(20.0) for _ in range(500)]
+    assert min(pauses) >= 10, "not so fast it looks automated"
+    assert max(pauses) <= 30, "not so slow the question sits unseen"
+    assert len(set(round(p, 3) for p in pauses)) > 400, "still jittered"

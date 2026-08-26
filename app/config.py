@@ -255,10 +255,22 @@ class Settings(BaseSettings):
     # nothing anyone would notice missing. "always" is $157/month at the
     # daily cap; "off" is $18; this is around $60.
     x_bot_include_links: str = "seekable"
-    # Seconds between polls, jittered. Reads are deduplicated within a UTC
-    # day, so frequent polling costs nothing extra; the jitter is about not
-    # looking like a metronome, which is a documented suspension trigger.
-    x_bot_poll_seconds: float = 60.0
+    # Seconds between polls, jittered 0.7-1.4x.
+    #
+    # This is nearly all the latency. Answering takes 4-8 seconds — embed,
+    # Pinecone, rerank, model — while a mention waited up to 84 seconds at
+    # 60s just to be noticed. Ten times the delay, in the part doing no work.
+    #
+    # Polling more often is free: X charges per resource returned and
+    # deduplicates within the UTC day, so a poll that finds nothing costs
+    # nothing. At 20s that is three requests a minute, comfortably inside
+    # any published limit, and the client already backs off on a 429.
+    #
+    # Not lower than that on purpose. A reply landing three seconds after
+    # the question reads as a machine, and "reply speed no human could
+    # achieve" is a documented suspension trigger. Twenty seconds plus
+    # jitter is responsive without being uncanny.
+    x_bot_poll_seconds: float = 20.0
     # Answered from here rather than from retrieval: the contract address
     # is a fact about the project, not something said on the podcast, and
     # it is the one answer that must never be paraphrased or half-right.
