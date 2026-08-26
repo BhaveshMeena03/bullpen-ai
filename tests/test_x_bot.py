@@ -1078,3 +1078,65 @@ def test_an_x_link_supplies_the_moment_when_the_answer_did_not():
     reply = format_reply("He bought it for 750 ETH.", [Hit()],
                          include_links=True, limit=1500)
     assert "the moment is at 1:39:15" in reply
+
+
+# --- opting out -------------------------------------------------------------
+
+@pytest.mark.parametrize("text", [
+    "@bot stop", "@bot STOP", "@bot unsubscribe", "@bot opt out", "@bot opt-out",
+    "@bot leave me alone", "@bot stop replying to me",
+    "@bot don't reply to me again", "@bot no more replies", "@bot remove me",
+])
+def test_opt_out_is_recognised_generously(text):
+    """X requires "a clear and easy way to opt out". Someone asking to be
+    left alone should not have to guess the magic phrase."""
+    from app.x_bot import asks_to_be_left_alone
+
+    assert asks_to_be_left_alone(text)
+
+
+@pytest.mark.parametrize("text", [
+    "@bot what did ansem say about the stop loss",   # the false positive
+    "@bot did they talk about a stopgap",
+    "@bot when did ansem stop trading eth",
+    "@bot what did tjr say",
+])
+def test_ordinary_questions_are_not_opt_outs(text):
+    from app.x_bot import asks_to_be_left_alone
+
+    assert not asks_to_be_left_alone(text)
+
+
+@pytest.mark.anyio
+async def test_an_opt_out_is_honoured_and_never_forgotten(tmp_path):
+    """The promise in an opt-out is permanence. Honouring it for a while and
+    then forgetting is worse than never having offered one."""
+    path = tmp_path / "s.json"
+    client = FakeClient([
+        [mention("1")],
+        [mention("2", text="@bot stop", author="tired")],
+        [mention("3", text="@bot what did ansem say", author="tired")],
+    ])
+    index = FakeIndex()
+    bot = MentionBot(client, index, state_path=path)
+    await bot.tick("2026-08-26")                      # cold start
+    assert await bot.tick("2026-08-26") == 0          # the opt-out itself
+    assert "tired" in bot.state.opted_out
+    assert await bot.tick("2026-08-26") == 0, "must not answer them again"
+    assert index.asked == [], "and must not even ask the index"
+
+    # Survives a restart, which is where "permanent" is actually tested.
+    resumed = MentionBot(FakeClient([[mention("4", author="tired")]]),
+                         FakeIndex(), state_path=path)
+    assert await resumed.tick("2026-08-26") == 0
+
+
+@pytest.mark.anyio
+async def test_opting_out_does_not_silence_anyone_else(tmp_path):
+    client = FakeClient([[mention("1")],
+                         [mention("2", text="@bot stop", author="tired"),
+                          mention("3", author="someone_else")]])
+    bot = MentionBot(client, FakeIndex(), state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-26")
+    assert await bot.tick("2026-08-26") == 1
+    assert client.posted[0][0] == "3"

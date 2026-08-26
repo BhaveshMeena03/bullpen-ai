@@ -235,6 +235,34 @@ restating the question. Lead with the answer.
 it."""
 
 
+# X requires "a clear and easy way for users to opt-out of receiving
+# automated replies, and promptly honor all such opt-out requests". One word
+# in a reply, matched generously — someone asking to be left alone should
+# never have to guess the magic phrase.
+# Unambiguous phrases: these mean one thing wherever they appear.
+_OPT_OUT = re.compile(
+    r"""(?ix)\b(?: unsubscribe | opt\s*-?\s*out | leave\s+me\s+alone
+                 | don'?t\s+(?:reply|respond|message|tag|@)
+                 | stop\s+(?:replying|responding|tagging|messaging)
+                 | no\s+more\s+(?:replies|messages|bots?)
+                 | mute\s+me | remove\s+me | unfollow\s+me
+    )\b""")
+# A bare "stop" is only an opt-out when it is the whole message. Matching it
+# anywhere turned "what did ansem say about the stop loss" into a permanent
+# block on a real person, and a false positive here is much worse than a
+# false negative: one silences someone who wanted an answer, the other means
+# they have to say it more plainly.
+_BARE_STOP = re.compile(r"(?i)^\W*(?:stop|quiet|shush)\W*$")
+
+
+def asks_to_be_left_alone(text: str) -> bool:
+    """Is this person asking not to be replied to again?"""
+    text = (text or "").strip()
+    if _OPT_OUT.search(text):
+        return True
+    return bool(_BARE_STOP.match(question_from(text)))
+
+
 def looks_like_a_question(text: str) -> bool:
     """Is this actually asking something?
 
@@ -380,6 +408,10 @@ class BotState:
     # How many times each mention has failed, so a permanently broken one
     # is eventually stepped over instead of blocking everything behind it.
     attempts: dict = field(default_factory=dict)
+    # Author ids that asked not to be contacted again. Permanent, and never
+    # trimmed: honouring an opt-out for a while and then forgetting is worse
+    # than never having offered one.
+    opted_out: list = field(default_factory=list)
     spent_usd: float = 0.0
     # Spend is tracked per UTC day as well as cumulatively, because the
     # reply cap does not bound it. Replies are the expensive part but not
@@ -409,6 +441,7 @@ class BotState:
             "day": self.day,
             "replies_today": self.replies_today,
             "attempts": self.attempts,
+            "opted_out": self.opted_out,
             "spent_usd": round(self.spent_usd, 4),
             "spent_today_usd": round(self.spent_today_usd, 4),
         }))
@@ -487,6 +520,7 @@ class MentionBot:
 
         posted = 0
         replied = set(self.state.replied)
+        opted_out = set(self.state.opted_out)
         # Advanced only past mentions that were actually dealt with. Setting
         # it per-mention up front meant a failure mid-reply still marked the
         # question as seen, and it was never looked at again: a crash lost a
@@ -499,6 +533,19 @@ class MentionBot:
                 continue
             if mention.author_id == self._client.bot_user_id:
                 handled = mention.id           # never answer itself
+                continue
+            if mention.author_id in opted_out:
+                # Permanent. Checked before anything else that could produce
+                # a reply, because the promise made in the opt-out is that
+                # this account is never contacted again.
+                handled = mention.id
+                continue
+            if asks_to_be_left_alone(mention.text):
+                logger.info("%s asked to opt out — honouring it permanently",
+                            mention.author_id)
+                opted_out.add(mention.author_id)
+                self.state.opted_out.append(mention.author_id)
+                handled = mention.id
                 continue
             if self._verified_only and not mention.author_verified:
                 # Checked here rather than inside compose(), so an ignored
