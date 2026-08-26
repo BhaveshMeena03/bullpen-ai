@@ -5,7 +5,9 @@ services:
   - type: web
     name: marketbubble-search
     runtime: docker
-    plan: free
+    # Paid tier: the free one sleeps when idle, and a bot that only
+    # answers while someone happens to be browsing the site is not a bot.
+    plan: starter
     healthCheckPath: /healthz
     autoDeploy: true
     envVars:
@@ -42,5 +44,42 @@ services:
       # everyone after them is told the service is closed. 60 still allows a
       # thorough evaluation — more than anyone reaches by browsing — while
       # letting the same budget reach fifty times as many people.
+      # 60 was sized when the only caller was a person browsing. It is also
+      # what a verification run spends in one pass, so the owner of the site
+      # could not use his own demo — and most of what that run spent went on
+      # cache hits, which cost nothing and are now refunded rather than
+      # charged. 400 with free answers no longer counted is a smaller real
+      # allowance than 60 was, not a larger one.
       - key: PER_CLIENT_DAILY_BUDGET
-        value: "60"
+        value: "400"
+
+      # --- X mention bot -------------------------------------------------
+      # Runs inside this service rather than a worker of its own: it shares
+      # the PodcastIndex built at startup, and going over HTTP would put it
+      # behind this app's own per-client limiter, competing with visitors
+      # for the daily budget above.
+      - key: X_API_KEY
+        sync: false
+      - key: X_API_SECRET
+        sync: false
+      - key: X_ACCESS_TOKEN
+        sync: false
+      - key: X_ACCESS_SECRET
+        sync: false
+      - key: X_BOT_USER_ID
+        value: "2091231768200499200"
+      # The switch. Nothing replies in public until this is true, so keys
+      # present in the environment are never enough on their own.
+      - key: X_BOT_ENABLED
+        value: "false"
+      # A reply carrying a URL costs $0.200 against $0.015 without one, so
+      # this is the difference between roughly $5 and $5.25 a day at the cap
+      # below — and between $36 and $313 a month at fifty replies a day.
+      - key: X_BOT_INCLUDE_LINKS
+        value: "true"
+      - key: X_BOT_DAILY_REPLY_CAP
+        value: "25"
+      - key: X_BOT_CONTRACT_ADDRESS
+        value: "8VjFid8BVGcTPpUzf4PAWsA5nHJ5h2GQNXPEjyr2mF7t"
+      - key: X_BOT_TOKEN_LABEL
+        value: "MarketBubbleSearch"

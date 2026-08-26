@@ -8,8 +8,10 @@ Endpoints:
 """
 
 import asyncio
+import contextlib
 import json
 import logging
+import time
 from collections import Counter, deque
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -133,6 +135,50 @@ def _classify_outcome(query: str, chunks: list, answer: str, refused: bool) -> N
 
 
 @asynccontextmanager
+async def _run_x_bot(app: FastAPI, settings) -> None:
+    """Poll mentions forever, answering what is new.
+
+    Runs beside the web app and must never take it down with it, so every
+    error is caught and the loop keeps its cadence. The two it names are the
+    ones that are expected rather than exceptional: an empty credit balance
+    is a fact about billing, and a cancelled task is a shutdown.
+    """
+    from app.x_api import OutOfCreditsError, XClient, XCredentials
+    from app.x_bot import MentionBot
+
+    bot = MentionBot(
+        XClient(
+            XCredentials(settings.x_api_key, settings.x_api_secret,
+                         settings.x_access_token, settings.x_access_secret),
+            bot_user_id=settings.x_bot_user_id,
+        ),
+        app.state.podcast,
+        daily_reply_cap=settings.x_bot_daily_reply_cap,
+        include_links=settings.x_bot_include_links,
+        contract_address=settings.x_bot_contract_address,
+        token_label=settings.x_bot_token_label,
+    )
+    while True:
+        try:
+            posted = await bot.tick(time.strftime("%Y-%m-%d", time.gmtime()))
+            if posted:
+                logger.info("x_bot: posted %d repl%s today=%d",
+                            posted, "y" if posted == 1 else "ies",
+                            bot.state.replies_today)
+        except asyncio.CancelledError:
+            raise
+        except OutOfCreditsError as exc:
+            # Backs off rather than exiting: topping up should not need a
+            # redeploy to be noticed.
+            logger.error("x_bot: %s — retrying in an hour", exc)
+            await asyncio.sleep(3600)
+            continue
+        except Exception:                                   # noqa: BLE001
+            logger.exception("x_bot: poll failed — continuing")
+        await asyncio.sleep(
+            MentionBot.pause_seconds(settings.x_bot_poll_seconds))
+
+
 async def lifespan(app: FastAPI):
     # Build heavyweight clients once, at startup, and share them.
     app.state.retriever = Retriever()
@@ -157,7 +203,28 @@ async def lifespan(app: FastAPI):
     # symbol table. Both fill lazily — startup must not wait on a third party.
     app.state._market_cache = {}
     app.state._cg_table = None
-    yield
+
+    # The X mention bot, in this process rather than a service of its own.
+    # It shares the PodcastIndex already built above, which is the point:
+    # going over HTTP would put it behind this app's own per-client limiter
+    # and have it compete with real visitors for the daily budget.
+    #
+    # Off unless X_BOT_ENABLED, so credentials present in the environment are
+    # never on their own enough to start replying in public.
+    app.state.x_bot_task = None
+    if _s.x_bot_enabled:
+        app.state.x_bot_task = asyncio.create_task(_run_x_bot(app, _s))
+        logger.info("X mention bot started (cap %d/day, links %s)",
+                    _s.x_bot_daily_reply_cap,
+                    "ON" if _s.x_bot_include_links else "off")
+    try:
+        yield
+    finally:
+        task = app.state.x_bot_task
+        if task:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
 
 
 app = FastAPI(
