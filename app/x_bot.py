@@ -253,6 +253,12 @@ class BotState:
     day: str = ""
     replies_today: int = 0
     spent_usd: float = 0.0
+    # Spend is tracked per UTC day as well as cumulatively, because the
+    # reply cap does not bound it. Replies are the expensive part but not
+    # the only part: every mention read costs $0.001 whether or not it is
+    # answered, so anyone willing to tag the account repeatedly can run up a
+    # bill without a single reply being sent.
+    spent_today_usd: float = 0.0
 
     @classmethod
     def load(cls, path: Path = STATE_PATH) -> BotState:
@@ -275,6 +281,7 @@ class BotState:
             "day": self.day,
             "replies_today": self.replies_today,
             "spent_usd": round(self.spent_usd, 4),
+            "spent_today_usd": round(self.spent_today_usd, 4),
         }))
         tmp.replace(path)
 
@@ -282,6 +289,7 @@ class BotState:
         if today != self.day:
             self.day = today
             self.replies_today = 0
+            self.spent_today_usd = 0.0
 
 
 class MentionBot:
@@ -290,6 +298,7 @@ class MentionBot:
     def __init__(self, client: XClient, index, *, daily_reply_cap: int = 100,
                  include_links: bool = False, min_question_chars: int = 6,
                  contract_address: str | None = None,
+                 daily_spend_cap_usd: float = 5.0,
                  token_label: str | None = None,
                  state_path: Path = STATE_PATH) -> None:
         self._client = client
@@ -298,15 +307,36 @@ class MentionBot:
         self.include_links = include_links
         self._min_question = min_question_chars
         self._contract_address = contract_address
+        self._spend_cap = daily_spend_cap_usd
         self._token_label = token_label
         self._state_path = state_path
         self.state = BotState.load(state_path)
 
     async def tick(self, today: str) -> int:
-        """Answer whatever is new. Returns how many replies were posted."""
+        """Answer whatever is new. Returns how many replies were posted.
+
+        Every exit records what the cycle cost, so the daily ceiling holds
+        on the paths that spend and then return early as well.
+        """
+        before = self._client.spent_usd
+        try:
+            return await self._tick(today)
+        finally:
+            self.state.spent_today_usd += self._client.spent_usd - before
+            self.state.spent_usd = round(self._client.spent_usd, 4)
+            self.state.save(self._state_path)
+
+    async def _tick(self, today: str) -> int:
         self.state.roll(today)
         if self.state.replies_today >= self.cap:
             logger.info("daily reply cap reached (%d) — idling", self.cap)
+            return 0
+        if self._spend_cap and self.state.spent_today_usd >= self._spend_cap:
+            # The backstop the reply cap is not. Checked before the read,
+            # because the read is itself billable and is the part an
+            # outsider controls: they choose how often to tag the account.
+            logger.warning("daily X spend cap reached ($%.2f) — idling",
+                           self._spend_cap)
             return 0
 
         mentions = await self._client.mentions(since_id=self.state.since_id)
@@ -318,11 +348,6 @@ class MentionBot:
             # nothing this round. Skipping a few questions is recoverable;
             # replying to a backlog all at once is not.
             self.state.since_id = mentions[-1].id
-            # Record the read before returning: the mentions call was paid
-            # for, and a run that exits here would otherwise lose it from
-            # the running total every time the state file is empty.
-            self.state.spent_usd = round(self._client.spent_usd, 4)
-            self.state.save(self._state_path)
             logger.info("cold start — skipping %d existing mention(s)",
                         len(mentions))
             return 0
@@ -344,8 +369,6 @@ class MentionBot:
                 self.state.replied.append(mention.id)
 
         self.state.replies_today += posted
-        self.state.spent_usd = round(self._client.spent_usd, 4)
-        self.state.save(self._state_path)
         return posted
 
     async def compose(self, mention: Mention) -> str | None:

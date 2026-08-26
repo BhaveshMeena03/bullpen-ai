@@ -686,3 +686,82 @@ def test_the_style_note_never_reaches_the_embedder():
     retrieve_line = next(ln for ln in source.splitlines()
                          if "self.retrieve(" in ln)
     assert "instruction" not in retrieve_line
+
+
+# --- the spend ceiling -----------------------------------------------------
+
+class SpendingClient(FakeClient):
+    """Charges for reads like the real one, so a cap can be tested."""
+
+    async def mentions(self, since_id=None, limit=20):
+        got = self._batches.pop(0) if self._batches else []
+        self.spent_usd += len(got) * PRICE_OWNED_READ
+        return got
+
+    async def reply(self, text, to_post_id):
+        self.spent_usd += 0.200          # a reply carrying a link
+        return await super().reply(text, to_post_id)
+
+
+@pytest.mark.anyio
+async def test_reads_alone_cannot_run_up_an_unbounded_bill(tmp_path):
+    """The gap the reply cap does not close.
+
+    Every mention read costs $0.001 whether or not it is answered, and how
+    often the account gets tagged is decided by other people. Someone
+    willing to tag it repeatedly could spend real money without a single
+    reply being sent.
+    """
+    flood = [[mention(str(i)) for i in range(100)] for _ in range(20)]
+    client = SpendingClient(flood)
+    bot = MentionBot(client, FakeIndex(), daily_spend_cap_usd=0.05,
+                     state_path=tmp_path / "s.json")
+    for _ in range(20):
+        await bot.tick("2026-08-26")
+    assert client.spent_usd <= 0.15, (
+        f"spent ${client.spent_usd:.3f} against a $0.05 cap")
+
+
+@pytest.mark.anyio
+async def test_the_cap_covers_replies_too(tmp_path):
+    client = SpendingClient([[mention("0")]]
+                            + [[mention(str(i))] for i in range(1, 40)])
+    bot = MentionBot(client, FakeIndex(), daily_spend_cap_usd=0.5,
+                     daily_reply_cap=1000, state_path=tmp_path / "s.json")
+    for _ in range(40):
+        await bot.tick("2026-08-26")
+    assert client.spent_usd <= 0.8, f"spent ${client.spent_usd:.3f}"
+
+
+@pytest.mark.anyio
+async def test_the_ceiling_resets_the_next_day(tmp_path):
+    """A cap is a rate, not a lifetime budget."""
+    client = SpendingClient([[mention("0")], [mention("1")],
+                             [mention("2")], [mention("3")]])
+    bot = MentionBot(client, FakeIndex(), daily_spend_cap_usd=0.05,
+                     state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-26")                     # cold start
+    assert await bot.tick("2026-08-26") == 1         # one reply, over the cap
+    assert await bot.tick("2026-08-26") == 0, "idle for the rest of the day"
+
+    assert await bot.tick("2026-08-27") == 1, "and working again tomorrow"
+
+
+@pytest.mark.anyio
+async def test_spend_is_recorded_even_when_a_cycle_returns_early(tmp_path):
+    """The cold start reads, pays, and returns without replying. If that
+    path did not record, the ceiling would never see the cost of a restart
+    loop — and Render's disk is ephemeral, so restarts clear the state."""
+    client = SpendingClient([[mention(str(i)) for i in range(30)]])
+    bot = MentionBot(client, FakeIndex(), state_path=tmp_path / "s.json")
+    assert await bot.tick("2026-08-26") == 0
+    assert bot.state.spent_today_usd == pytest.approx(0.030, abs=1e-6)
+
+
+@pytest.mark.anyio
+async def test_a_zero_cap_disables_the_ceiling(tmp_path):
+    client = SpendingClient([[mention("0")], [mention("1")]])
+    bot = MentionBot(client, FakeIndex(), daily_spend_cap_usd=0,
+                     state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-26")
+    assert await bot.tick("2026-08-26") == 1

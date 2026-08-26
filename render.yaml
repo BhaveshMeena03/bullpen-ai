@@ -79,6 +79,11 @@ services:
         value: "true"
       - key: X_BOT_DAILY_REPLY_CAP
         value: "25"
+      # The ceiling the reply cap is not: a mention read costs $0.001
+      # whether or not it is answered, and how often the account is tagged
+      # is somebody else's decision. This bounds the day regardless.
+      - key: X_BOT_DAILY_SPEND_CAP_USD
+        value: "5.0"
       - key: X_BOT_CONTRACT_ADDRESS
         value: "8VjFid8BVGcTPpUzf4PAWsA5nHJ5h2GQNXPEjyr2mF7t"
       - key: X_BOT_TOKEN_LABEL

@@ -254,6 +254,11 @@ class Settings(BaseSettings):
     # screenshotted out of context, where 44 characters with no name
     # attached look like any other 44 characters.
     x_bot_token_label: str | None = None
+    # The ceiling the reply cap is not. Replies are the expensive part but
+    # not the only part: every mention read costs $0.001 whether or not it
+    # is answered, and how often the account gets tagged is decided by
+    # other people. This bounds a day no matter what they do. 0 disables.
+    x_bot_daily_spend_cap_usd: float = 5.0
 
     @field_validator(
         "anthropic_api_key", "voyage_api_key", "pinecone_api_key",

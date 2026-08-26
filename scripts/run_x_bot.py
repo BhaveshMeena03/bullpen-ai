@@ -74,6 +74,7 @@ def build(dry_run: bool, cap: int | None, links: bool | None):
                        else settings.x_bot_include_links),
         contract_address=settings.x_bot_contract_address,
         token_label=settings.x_bot_token_label,
+        daily_spend_cap_usd=settings.x_bot_daily_spend_cap_usd,
     )
     return settings, client, bot
 
