@@ -1254,3 +1254,22 @@ def test_the_old_booleans_still_mean_what_they_meant():
     assert "http" not in format_reply("x", [Hit()], include_links=False,
                                       limit=1500)
     assert wants_link("always", XL) and not wants_link("off", XL)
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("he said it [2:29:34]", "he said it 2:29:34"),
+    ("a range [2:29:34–2:33:04] leaked", "a range 2:29:34–2:33:04 leaked"),
+    ("[2:29:34-2:33:04] hyphen", "2:29:34–2:33:04 hyphen"),
+    ("around [7:02] and [1:39:15]", "around 7:02 and 1:39:15"),
+])
+def test_bracketed_timestamp_ranges_are_cleaned(raw, expected):
+    """A live reply went out reading "[2:29:34–2:33:04]".
+
+    The pattern only knew about a single timestamp, and the model writes
+    ranges whenever an answer spans a stretch of conversation — which a
+    1500-character reply does constantly, so the longer replies made this
+    far more likely than the short ones ever did.
+    """
+    from app.x_bot import plain_text
+
+    assert plain_text(raw) == expected

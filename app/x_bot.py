@@ -101,7 +101,13 @@ def _fit(text: str, budget: int) -> str:
 # carries so the model can cite the line it used — reads as broken markup.
 _BOLD = re.compile(r"\*\*(.+?)\*\*|__(.+?)__")
 _CODE = re.compile(r"`([^`]*)`")
-_BRACKET_TIME = re.compile(r"\[(\d{1,2}:\d{2}(?::\d{2})?)\]")
+# Single moments and ranges alike. The range form leaked into a live
+# reply as "[2:29:34–2:33:04]", because the pattern only knew about one
+# timestamp — and the model writes ranges whenever an answer spans a
+# stretch of conversation, which a longer reply does constantly.
+_STAMP = r"\d{1,2}:\d{2}(?::\d{2})?"
+_BRACKET_TIME = re.compile(
+    rf"\[({_STAMP})\s*(?:[-–—]\s*({_STAMP}))?\]")
 _LIST_MARK = re.compile(r"(?m)^\s*[-*+]\s+|^#{1,6}\s+")
 
 
@@ -133,7 +139,9 @@ def soften(text: str) -> str:
 
 def plain_text(answer: str) -> str:
     """Strip web-page formatting a plain-text reply cannot render."""
-    text = _BRACKET_TIME.sub(r"\1", answer or "")
+    text = _BRACKET_TIME.sub(
+        lambda m: m.group(1) + (f"–{m.group(2)}" if m.group(2) else ""),
+        answer or "")
     text = _BOLD.sub(lambda m: m.group(1) or m.group(2), text)
     text = _CODE.sub(r"\1", text)
     text = _LIST_MARK.sub("", text)
