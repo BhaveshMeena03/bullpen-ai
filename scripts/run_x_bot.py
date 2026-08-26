@@ -37,7 +37,7 @@ sys.path.insert(0, str(ROOT))
 
 from app.config import get_settings  # noqa: E402
 from app.podcast import PodcastIndex  # noqa: E402
-from app.x_api import XClient, XCredentials  # noqa: E402
+from app.x_api import OutOfCreditsError, XClient, XCredentials  # noqa: E402
 from app.x_bot import MentionBot  # noqa: E402
 
 logging.basicConfig(
@@ -115,6 +115,12 @@ async def main() -> int:
                 break
             await asyncio.sleep(
                 MentionBot.pause_seconds(settings.x_bot_poll_seconds))
+    except OutOfCreditsError as exc:
+        # Certain to happen eventually and not a bug, so it exits with a
+        # sentence rather than a traceback. Retrying would only spend the
+        # next poll on the same refusal.
+        log.error("%s", exc)
+        return 2
     except KeyboardInterrupt:
         log.info("stopping")
 

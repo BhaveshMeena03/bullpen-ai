@@ -332,3 +332,29 @@ def test_poll_pauses_are_jittered():
     pauses = {round(MentionBot.pause_seconds(60), 4) for _ in range(50)}
     assert len(pauses) > 40
     assert all(40 <= p <= 90 for p in pauses)
+
+
+def test_a_402_is_named_rather_than_thrown_raw():
+    """Running out of credits is expected, not exceptional.
+
+    Every billed X call answers 402 once the balance is gone. Left as a raw
+    HTTPStatusError it surfaces as a traceback that reads like a crash, on a
+    bot that is meant to run unattended. It also needs saying that
+    GET /2/users/me is NOT billed, so credentials can verify perfectly
+    against a zero balance and the first real call still fails — which is
+    exactly how this was found.
+    """
+    import httpx
+
+    from app.x_api import OutOfCreditsError, _raise_if_out_of_credits
+
+    request = httpx.Request("GET", "https://api.x.com/2/users/1/mentions")
+    with pytest.raises(OutOfCreditsError) as exc:
+        _raise_if_out_of_credits(
+            httpx.Response(402, request=request, text="Payment Required"))
+    assert "console.x.com" in str(exc.value), "say where to fix it"
+    assert "users/me" in str(exc.value), "explain why whoami passed"
+
+    # Anything else must fall through to the normal error handling.
+    for code in (200, 401, 403, 429, 500):
+        _raise_if_out_of_credits(httpx.Response(code, request=request))

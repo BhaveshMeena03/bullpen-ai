@@ -66,6 +66,20 @@ class LinkInReplyError(RuntimeError):
     """Raised rather than paying 13x for a reply nobody meant to make cost that."""
 
 
+class OutOfCreditsError(RuntimeError):
+    """X returned 402: the account's credit balance is spent.
+
+    Its own category because it is the one failure that is certain to happen
+    eventually and is not a bug. Every billed call returns it, so without
+    this the bot dies on an unhandled HTTPStatusError — a stack trace at 3am
+    that reads like a crash when the answer is "top up the balance".
+
+    Worth knowing: GET /2/users/me is not billed, so credentials can verify
+    perfectly against a zero balance and the first real call still fails.
+    That is confusing enough to deserve saying out loud.
+    """
+
+
 def strip_urls(text: str) -> str:
     """Drop URL-shaped tokens from text that came from a transcript.
 
@@ -81,6 +95,17 @@ def assert_linkless(text: str) -> None:
         raise LinkInReplyError(
             f"reply contains {found.group(0)!r}, which would cost "
             f"${PRICE_POST_WITH_URL:.3f} instead of ${PRICE_POST:.3f}"
+        )
+
+
+def _raise_if_out_of_credits(response: httpx.Response) -> None:
+    """Turn X's 402 into something a log reader can act on."""
+    if response.status_code == 402:
+        raise OutOfCreditsError(
+            "X returned 402 Payment Required — the credit balance is spent. "
+            "Top up at console.x.com (Billing -> Credits). Note that "
+            "GET /2/users/me is not billed, so scripts/x_whoami.py can "
+            "succeed while every real call fails."
         )
 
 
@@ -178,6 +203,7 @@ class XClient:
                 headers={"Authorization":
                          self._credentials.header("GET", url)},
             )
+        _raise_if_out_of_credits(response)
         response.raise_for_status()
         self.spent_usd += PRICE_OWNED_READ
         return response.json().get("data") or {}
@@ -205,6 +231,7 @@ class XClient:
         if response.status_code == 429:
             logger.warning("X rate limited the mentions read; backing off")
             return []
+        _raise_if_out_of_credits(response)
         response.raise_for_status()
         found = response.json().get("data") or []
         # Charged per resource returned, and deduplicated for the rest of
@@ -245,6 +272,7 @@ class XClient:
             logger.warning("X refused the reply to %s (403): %s",
                            to_post_id, response.text[:200])
             return None
+        _raise_if_out_of_credits(response)
         response.raise_for_status()
         self.spent_usd += PRICE_POST
         return (response.json().get("data") or {}).get("id")
