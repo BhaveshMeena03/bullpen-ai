@@ -68,10 +68,18 @@ services:
         sync: false
       - key: X_BOT_USER_ID
         value: "2091231768200499200"
-      # The switch. Nothing replies in public until this is true, so keys
-      # present in the environment are never enough on their own.
+      # The switch, and deliberately NOT managed by this file.
+      #
+      # It carried value: "false" here, and every blueprint sync reset it —
+      # so each deploy silently switched the bot off again after it had been
+      # turned on in the dashboard. Six deploys in an afternoon, and the
+      # account went quiet after each one with nothing in the logs to say
+      # why, because from the app's point of view nothing was wrong.
+      #
+      # sync: false hands it to the dashboard for good. A switch a person
+      # operates should not also be declared in a file that overwrites it.
       - key: X_BOT_ENABLED
-        value: "false"
+        sync: false
       # off | seekable | always.
       #
       # A reply with a URL costs $0.200 against $0.015 whatever it links to,
