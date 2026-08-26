@@ -94,12 +94,21 @@ services:
       - key: X_BOT_INCLUDE_LINKS
         value: "always"
       - key: X_BOT_DAILY_REPLY_CAP
-        value: "25"
+        value: "50"
       # The ceiling the reply cap is not: a mention read costs $0.001
       # whether or not it is answered, and how often the account is tagged
       # is somebody else's decision. This bounds the day regardless.
+      # Raised alongside the reply cap, because it binds first. Internal
+      # accounting still charges a linked reply at $0.200 — the rate the
+      # docs publish — while the actual bill is tracking about $0.016, so
+      # $5 was stopping the bot at roughly 24 replies rather than at $5 of
+      # real spend. $12 lets 50 replies through under the cautious model,
+      # and costs about $0.80 if the real one holds.
+      #
+      # Deliberately still overcounting. If X does start applying the URL
+      # premium, this ceiling holds at the number it claims.
       - key: X_BOT_DAILY_SPEND_CAP_USD
-        value: "5.0"
+        value: "12.0"
       # Answer only badged accounts. Filters throwaway spam; also ignores
       # genuine people who do not pay X for a checkmark.
       - key: X_BOT_VERIFIED_ONLY
