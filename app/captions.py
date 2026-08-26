@@ -91,3 +91,43 @@ def coalesce(segments: list[dict], min_gap: float = 6.0) -> list[dict]:
         else:
             out.append(dict(seg))
     return out
+
+
+def collapse_repeats(segments: list[dict], run_length: int = 3) -> list[dict]:
+    """Drop Whisper's repetition loops.
+
+    Whisper occasionally gets stuck and emits the same short line dozens of
+    times in a row — one broadcast had "I know." thirty times inside two
+    seconds. Across the transcribed broadcasts this was 1.7% of all
+    segments, and 5.9% of one of them.
+
+    It is not merely noise. Chunking packs consecutive segments into windows,
+    so a long enough run produces a window that is almost entirely one
+    repeated phrase: an index slot holding nothing, which retrieval can
+    still return in place of something real.
+
+    Only runs of `run_length` or more collapse, and only when consecutive
+    and identical after normalising. Genuine repetition in speech — "yeah,
+    yeah", "no, no, no" — is shorter than that and survives, which matters
+    because it is sometimes the quotable part.
+    """
+    if not segments:
+        return segments
+
+    def key(seg: dict) -> str:
+        return " ".join(str(seg.get("text", "")).lower().split())
+
+    out: list[dict] = []
+    i = 0
+    while i < len(segments):
+        j = i + 1
+        while j < len(segments) and key(segments[j]) == key(segments[i]):
+            j += 1
+        run = j - i
+        # Keep the first of a collapsed run: its timestamp is where the
+        # speaker actually said the thing.
+        out.append(segments[i])
+        if run < run_length:
+            out.extend(segments[i + 1:j])
+        i = j
+    return out

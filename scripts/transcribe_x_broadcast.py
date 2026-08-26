@@ -56,6 +56,7 @@ import httpx
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from app.captions import collapse_repeats  # noqa: E402
 from app.dedupe import SAME_RECORDING  # noqa: E402
 from scripts.fetch_x_episodes import (  # noqa: E402
     OUT,
@@ -275,7 +276,11 @@ def transcribe(audio: Path, opts) -> list[dict]:
                 segments.append({"t": round(t, 2), "text": s["text"]})
             print(f"      {len(got):5d} segments, running total "
                   f"{len(segments)}")
-    return segments
+    # Whisper repetition loops, removed before anything downstream sees them.
+    cleaned = collapse_repeats(segments)
+    if len(cleaned) < len(segments):
+        print(f"    dropped {len(segments) - len(cleaned)} repeated segments")
+    return cleaned
 
 
 def _groq_key() -> str:
