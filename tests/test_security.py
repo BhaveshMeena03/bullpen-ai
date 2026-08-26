@@ -567,3 +567,49 @@ def test_every_endpoint_that_reveals_operations_is_gated(admin_client):
     for path in ("/v1/usage", "/v1/whoami", "/v1/gaps"):
         assert admin_client.get(path).status_code in (401, 403), \
             f"{path} answers without a token"
+
+
+def test_the_app_starts_with_the_x_bot_enabled(monkeypatch):
+    """The configuration that took production down.
+
+    _run_x_bot is only called when X_BOT_ENABLED is true, so every test and
+    every deploy before that flag was set exercised a code path that skipped
+    the broken line entirely. 514 tests passed against an app that could not
+    boot.
+
+    Starting the app under each meaningful flag is the only thing that
+    catches that class of error, so this starts it the way production runs
+    it — bot on, credentials present — and asserts the task was created.
+    """
+    for key, value in (
+        ("X_BOT_ENABLED", "true"), ("X_API_KEY", "k"), ("X_API_SECRET", "s"),
+        ("X_ACCESS_TOKEN", "t"), ("X_ACCESS_SECRET", "ts"),
+        ("X_BOT_USER_ID", "1"), ("ADMIN_TOKEN", "s3cret"),
+    ):
+        monkeypatch.setenv(key, value)
+    get_settings.cache_clear()
+    monkeypatch.setattr(main_module, "Retriever", _Stub)
+    monkeypatch.setattr(main_module, "ConciergeAgent", _Stub)
+    monkeypatch.setattr(main_module, "IngestionPipeline", _Stub)
+    monkeypatch.setattr(main_module, "PodcastIndex", _Stub)
+
+    with TestClient(main_module.app) as client:
+        assert client.get("/healthz").status_code == 200
+        assert main_module.app.state.x_bot_task is not None, \
+            "the bot was enabled but no task was created"
+    get_settings.cache_clear()
+
+
+def test_the_app_starts_with_the_x_bot_disabled(monkeypatch):
+    """And the default path still works, with no task left running."""
+    monkeypatch.setenv("X_BOT_ENABLED", "false")
+    monkeypatch.setenv("ADMIN_TOKEN", "s3cret")
+    get_settings.cache_clear()
+    for name in ("Retriever", "ConciergeAgent", "IngestionPipeline",
+                 "PodcastIndex"):
+        monkeypatch.setattr(main_module, name, _Stub)
+
+    with TestClient(main_module.app) as client:
+        assert client.get("/healthz").status_code == 200
+        assert main_module.app.state.x_bot_task is None
+    get_settings.cache_clear()
