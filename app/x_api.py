@@ -160,6 +160,28 @@ class XClient:
         self._dry_run = dry_run
         self.spent_usd = 0.0
 
+    async def whoami(self) -> dict:
+        """The authenticated account: {"id", "username", "name"}.
+
+        The first call worth making with new credentials. It proves four
+        things at once — the keys are right, the signature base string is
+        being built correctly, the tokens belong to the account you think,
+        and it hands back the numeric id that X_BOT_USER_ID wants (the
+        mentions endpoint takes an id, not a handle).
+
+        An owned read, so $0.001.
+        """
+        url = f"{API}/users/me"
+        async with httpx.AsyncClient(timeout=30) as http:
+            response = await http.get(
+                url,
+                headers={"Authorization":
+                         self._credentials.header("GET", url)},
+            )
+        response.raise_for_status()
+        self.spent_usd += PRICE_OWNED_READ
+        return response.json().get("data") or {}
+
     async def mentions(self, since_id: str | None = None,
                        limit: int = 20) -> list[Mention]:
         """Posts that tagged the bot, newest last.
