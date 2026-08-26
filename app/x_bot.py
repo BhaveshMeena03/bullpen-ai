@@ -36,7 +36,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from app.podcast import NOT_FOUND_ANSWER
-from app.x_api import Mention, XClient, strip_urls
+from app.x_api import _URL_SHAPED, Mention, XClient, strip_urls
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +46,17 @@ STATE_PATH = ROOT / "data" / "x_bot_state.json"
 # X counts the leading @handle of a reply toward the limit in some clients,
 # so aim well under 280 rather than discovering the edge in production.
 REPLY_BUDGET = 258
+
+# X wraps every URL in t.co and counts it as exactly 23 characters, however
+# long it really is (docs.x.com/resources/fundamentals/counting-characters).
+# Budgeting the literal length instead threw away thirty characters of answer
+# on every reply that carried a link.
+URL_WEIGHT = 23
+# X API v2 enforces 280 on POST /2/tweets even for Premium accounts, which
+# is why replies are written to fit rather than truncated. Configurable in
+# case that changes: long-form exists in the product, just not on this
+# endpoint today.
+POST_LIMIT = 280
 
 # How many times to retry one mention before stepping over it. Three, because
 # the failures worth retrying are transient — a timeout, a rate limit, a
@@ -175,12 +186,18 @@ _OPENS_A_QUESTION = re.compile(
 REPLY_STYLE = """\
 This answer will be posted as a single social media reply, not shown on a \
 web page. So:
-- At most two sentences. There is no room for more.
+- Under 200 characters. This is a hard limit, not a target: anything longer \
+is cut off mid-word, so a complete short answer beats a truncated full one. \
+Count as you write.
+- One or two sentences. Say the single most concrete thing — a number, a \
+name, what somebody actually did — and stop.
 - Never ask a follow-up question and never ask the person to be more \
-specific. If the question is broad, pick the single most striking thing in \
-the excerpts and answer with that.
-- Do not open by saying what you could not find. Lead with what you can say.
-- Still cite the timestamp and name the episode."""
+specific. If the question is broad, pick the most striking thing in the \
+excerpts and answer with that.
+- Do not open by saying what you could not find, and do not open by \
+restating the question. Lead with the answer.
+- Give the timestamp. The episode name is added for you, so do not repeat \
+it."""
 
 
 def looks_like_a_question(text: str) -> bool:
@@ -210,17 +227,36 @@ def is_a_miss(answer: str) -> bool:
     return NOT_FOUND_ANSWER.lower() in (answer or "").lower()
 
 
+def weighted_length(text: str) -> int:
+    """Length as X counts it: every URL is 23 characters."""
+    total, urls = len(text), 0
+    for word in text.split():
+        if _URL_SHAPED.search(word):
+            total -= len(word)
+            urls += 1
+    return total + urls * URL_WEIGHT
+
+
 def format_reply(answer: str, hits: list, include_links: bool = False) -> str:
     """One reply: the answer, then where it was said.
 
-    The citation is the point. Anyone can paraphrase an episode; naming the
-    second it happened is the thing this index can do and a person scrolling
-    cannot — which is exactly why it must not be attached to an answer that
-    found nothing. A timestamp on "I couldn't find that" is worse than no
-    citation: it reads as a real source and points somewhere unrelated.
+    Two shapes, because what X renders differs.
+
+    With a link, X shows a card carrying the episode title and thumbnail, so
+    repeating the title in the text spends fifty characters on something the
+    reader can already see. What the card does not show is the moment, which
+    is the entire point of this tool — so the text names it, and says
+    honestly what the link will do: YouTube lands on the second, X ignores
+    timestamps and leaves the viewer to scrub.
+
+    Without a link there is no card, so the title has to be in the text.
+    Then the timestamp goes in the tail only when the answer has not already
+    given one, because printing both once produced "Around 1:00:00 in the
+    episode…" above "1:39:15 ·" — a contradiction in the one detail this
+    tool claims to get right.
     """
     answer = plain_text(strip_urls(answer))   # guests read links aloud;
-                                             # the model writes markdown
+                                              # the model writes markdown
     if is_a_miss(answer):
         # Just the sentence. The model tends to follow it with an offer to
         # try another question, which is fine on a web page and reads as
@@ -230,19 +266,39 @@ def format_reply(answer: str, hits: list, include_links: bool = False) -> str:
         return _fit(answer, REPLY_BUDGET)
 
     top = hits[0]
-    title = _fit(str(top.title), 60)
-    # The model cites the line it actually used; hits[0].timestamp is where
-    # that passage begins, and the two are often minutes apart. Printing
-    # both put "Around 1:00:00" above "1:39:15 ·" in the same reply. When
-    # the answer already names a moment, the tail carries only the episode.
-    tail = (f"\n\n{title}" if _CITES_A_TIME.search(answer)
-            else f"\n\n{top.timestamp} · {title}")
     if include_links:
-        # Only when someone else is funding it: this makes every reply cost
-        # $0.200 instead of $0.015.
-        tail += f"\n{top.deep_link}"
-    return _fit(answer, REPLY_BUDGET - len(tail)) + tail
+        seekable = "t=" in (top.deep_link or "")
+        # Fitted first, because whether the tail should carry a timestamp
+        # depends on whether the trimmed answer already has one — and the
+        # tail's own length depends on that answer. Two passes, cheaply.
+        def build(cites: bool) -> tuple[str, int]:
+            if cites:
+                lead = "Watch from there:" if seekable else "Full episode:"
+            else:
+                lead = (f"Watch from {top.timestamp}:" if seekable
+                        else f"Full episode ({top.timestamp}):")
+            return lead, POST_LIMIT - len(lead) - 1 - URL_WEIGHT - 2
 
+        lead, budget = build(cites=True)
+        fitted = _fit(answer, budget)
+        if not _CITES_A_TIME.search(fitted):
+            # The answer gave no moment, so the tail has to. Otherwise the
+            # reply names a link and no time, which is the one thing this
+            # tool is for.
+            lead, budget = build(cites=False)
+            fitted = _fit(answer, budget)
+        return fitted + f"\n\n{lead} {top.deep_link}"
+
+    title = _fit(str(top.title), 60)
+    # Assume the answer cites a moment, then check the TRIMMED text rather
+    # than the original: deciding on the full answer and trimming afterwards
+    # can cut the very timestamp that justified leaving it out.
+    tail = f"\n\n{title}"
+    fitted = _fit(answer, REPLY_BUDGET - len(tail))
+    if not _CITES_A_TIME.search(fitted):
+        tail = f"\n\n{top.timestamp} · {title}"
+        fitted = _fit(answer, REPLY_BUDGET - len(tail))
+    return fitted + tail
 
 @dataclass
 class BotState:

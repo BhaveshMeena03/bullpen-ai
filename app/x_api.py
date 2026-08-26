@@ -126,6 +126,10 @@ class Mention:
     # not bad intentions.
     author_verified: bool = False
     author_verified_type: str = "none"
+    # ISO-8601 from X. Used by the cold start: a deploy wipes the state file
+    # on an ephemeral disk, and "skip everything pending" would then drop a
+    # question asked a minute earlier.
+    created_at: str = ""
 
 
 class XCredentials:
@@ -227,7 +231,7 @@ class XClient:
         url = f"{API}/users/{self.bot_user_id}/mentions"
         params = {
             "max_results": str(max(5, min(limit, 100))),
-            "tweet.fields": "author_id,conversation_id",
+            "tweet.fields": "author_id,conversation_id,created_at",
             # The author comes back in the same response rather than needing
             # a lookup per mention. Repeat askers are deduplicated within the
             # UTC day like everything else, so a regular costs nothing after
@@ -261,6 +265,7 @@ class XClient:
                 id=m["id"], text=m.get("text", ""),
                 author_id=m.get("author_id", ""),
                 conversation_id=m.get("conversation_id", m["id"]),
+                created_at=m.get("created_at", ""),
                 author_verified=bool(
                     authors.get(m.get("author_id", ""), {}).get("verified")),
                 author_verified_type=(

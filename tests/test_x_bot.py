@@ -924,3 +924,47 @@ async def test_a_skipped_mention_still_advances(tmp_path):
     await bot.tick("2026-08-26")
     assert await bot.tick("2026-08-26") == 1
     assert bot.state.since_id == "3"
+
+
+def test_link_mode_never_shows_two_different_timestamps():
+    """Same contradiction as the no-link path, which was fixed there first.
+
+    A reply read "...positioning it as a major entertainment IP. 1:39:33"
+    above "Full episode (1:39:15):" — the model's own citation against the
+    passage start, minutes apart, in the one detail this tool claims to get
+    right.
+    """
+    class Hit:
+        title = "Market Bubble Ep 10"
+        timestamp = "1:39:15"
+        deep_link = "https://x.com/MarketBubble/status/2075316750439338088"
+
+    answered = "Luca bought Pudgy Penguins for 750 ETH, around 1:39:33."
+    reply = format_reply(answered, [Hit()], include_links=True)
+    assert "1:39:33" in reply, "the model's own citation survives"
+    assert "1:39:15" not in reply, "the passage start must not compete"
+    assert Hit.deep_link in reply
+
+
+def test_link_mode_supplies_a_timestamp_when_the_answer_has_none():
+    class Hit:
+        title = "Market Bubble Ep 10"
+        timestamp = "1:39:15"
+        deep_link = "https://www.youtube.com/watch?v=abc&t=5955s"
+
+    reply = format_reply("Luca bought Pudgy Penguins for 750 ETH.", [Hit()],
+                         include_links=True)
+    assert "1:39:15" in reply, "a reply with a link and no moment is useless"
+
+
+def test_a_reply_with_a_link_fits_as_x_counts_it():
+    from app.x_bot import weighted_length
+
+    class Hit:
+        title = "Market Bubble Ep 10"
+        timestamp = "1:39:15"
+        deep_link = "https://www.youtube.com/watch?v=" + "x" * 200
+
+    reply = format_reply("Ansem said a great deal about this. " * 20, [Hit()],
+                         include_links=True)
+    assert weighted_length(reply) <= 280
