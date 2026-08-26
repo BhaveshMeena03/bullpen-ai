@@ -210,6 +210,11 @@ class FakeClient:
 
     async def mentions(self, since_id=None, limit=20):
         got = self._batches.pop(0) if self._batches else []
+        # X filters by since_id server-side. A fake that ignores it hands
+        # back mentions the real API would never return, which is how a
+        # cold-start test "passed" while answering a mention twice.
+        if since_id is not None:
+            got = [m for m in got if int(m.id) > int(since_id)]
         self.spent_usd += len(got) * PRICE_OWNED_READ
         return got
 
@@ -701,9 +706,7 @@ class SpendingClient(FakeClient):
     """Charges for reads like the real one, so a cap can be tested."""
 
     async def mentions(self, since_id=None, limit=20):
-        got = self._batches.pop(0) if self._batches else []
-        self.spent_usd += len(got) * PRICE_OWNED_READ
-        return got
+        return await super().mentions(since_id, limit)
 
     async def reply(self, text, to_post_id, allow_link=False):
         self.spent_usd += 0.200          # a reply carrying a link
@@ -1415,3 +1418,67 @@ def test_short_answers_still_get_their_newlines_collapsed():
     from app.x_bot import plain_text
 
     assert plain_text("he said\nit\nhere") == "he said it here"
+
+
+# --- a deploy must not eat a question --------------------------------------
+
+def _iso(minutes_ago: float) -> str:
+    from datetime import UTC, datetime, timedelta
+    return (datetime.now(UTC) - timedelta(minutes=minutes_ago)).isoformat()
+
+
+def test_recency_window():
+    from app.x_bot import _is_recent
+
+    assert _is_recent(_iso(2))
+    assert _is_recent(_iso(29))
+    assert not _is_recent(_iso(45))
+    assert not _is_recent(""), "unknown age is treated as old"
+    assert not _is_recent("not a date")
+
+
+@pytest.mark.anyio
+async def test_a_cold_start_still_answers_a_recent_question(tmp_path):
+    """The failure that made the account look broken.
+
+    Render's disk is ephemeral, so every deploy hands the bot an empty state
+    file and it cold-starts. Skipping everything meant five deploys in an
+    hour ate the same question twice while someone was watching it not
+    reply.
+    """
+    old = Mention(id="100", text="@bot what did ansem say", author_id="a",
+                  conversation_id="100", created_at=_iso(600))
+    fresh = Mention(id="200", text="@bot what did tjr say", author_id="b",
+                    conversation_id="200", created_at=_iso(3))
+    client = FakeClient([[old, fresh], [old, fresh]])
+    bot = MentionBot(client, FakeIndex(), state_path=tmp_path / "s.json")
+
+    assert await bot.tick("2026-08-27") == 1, "the fresh one is answered"
+    assert client.posted[0][0] == "200"
+
+
+@pytest.mark.anyio
+async def test_a_cold_start_still_skips_a_backlog(tmp_path):
+    """The protection that behaviour exists for: replying to a month of old
+    mentions in one burst is how accounts get suspended."""
+    old = [Mention(id=str(i), text="@bot what did ansem say", author_id="a",
+                   conversation_id=str(i), created_at=_iso(60 * 24 * i))
+           for i in range(1, 12)]
+    client = FakeClient([old])
+    bot = MentionBot(client, FakeIndex(), state_path=tmp_path / "s.json")
+
+    assert await bot.tick("2026-08-27") == 0
+    assert client.posted == []
+    assert bot.state.since_id == "11"
+
+
+@pytest.mark.anyio
+async def test_a_cold_start_answers_only_the_recent_half(tmp_path):
+    old = Mention(id="100", text="@bot what did ansem say", author_id="a",
+                  conversation_id="100", created_at=_iso(900))
+    fresh = Mention(id="200", text="@bot what did tjr say", author_id="b",
+                    conversation_id="200", created_at=_iso(5))
+    client = FakeClient([[old, fresh], [old, fresh]])
+    bot = MentionBot(client, FakeIndex(), state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-27")
+    assert [p for p, _ in client.posted] == ["200"], "not the old one"

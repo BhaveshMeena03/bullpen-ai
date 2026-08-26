@@ -32,7 +32,9 @@ import json
 import logging
 import random
 import re
+import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 from app.podcast import NOT_FOUND_ANSWER
@@ -63,6 +65,29 @@ POST_LIMIT = 280
 # provider blip — and anything that fails three times is a bug that will not
 # fix itself before the next poll.
 MAX_ATTEMPTS = 3
+
+# How far back a cold start will still answer. Render's disk is ephemeral, so
+# a deploy hands the bot an empty state file and it has to decide what to do
+# with everything already waiting. Thirty minutes is comfortably longer than
+# a deploy and far shorter than a backlog.
+COLD_START_GRACE = 30 * 60
+
+
+def _is_recent(created_at: str, now: float | None = None) -> bool:
+    """Was this posted inside the cold-start grace window?"""
+    if not created_at:
+        return False                       # unknown age: treat as old
+    try:
+        when = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    age = (now or time.time()) - when.timestamp()
+    return 0 <= age <= COLD_START_GRACE
+
+
+def _before(mention_id: str) -> str:
+    """The id just below this one, so a since_id lands before it."""
+    return str(max(0, int(mention_id) - 1))
 
 _HANDLE = re.compile(r"@\w{1,15}")
 # A spoken-timestamp citation in the answer text: 16:16, 1:39:15, 4:01:47.
@@ -350,19 +375,48 @@ def asks_to_be_left_alone(text: str) -> bool:
     return bool(_BARE_STOP.match(question_from(text)))
 
 
-def looks_like_a_question(text: str) -> bool:
-    """Is this actually asking something?
+# Compliments, greetings and reactions. Short, enumerable, and the whole
+# reason the gate exists.
+_PLEASANTRY = re.compile(
+    r"""(?ix)^\W*(?:
+        g[mn] | hi | hey | yo | lfg | based | dub | fire | goat | gg | ty
+      | thanks? | thank\s+you | congrats\w* | welcome | respect | salute
+      | (?:this|that|it)\s+is | looks? | seems? | feels?
+      | (?:very|so|really|pretty|super|quite)
+      | (?:good|nice|great|solid|clean|sick|dope|cool|huge|wild|insane)
+      | love\s+(?:it|this) | (?:i\s+)?appreciate
+      | test(?:ing|ed)?
+    )\b""")
 
-    A question mark, or an interrogative word. Deliberately generous — a
-    false negative costs one unanswered compliment, a false positive costs
-    a nonsense reply in public with a link attached.
+# A pleasantry is short. "nice work" is a compliment; "nice breakdown of what
+# ansem said about the fee situation" is someone asking about the fee
+# situation, and the opening word should not decide that.
+_PLEASANTRY_MAX_WORDS = 6
+
+
+def looks_like_a_question(text: str) -> bool:
+    """Should this mention get an answer?
+
+    Written the other way round from how it started. Allow-listing question
+    shapes left real queries out — "luca netz pudgy penguins" is a perfectly
+    natural way to use this and got silence, and "summarize episode 14" is
+    an imperative with no question word in it at all. There are far more
+    ways to ask something than to pay a compliment, so the compliments are
+    the list worth enumerating.
+
+    Getting this wrong in the answering direction is cheap now: an answer
+    with no citation is never posted, so a compliment that slips through
+    costs one model call and says nothing in public. Getting it wrong in
+    the silent direction is what made the account look broken.
     """
     text = (text or "").strip()
-    if not text:
+    if not text or len(text.split()) < 2:
         return False
-    return ("?" in text
-            or bool(_ASKING.search(text))
-            or bool(_OPENS_A_QUESTION.match(text)))
+    words = text.split()
+    if len(words) <= _PLEASANTRY_MAX_WORDS and _PLEASANTRY.match(text):
+        return False
+    # Nothing but emoji and punctuation.
+    return bool(re.search(r"[a-z0-9]{3}", text, re.I))
 
 
 def is_a_miss(answer: str) -> bool:
@@ -628,10 +682,28 @@ class MentionBot:
             return 0
 
         if self.state.since_id is None:
-            # Cold start with no memory: record where we are and answer
-            # nothing this round. Skipping a few questions is recoverable;
-            # replying to a backlog all at once is not.
+            # Cold start. Render's disk is ephemeral, so this happens on
+            # every deploy — not only the first ever run.
+            #
+            # Skipping everything was safe and wrong. Replying to a month of
+            # backlog at once is the pattern that gets accounts suspended,
+            # but a question asked two minutes before a deploy is not
+            # backlog, and dropping it silently is exactly what makes the
+            # account look broken. That happened: five deploys in an hour
+            # ate the same question twice while someone was watching.
+            #
+            # So the line is time, not existence. Anything newer than
+            # COLD_START_GRACE still gets answered; older stays skipped.
+            recent = [m for m in mentions if _is_recent(m.created_at)]
             self.state.since_id = mentions[-1].id
+            if recent:
+                self.state.since_id = _before(recent[0].id)
+                logger.info("cold start — skipping %d old, answering %d "
+                            "from the last %d minutes",
+                            len(mentions) - len(recent), len(recent),
+                            COLD_START_GRACE // 60)
+                self.state.save(self._state_path)
+                return await self._tick(today)
             logger.info("cold start — skipping %d existing mention(s)",
                         len(mentions))
             return 0
