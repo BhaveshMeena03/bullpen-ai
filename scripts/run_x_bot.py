@@ -72,6 +72,7 @@ def build(dry_run: bool, cap: int | None, links: bool | None):
         daily_reply_cap=cap if cap is not None else settings.x_bot_daily_reply_cap,
         include_links=(links if links is not None
                        else settings.x_bot_include_links),
+        contract_address=settings.x_bot_contract_address,
     )
     return settings, client, bot
 

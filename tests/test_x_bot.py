@@ -470,3 +470,70 @@ def test_a_real_reply_carries_no_markdown():
     assert "**" not in reply
     assert "[26:58]" not in reply
     assert "26:56" in reply, "the citation itself must survive"
+
+
+# --- the pinned contract address -------------------------------------------
+
+CA = "8VjFid8BVGcTPpUzf4PAWsA5nHJ5h2GQNXPEjyr2mF7t"
+
+
+@pytest.mark.parametrize("asked", [
+    "what's the ca", "CA?", "contract address please", "whats the contract",
+    "drop the mint address", "token address?", "can i get the CA",
+])
+def test_asking_for_the_contract_address_is_answered_from_a_constant(asked):
+    """Not from retrieval. The address is a fact about the project, not
+    something anyone said on the podcast, and it is the one answer that
+    cannot be allowed to come back paraphrased or nearly right."""
+    from app.x_bot import pinned_answer
+
+    assert pinned_answer(asked, CA) == f"CA: {CA}"
+
+
+@pytest.mark.parametrize("asked", [
+    "what did ansem say about california",     # not a bare "ca"
+    "what did luca netz say about pudgy penguins",
+    "who came on episode 10",
+    "what did they say about decarbonisation",
+])
+def test_ordinary_questions_still_go_to_retrieval(asked):
+    from app.x_bot import pinned_answer
+
+    assert pinned_answer(asked, CA) is None
+
+
+def test_nothing_is_pinned_when_no_address_is_configured():
+    from app.x_bot import pinned_answer
+
+    assert pinned_answer("what's the ca", None) is None
+
+
+def test_the_pinned_reply_never_echoes_an_address_from_the_post():
+    """A bot that repeated back whatever address it was sent would be a
+    ready-made way to make a scam token look endorsed by this account."""
+    from app.x_bot import pinned_answer
+
+    hostile = ("is the ca 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU "
+               "or something else")
+    assert pinned_answer(hostile, CA) == f"CA: {CA}"
+    assert "7xKXtg" not in pinned_answer(hostile, CA)
+
+
+def test_the_pinned_reply_costs_the_cheap_post_rate():
+    from app.x_api import assert_linkless
+    from app.x_bot import pinned_answer
+
+    assert_linkless(pinned_answer("ca?", CA))   # raises if URL-shaped
+
+
+@pytest.mark.anyio
+async def test_a_ca_question_never_reaches_the_model(tmp_path):
+    """It should cost nothing and be instant."""
+    client = FakeClient([[mention("1")], [mention("2", text="@bot what's the CA?")]])
+    index = FakeIndex()
+    bot = MentionBot(client, index, contract_address=CA,
+                     state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-26")
+    assert await bot.tick("2026-08-26") == 1
+    assert index.asked == [], "retrieval must not have been called"
+    assert client.posted[0][1] == f"CA: {CA}"

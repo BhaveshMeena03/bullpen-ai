@@ -97,6 +97,36 @@ def plain_text(answer: str) -> str:
     return _WHITESPACE.sub(" ", text).strip()
 
 
+# "what's the CA", "contract address?", "drop the mint". Asked constantly
+# under a token account, and retrieval is the wrong tool for it: the address
+# is a fact about the project, not something anyone said on the podcast.
+# Answering from a constant is instant, costs nothing, and cannot be got
+# subtly wrong — which for a contract address is the only acceptable bar.
+_ASKS_FOR_CA = re.compile(
+    r"""(?ix)
+    \b(?: ca                              # bare "ca", not "california"
+         | contract(?:\s+address)?
+         | token\s+address
+         | mint(?:\s+address)?
+         | address
+    )\b""")
+
+
+def pinned_answer(question: str, contract_address: str | None) -> str | None:
+    """A fixed reply for questions retrieval should not be asked.
+
+    Returns None when nothing is pinned, so the normal path runs.
+
+    The address is only ever the configured one. It is never read out of the
+    incoming post — a bot that echoed back whatever address someone sent it
+    would be a ready-made tool for making a scam look endorsed by this
+    account.
+    """
+    if not contract_address or not _ASKS_FOR_CA.search(question or ""):
+        return None
+    return f"CA: {contract_address}"
+
+
 def is_a_miss(answer: str) -> bool:
     """Did the model say it could not find this?
 
@@ -194,12 +224,14 @@ class MentionBot:
 
     def __init__(self, client: XClient, index, *, daily_reply_cap: int = 100,
                  include_links: bool = False, min_question_chars: int = 6,
+                 contract_address: str | None = None,
                  state_path: Path = STATE_PATH) -> None:
         self._client = client
         self._index = index
         self.cap = daily_reply_cap
         self.include_links = include_links
         self._min_question = min_question_chars
+        self._contract_address = contract_address
         self._state_path = state_path
         self.state = BotState.load(state_path)
 
@@ -250,6 +282,17 @@ class MentionBot:
         if len(question) < self._min_question:
             logger.info("%s is a tag with no question — skipping", mention.id)
             return False
+
+        # Before retrieval, because the contract address is a fact about the
+        # project rather than something said on the podcast. Answering it
+        # from a constant costs nothing, cannot be paraphrased wrong, and
+        # skips the model entirely.
+        pinned = pinned_answer(question, self._contract_address)
+        if pinned:
+            posted = await self._client.reply(pinned, mention.id)
+            logger.info("replied to %s with the pinned CA -> %s",
+                        mention.id, posted or "dry run")
+            return True
 
         result = await self._index.search(question)
         if getattr(result, "refused", False):

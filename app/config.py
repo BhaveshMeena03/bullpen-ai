@@ -246,6 +246,10 @@ class Settings(BaseSettings):
     # day, so frequent polling costs nothing extra; the jitter is about not
     # looking like a metronome, which is a documented suspension trigger.
     x_bot_poll_seconds: float = 60.0
+    # Answered from here rather than from retrieval: the contract address
+    # is a fact about the project, not something said on the podcast, and
+    # it is the one answer that must never be paraphrased or half-right.
+    x_bot_contract_address: str | None = None
 
     @field_validator(
         "anthropic_api_key", "voyage_api_key", "pinecone_api_key",
