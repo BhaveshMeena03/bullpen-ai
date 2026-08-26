@@ -48,6 +48,8 @@ STATE_PATH = ROOT / "data" / "x_bot_state.json"
 REPLY_BUDGET = 258
 
 _HANDLE = re.compile(r"@\w{1,15}")
+# A spoken-timestamp citation in the answer text: 16:16, 1:39:15, 4:01:47.
+_CITES_A_TIME = re.compile(r"\b\d{1,2}:\d{2}(?::\d{2})?\b")
 _WHITESPACE = re.compile(r"\s+")
 
 
@@ -76,6 +78,25 @@ def _fit(text: str, budget: int) -> str:
     return (cut[:at] if at > 0 else cut).rstrip(",;:") + "…"
 
 
+# Markdown and the excerpt format leak into answers, because the prompt was
+# written for a web page that renders both. X renders neither: "**Tokenomics**"
+# shows its asterisks, and "[1:39:32]" — the marker each transcript line
+# carries so the model can cite the line it used — reads as broken markup.
+_BOLD = re.compile(r"\*\*(.+?)\*\*|__(.+?)__")
+_CODE = re.compile(r"`([^`]*)`")
+_BRACKET_TIME = re.compile(r"\[(\d{1,2}:\d{2}(?::\d{2})?)\]")
+_LIST_MARK = re.compile(r"(?m)^\s*[-*+]\s+|^#{1,6}\s+")
+
+
+def plain_text(answer: str) -> str:
+    """Strip web-page formatting a plain-text reply cannot render."""
+    text = _BRACKET_TIME.sub(r"\1", answer or "")
+    text = _BOLD.sub(lambda m: m.group(1) or m.group(2), text)
+    text = _CODE.sub(r"\1", text)
+    text = _LIST_MARK.sub("", text)
+    return _WHITESPACE.sub(" ", text).strip()
+
+
 def is_a_miss(answer: str) -> bool:
     """Did the model say it could not find this?
 
@@ -97,13 +118,24 @@ def format_reply(answer: str, hits: list, include_links: bool = False) -> str:
     found nothing. A timestamp on "I couldn't find that" is worse than no
     citation: it reads as a real source and points somewhere unrelated.
     """
-    answer = strip_urls(answer)          # guests read links aloud sometimes
-    if not hits or is_a_miss(answer):
+    answer = plain_text(strip_urls(answer))   # guests read links aloud;
+                                             # the model writes markdown
+    if is_a_miss(answer):
+        # Just the sentence. The model tends to follow it with an offer to
+        # try another question, which is fine on a web page and reads as
+        # padding in a reply — and gets cut mid-word by the length budget.
+        return NOT_FOUND_ANSWER + "."
+    if not hits:
         return _fit(answer, REPLY_BUDGET)
 
     top = hits[0]
     title = _fit(str(top.title), 60)
-    tail = f"\n\n{top.timestamp} · {title}"
+    # The model cites the line it actually used; hits[0].timestamp is where
+    # that passage begins, and the two are often minutes apart. Printing
+    # both put "Around 1:00:00" above "1:39:15 ·" in the same reply. When
+    # the answer already names a moment, the tail carries only the episode.
+    tail = (f"\n\n{title}" if _CITES_A_TIME.search(answer)
+            else f"\n\n{top.timestamp} · {title}")
     if include_links:
         # Only when someone else is funding it: this makes every reply cost
         # $0.200 instead of $0.015.

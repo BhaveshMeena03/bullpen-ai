@@ -405,3 +405,68 @@ def test_is_a_miss_survives_an_empty_answer(answer):
     from app.x_bot import is_a_miss
 
     assert is_a_miss(answer) is False
+
+
+def test_the_reply_never_shows_two_different_timestamps():
+    """One reply, one moment.
+
+    The model cites the line it actually used; hits[0].timestamp is where
+    that passage begins, and they are routinely minutes apart. Printing both
+    produced a reply reading "Around 1:00:00 in the episode…" above
+    "1:39:15 · LIVE W/ LUCA NETZ", which contradicts itself in the one
+    detail this tool claims to get right.
+    """
+    answered = ("Around 1:00:00 in the episode with Luca Netz, he "
+                "introduced himself as the CEO of Pudgy Penguins.")
+    reply = format_reply(answered, [FakeHit()])
+    assert "1:00:00" in reply, "the model's own citation survives"
+    assert "3:52:34" not in reply, "the passage-start must not compete with it"
+    assert "Market Bubble Ep 10" in reply, "the episode is still named"
+
+
+def test_an_answer_with_no_time_still_gets_the_passage_timestamp():
+    reply = format_reply("Chris Gilbert talked about Squire.", [FakeHit()])
+    assert "3:52:34" in reply
+
+
+def test_a_miss_is_one_sentence():
+    """Terse in public. The model likes to add "feel free to ask about
+    something else", which reads as padding and gets cut mid-word."""
+    from app.podcast import NOT_FOUND_ANSWER
+
+    rambling = (f"{NOT_FOUND_ANSWER}. The excerpts provided don't contain "
+                "any discussion of this. If you're looking for information "
+                "about a specific topic, feel free to ask about something "
+                "else from these episodes and I will do my best to help.")
+    reply = format_reply(rambling, [FakeHit()])
+    assert reply == NOT_FOUND_ANSWER + "."
+    assert "…" not in reply and "feel free" not in reply
+
+
+@pytest.mark.parametrize("raw,expected", [
+    # The excerpt line markers the model is told to cite from.
+    ("he said it around [1:39:32] in the show",
+     "he said it around 1:39:32 in the show"),
+    ("**Tokenomics and fees**: he argues they messed it up",
+     "Tokenomics and fees: he argues they messed it up"),
+    ("__really__ important", "really important"),
+    ("the `$CLAW` token", "the $CLAW token"),
+    ("- first point", "first point"),
+    ("## Heading", "Heading"),
+])
+def test_plain_text_strips_what_x_cannot_render(raw, expected):
+    """The prompt targets a web page that renders Markdown. X does not:
+    asterisks show up literally and [1:39:32] reads as broken markup."""
+    from app.x_bot import plain_text
+
+    assert plain_text(raw) == expected
+
+
+def test_a_real_reply_carries_no_markdown():
+    answer = ("Around 26:56 Ansem lays out why he thinks Ethereum is done: "
+              "**Tokenomics and fees**: he argues they messed up the "
+              "[26:58] fee situation.")
+    reply = format_reply(answer, [FakeHit()])
+    assert "**" not in reply
+    assert "[26:58]" not in reply
+    assert "26:56" in reply, "the citation itself must survive"
