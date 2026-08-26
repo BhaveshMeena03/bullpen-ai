@@ -134,7 +134,6 @@ def _classify_outcome(query: str, chunks: list, answer: str, refused: bool) -> N
         _record_gap(query, "low_confidence")
 
 
-@asynccontextmanager
 async def _run_x_bot(app: FastAPI, settings) -> None:
     """Poll mentions forever, answering what is new.
 
@@ -182,6 +181,7 @@ async def _run_x_bot(app: FastAPI, settings) -> None:
             MentionBot.pause_seconds(settings.x_bot_poll_seconds))
 
 
+@asynccontextmanager
 async def lifespan(app: FastAPI):
     # Build heavyweight clients once, at startup, and share them.
     app.state.retriever = Retriever()
