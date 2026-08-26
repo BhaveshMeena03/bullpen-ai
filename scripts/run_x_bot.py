@@ -97,7 +97,8 @@ async def main() -> int:
     settings, client, bot = build(args.dry_run, args.cap,
                                   True if args.links else None)
 
-    if not args.dry_run and not args.once and not settings.x_bot_enabled:
+    if (not args.dry_run and not args.once and not args.replay
+            and not settings.x_bot_enabled):
         # The loop posts unattended. Requiring an explicit switch means
         # credentials sitting in the environment are never enough on their
         # own to start replying in public.
