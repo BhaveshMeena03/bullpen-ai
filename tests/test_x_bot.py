@@ -994,3 +994,87 @@ def test_a_longer_limit_produces_a_longer_reply():
     long = format_reply(answer, [Hit()], include_links=True, limit=4000)
     assert len(long) > len(short) * 3
     assert Hit.deep_link in short and Hit.deep_link in long
+
+
+def test_the_link_lands_where_the_answer_says_it_does():
+    """The link is built from the top passage; the answer cites the line it
+    actually used, often minutes away. Sending someone to the passage start
+    while the text says 1:07:24 is the same broken promise as citing the
+    wrong time."""
+    class Hit:
+        title = "Market Bubble Ep 10"
+        timestamp = "1:39:15"
+        deep_link = "https://www.youtube.com/watch?v=abc&t=5955s"
+
+    reply = format_reply("Around 1:07:24 he explains the airdrop.", [Hit()],
+                         include_links=True, limit=1500)
+    assert "t=4044s" in reply, "1:07:24 is 4044 seconds"
+    assert "t=5955s" not in reply
+    assert "Jump to 1:07:24:" in reply
+
+
+def test_an_x_link_is_never_given_a_timestamp_parameter():
+    """X has no timestamp parameter for video and ignores one, so a link
+    that carries it looks jumpable and is not."""
+    class Hit:
+        title = "Market Bubble Ep 10"
+        timestamp = "1:39:15"
+        deep_link = "https://x.com/MarketBubble/status/2075316750439338088"
+
+    reply = format_reply("Around 1:07:24 he explains the airdrop.", [Hit()],
+                         include_links=True, limit=1500)
+    assert "t=" not in reply
+    assert "Full episode:" in reply
+    assert "1:07:24" in reply
+    assert Hit.deep_link in reply
+
+
+def test_the_moment_is_on_its_own_line():
+    """Buried mid-sentence, the one thing this tool does was the least
+    visible part of the reply."""
+    class Hit:
+        title = "Market Bubble Ep 10"
+        timestamp = "1:39:15"
+        deep_link = "https://www.youtube.com/watch?v=abc&t=5955s"
+
+    reply = format_reply("He bought it for 750 ETH.", [Hit()],
+                         include_links=True, limit=1500)
+    lines = [ln for ln in reply.splitlines() if ln.strip()]
+    assert lines[-2].startswith("Jump to 1:39:15")
+    assert lines[-1] == Hit.deep_link
+
+
+@pytest.mark.parametrize("stamp,seconds", [
+    ("7:02", 422), ("1:07:24", 4044), ("4:01:47", 14507), ("0:30", 30),
+])
+def test_timestamp_parsing(stamp, seconds):
+    from app.x_bot import _seconds
+
+    assert _seconds(stamp) == seconds
+
+
+def test_an_x_link_does_not_repeat_a_moment_the_answer_gave():
+    """The first long reply said "Around 1:41:22 in the episode." and then
+    "The bit above is at 1:41:22 —" underneath: the same fact twice, and a
+    dangling dash where the card swallowed the URL."""
+    class Hit:
+        title = "Market Bubble Ep 10"
+        timestamp = "1:39:15"
+        deep_link = "https://x.com/MarketBubble/status/2075316750439338088"
+
+    reply = format_reply("He bought it for 750 ETH. Around 1:41:22.", [Hit()],
+                         include_links=True, limit=1500)
+    assert reply.count("1:41:22") == 1, "stated once, not twice"
+    assert not reply.rstrip().endswith("—")
+    assert "Full episode:" in reply
+
+
+def test_an_x_link_supplies_the_moment_when_the_answer_did_not():
+    class Hit:
+        title = "Market Bubble Ep 10"
+        timestamp = "1:39:15"
+        deep_link = "https://x.com/MarketBubble/status/2075316750439338088"
+
+    reply = format_reply("He bought it for 750 ETH.", [Hit()],
+                         include_links=True, limit=1500)
+    assert "the moment is at 1:39:15" in reply

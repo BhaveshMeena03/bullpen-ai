@@ -262,6 +262,31 @@ def is_a_miss(answer: str) -> bool:
     return NOT_FOUND_ANSWER.lower() in (answer or "").lower()
 
 
+def _seconds(stamp: str) -> int:
+    """"1:07:24" or "7:02" -> seconds."""
+    parts = [int(p) for p in stamp.split(":")]
+    total = 0
+    for part in parts:
+        total = total * 60 + part
+    return total
+
+
+def _relink(deep_link: str, seconds: int) -> str:
+    """Point a seekable link at `seconds` instead of wherever it pointed.
+
+    The link is built from the top retrieved passage, but the answer cites
+    the line it actually used — often minutes away, and sometimes from a
+    later passage entirely. Sending someone to the start of a passage while
+    the text above says 1:07:24 is the same broken promise as citing the
+    wrong time; the link should land where the words say it lands.
+    """
+    base = re.sub(r"[?&]t=\d+s?", "", deep_link or "")
+    if not base or "youtube.com" not in base and "youtu.be" not in base:
+        return deep_link
+    joiner = "&" if "?" in base else "?"
+    return f"{base}{joiner}t={seconds}s"
+
+
 def weighted_length(text: str) -> int:
     """Length as X counts it: every URL is 23 characters."""
     total, urls = len(text), 0
@@ -304,26 +329,28 @@ def format_reply(answer: str, hits: list, include_links: bool = False,
     top = hits[0]
     if include_links:
         seekable = "t=" in (top.deep_link or "")
+        # Prefer the moment the answer actually names over the passage
+        # start, and move the link to match it.
+        cited = _CITES_A_TIME.search(answer)
+        moment = cited.group(0) if cited else top.timestamp
+        link = (_relink(top.deep_link, _seconds(moment)) if cited and seekable
+                else top.deep_link)
         # Fitted first, because whether the tail should carry a timestamp
         # depends on whether the trimmed answer already has one — and the
         # tail's own length depends on that answer. Two passes, cheaply.
-        def build(cites: bool) -> tuple[str, int]:
-            if cites:
-                lead = "Watch from there:" if seekable else "Full episode:"
-            else:
-                lead = (f"Watch from {top.timestamp}:" if seekable
-                        else f"Full episode ({top.timestamp}):")
-            return lead, limit - len(lead) - 1 - URL_WEIGHT - 2
-
-        lead, budget = build(cites=True)
-        fitted = _fit(answer, budget)
-        if not _CITES_A_TIME.search(fitted):
-            # The answer gave no moment, so the tail has to. Otherwise the
-            # reply names a link and no time, which is the one thing this
-            # tool is for.
-            lead, budget = build(cites=False)
-            fitted = _fit(answer, budget)
-        return fitted + f"\n\n{lead} {top.deep_link}"
+        # A seekable link earns a line saying so: the reader learns the
+        # link jumps rather than just opens. An X link does not — it cannot
+        # jump, and the answer has already named the moment, so a second
+        # line repeating it said the same thing twice and left a dangling
+        # dash where the card swallowed the URL.
+        if seekable:
+            lead = f"Jump to {moment}:"
+        elif _CITES_A_TIME.search(answer):
+            lead = "Full episode:"
+        else:
+            lead = f"Full episode — the moment is at {moment}:"
+        tail = f"\n\n{lead}\n{link}"
+        return _fit(answer, limit - len(lead) - URL_WEIGHT - 3) + tail
 
     title = _fit(str(top.title), 60)
     # Assume the answer cites a moment, then check the TRIMMED text rather
