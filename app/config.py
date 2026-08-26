@@ -259,6 +259,15 @@ class Settings(BaseSettings):
     # is answered, and how often the account gets tagged is decided by
     # other people. This bounds a day no matter what they do. 0 disables.
     x_bot_daily_spend_cap_usd: float = 5.0
+    # Answer only accounts carrying X's badge. It filters throwaway accounts
+    # rather than bad intentions — the badge now means "pays for Premium",
+    # not "is who they claim to be" — but a spam account is exactly what it
+    # does stop, and every skipped reply saves $0.209 with links on.
+    #
+    # The cost is the other side: it ignores genuine people who do not pay X
+    # for a checkmark, and on a tool whose whole pitch is being useful to
+    # whoever asks, that is a real thing to give up. Off by default.
+    x_bot_verified_only: bool = False
 
     @field_validator(
         "anthropic_api_key", "voyage_api_key", "pinecone_api_key",

@@ -84,6 +84,10 @@ services:
       # is somebody else's decision. This bounds the day regardless.
       - key: X_BOT_DAILY_SPEND_CAP_USD
         value: "5.0"
+      # Answer only badged accounts. Filters throwaway spam; also ignores
+      # genuine people who do not pay X for a checkmark.
+      - key: X_BOT_VERIFIED_ONLY
+        value: "false"
       - key: X_BOT_CONTRACT_ADDRESS
         value: "8VjFid8BVGcTPpUzf4PAWsA5nHJ5h2GQNXPEjyr2mF7t"
       - key: X_BOT_TOKEN_LABEL

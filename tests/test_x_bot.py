@@ -238,8 +238,11 @@ class FakeIndex:
         return R()
 
 
-def mention(mid, text="@bot what did ansem say", author="someone"):
-    return Mention(id=mid, text=text, author_id=author, conversation_id=mid)
+def mention(mid, text="@bot what did ansem say", author="someone",
+            verified=False):
+    return Mention(id=mid, text=text, author_id=author, conversation_id=mid,
+                   author_verified=verified,
+                   author_verified_type="blue" if verified else "none")
 
 
 @pytest.mark.anyio
@@ -765,3 +768,58 @@ async def test_a_zero_cap_disables_the_ceiling(tmp_path):
                      state_path=tmp_path / "s.json")
     await bot.tick("2026-08-26")
     assert await bot.tick("2026-08-26") == 1
+
+
+# --- answering only badged accounts ----------------------------------------
+
+@pytest.mark.anyio
+async def test_verified_only_skips_unbadged_accounts_for_free(tmp_path):
+    """Skipped before retrieval, so an ignored account costs nothing beyond
+    the read that already happened — no embedding, no model call, no reply.
+    With links on, each skip is $0.209 not spent."""
+    client = FakeClient([[mention("1")],
+                         [mention("2", author="nobody", verified=False)]])
+    index = FakeIndex()
+    bot = MentionBot(client, index, verified_only=True,
+                     state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-26")
+    assert await bot.tick("2026-08-26") == 0
+    assert index.asked == [], "retrieval must not have been called"
+    assert client.posted == []
+
+
+@pytest.mark.anyio
+async def test_verified_accounts_are_answered(tmp_path):
+    client = FakeClient([[mention("1")],
+                         [mention("2", author="ansem", verified=True)]])
+    bot = MentionBot(client, FakeIndex(), verified_only=True,
+                     state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-26")
+    assert await bot.tick("2026-08-26") == 1
+
+
+@pytest.mark.anyio
+async def test_the_filter_is_off_by_default(tmp_path):
+    """A tool whose pitch is being useful to whoever asks should not require
+    a paid checkmark by default."""
+    client = FakeClient([[mention("1")],
+                         [mention("2", author="nobody", verified=False)]])
+    bot = MentionBot(client, FakeIndex(), state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-26")
+    assert await bot.tick("2026-08-26") == 1
+
+
+def test_author_verification_is_parsed_from_the_expansion():
+    """It arrives in includes.users, not on the post itself."""
+    import json as _json
+
+    body = _json.loads(_json.dumps({
+        "data": [{"id": "1", "text": "@bot hi", "author_id": "u1",
+                  "conversation_id": "1"}],
+        "includes": {"users": [{"id": "u1", "verified": True,
+                                "verified_type": "blue"}]},
+    }))
+    authors = {u["id"]: u for u in body["includes"]["users"]}
+    m = body["data"][0]
+    assert authors[m["author_id"]]["verified"] is True
+    assert authors[m["author_id"]]["verified_type"] == "blue"

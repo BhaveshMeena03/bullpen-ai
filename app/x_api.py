@@ -46,6 +46,10 @@ API = "https://api.x.com/2"
 # Published per-call prices, so a run can report what it actually spent
 # rather than an estimate someone has to look up.
 PRICE_OWNED_READ = 0.001
+# An expanded author object. Undocumented whether X bills expansions
+# separately, so it is counted — over-counting only makes the daily spend
+# ceiling arrive early, and the ceiling arriving early is the safe error.
+PRICE_USER_READ = 0.010
 PRICE_POST = 0.015
 PRICE_POST_WITH_URL = 0.200
 
@@ -117,6 +121,11 @@ class Mention:
     text: str
     author_id: str
     conversation_id: str
+    # X's paid-tier badge. Worth knowing that it means "pays for Premium"
+    # rather than "is who they claim to be" — it filters throwaway accounts,
+    # not bad intentions.
+    author_verified: bool = False
+    author_verified_type: str = "none"
 
 
 class XCredentials:
@@ -219,6 +228,12 @@ class XClient:
         params = {
             "max_results": str(max(5, min(limit, 100))),
             "tweet.fields": "author_id,conversation_id",
+            # The author comes back in the same response rather than needing
+            # a lookup per mention. Repeat askers are deduplicated within the
+            # UTC day like everything else, so a regular costs nothing after
+            # the first time.
+            "expansions": "author_id",
+            "user.fields": "verified,verified_type",
         }
         if since_id:
             params["since_id"] = since_id
@@ -233,14 +248,25 @@ class XClient:
             return []
         _raise_if_out_of_credits(response)
         response.raise_for_status()
-        found = response.json().get("data") or []
+        body = response.json()
+        found = body.get("data") or []
         # Charged per resource returned, and deduplicated for the rest of
         # the UTC day, so an empty poll is free.
         self.spent_usd += len(found) * PRICE_OWNED_READ
+        authors = {u["id"]: u
+                   for u in (body.get("includes", {}).get("users") or [])}
+        self.spent_usd += len(authors) * PRICE_USER_READ
         return [
-            Mention(id=m["id"], text=m.get("text", ""),
-                    author_id=m.get("author_id", ""),
-                    conversation_id=m.get("conversation_id", m["id"]))
+            Mention(
+                id=m["id"], text=m.get("text", ""),
+                author_id=m.get("author_id", ""),
+                conversation_id=m.get("conversation_id", m["id"]),
+                author_verified=bool(
+                    authors.get(m.get("author_id", ""), {}).get("verified")),
+                author_verified_type=(
+                    authors.get(m.get("author_id", ""), {})
+                    .get("verified_type") or "none"),
+            )
             for m in reversed(found)
         ]
 

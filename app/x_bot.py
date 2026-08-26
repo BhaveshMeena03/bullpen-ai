@@ -299,6 +299,7 @@ class MentionBot:
                  include_links: bool = False, min_question_chars: int = 6,
                  contract_address: str | None = None,
                  daily_spend_cap_usd: float = 5.0,
+                 verified_only: bool = False,
                  token_label: str | None = None,
                  state_path: Path = STATE_PATH) -> None:
         self._client = client
@@ -308,6 +309,7 @@ class MentionBot:
         self._min_question = min_question_chars
         self._contract_address = contract_address
         self._spend_cap = daily_spend_cap_usd
+        self._verified_only = verified_only
         self._token_label = token_label
         self._state_path = state_path
         self.state = BotState.load(state_path)
@@ -360,6 +362,13 @@ class MentionBot:
                 continue
             if mention.author_id == self._client.bot_user_id:
                 continue                       # never answer itself
+            if self._verified_only and not mention.author_verified:
+                # Checked here rather than inside compose(), so an ignored
+                # account costs nothing beyond the read that already
+                # happened — no retrieval, no model call, no reply.
+                logger.info("%s is from an unverified account — skipping",
+                            mention.id)
+                continue
             if self.state.replies_today + posted >= self.cap:
                 logger.info("hit the daily cap mid-batch — stopping")
                 break
