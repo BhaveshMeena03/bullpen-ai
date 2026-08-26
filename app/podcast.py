@@ -36,6 +36,14 @@ NAMESPACE = "podcast"
 REFUSAL_ANSWER = ("I can't help with that one — try asking about "
                   "something discussed on the show.")
 
+# What the model is told to say when the excerpts do not contain the answer.
+# Callers need to recognise a miss, and the only signal is the wording: the
+# retriever always returns its top_k, so a full hit list means nothing about
+# whether any of it was relevant. Kept as a constant rather than interpolated
+# into the prompt below, because SYSTEM_PROMPT's exact bytes are the prompt
+# cache key — a test asserts the two stay in step.
+NOT_FOUND_ANSWER = "I couldn't find that in the episodes I've indexed"
+
 SYSTEM_PROMPT = """\
 You answer questions about the "Market Bubble" podcast (hosted by Ansem and \
 FaZe Banks) using ONLY the transcript excerpts provided in <excerpts> tags. \

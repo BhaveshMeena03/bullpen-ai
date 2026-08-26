@@ -35,6 +35,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from app.podcast import NOT_FOUND_ANSWER
 from app.x_api import Mention, XClient, strip_urls
 
 logger = logging.getLogger(__name__)
@@ -75,15 +76,29 @@ def _fit(text: str, budget: int) -> str:
     return (cut[:at] if at > 0 else cut).rstrip(",;:") + "…"
 
 
+def is_a_miss(answer: str) -> bool:
+    """Did the model say it could not find this?
+
+    The hit list cannot tell you. Retrieval always returns its top_k, so a
+    question with no answer in the archive still comes back with six
+    passages about something else — which is how the first real reply came
+    out as "I couldn't find that" followed by a confident timestamp from an
+    unrelated episode.
+    """
+    return NOT_FOUND_ANSWER.lower() in (answer or "").lower()
+
+
 def format_reply(answer: str, hits: list, include_links: bool = False) -> str:
     """One reply: the answer, then where it was said.
 
     The citation is the point. Anyone can paraphrase an episode; naming the
     second it happened is the thing this index can do and a person scrolling
-    cannot.
+    cannot — which is exactly why it must not be attached to an answer that
+    found nothing. A timestamp on "I couldn't find that" is worse than no
+    citation: it reads as a real source and points somewhere unrelated.
     """
     answer = strip_urls(answer)          # guests read links aloud sometimes
-    if not hits:
+    if not hits or is_a_miss(answer):
         return _fit(answer, REPLY_BUDGET)
 
     top = hits[0]

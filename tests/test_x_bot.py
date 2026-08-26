@@ -358,3 +358,50 @@ def test_a_402_is_named_rather_than_thrown_raw():
     # Anything else must fall through to the normal error handling.
     for code in (200, 401, 403, 429, 500):
         _raise_if_out_of_credits(httpx.Response(code, request=request))
+
+
+def test_the_not_found_wording_still_matches_the_prompt():
+    """is_a_miss keys off an exact phrase the model is told to produce.
+
+    The phrase lives in SYSTEM_PROMPT and as a constant, deliberately not
+    interpolated, because the prompt's exact bytes are the prompt-cache key.
+    That means they can drift apart silently — and if they do, every missed
+    question gets a confident citation again with nothing failing.
+    """
+    from app.podcast import NOT_FOUND_ANSWER, SYSTEM_PROMPT
+
+    assert NOT_FOUND_ANSWER in SYSTEM_PROMPT
+
+
+def test_a_miss_gets_no_citation():
+    """The bug the first real mention exposed.
+
+    "@mbubbleSearch what did chris gilbert say about squire" retrieved six
+    passages about other episodes, the model correctly said it could not
+    find it — and the reply appended "2:18:15 · LIVE W/ ORANGIE…" as if that
+    were the source. Retrieval always returns its top_k, so a full hit list
+    is not evidence of a hit.
+    """
+    from app.podcast import NOT_FOUND_ANSWER
+    from app.x_bot import is_a_miss
+
+    miss = f"{NOT_FOUND_ANSWER}. The excerpts don't mention Chris Gilbert."
+    assert is_a_miss(miss)
+
+    reply = format_reply(miss, [FakeHit()])
+    assert "3:52:34" not in reply, "a miss must not carry a timestamp"
+    assert "Market Bubble Ep 10" not in reply
+    assert NOT_FOUND_ANSWER in reply, "but it should still say so honestly"
+
+
+def test_a_real_answer_still_gets_its_citation():
+    reply = format_reply("Chris Gilbert came on to talk about Squire.",
+                         [FakeHit()])
+    assert "3:52:34" in reply
+
+
+@pytest.mark.parametrize("answer", ["", None])
+def test_is_a_miss_survives_an_empty_answer(answer):
+    from app.x_bot import is_a_miss
+
+    assert is_a_miss(answer) is False
