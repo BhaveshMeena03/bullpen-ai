@@ -89,8 +89,16 @@ def strip_urls(text: str) -> str:
 
     Guests read links out loud and Whisper writes them down, so a quote can
     carry one without anyone intending it.
+
+    Line by line, because `text.split()` splits on every kind of whitespace
+    and rejoining with spaces silently flattens paragraphs. That did not
+    matter while replies were two sentences; it turned a three-thousand
+    character episode summary into one unreadable block.
     """
-    return " ".join(w for w in text.split() if not _URL_SHAPED.search(w))
+    return "\n".join(
+        " ".join(w for w in line.split() if not _URL_SHAPED.search(w))
+        for line in (text or "").splitlines()
+    )
 
 
 def assert_linkless(text: str) -> None:

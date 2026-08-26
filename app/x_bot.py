@@ -137,15 +137,31 @@ def soften(text: str) -> str:
     return _PROFANITY.sub(mask, text or "")
 
 
-def plain_text(answer: str) -> str:
-    """Strip web-page formatting a plain-text reply cannot render."""
+def plain_text(answer: str, keep_breaks: bool = False) -> str:
+    """Strip web-page formatting a plain-text reply cannot render.
+
+    Line breaks are collapsed by default, because a two-sentence answer that
+    arrives with stray newlines reads as broken. `keep_breaks` is for the
+    long form: a three-thousand-character summary flattened into one
+    paragraph is a wall nobody reads, and the paragraph breaks are most of
+    what makes it legible.
+    """
     text = _BRACKET_TIME.sub(
         lambda m: m.group(1) + (f"–{m.group(2)}" if m.group(2) else ""),
         answer or "")
     text = _BOLD.sub(lambda m: m.group(1) or m.group(2), text)
     text = _CODE.sub(r"\1", text)
     text = _LIST_MARK.sub("", text)
-    return _WHITESPACE.sub(" ", text).strip()
+    if not keep_breaks:
+        return _WHITESPACE.sub(" ", text).strip()
+    lines = [re.sub(r"[ \t]+", " ", ln).strip() for ln in text.splitlines()]
+    # Collapse runs of blank lines to one, so the spacing is even however
+    # the model laid it out.
+    out: list[str] = []
+    for line in lines:
+        if line or (out and out[-1]):
+            out.append(line)
+    return "\n".join(out).strip()
 
 
 # "what's the CA", "contract address?", "drop the mint". Asked constantly
@@ -161,6 +177,41 @@ _ASKS_FOR_CA = re.compile(
          | mint(?:\s+address)?
          | address
     )\b""")
+
+
+# "summarise episode 14", "summary of ep 12", "what happened in #9". The
+# episode summaries already exist and already carry timestamps, so this is a
+# lookup rather than a question — no retrieval, no model call, and the answer
+# cannot come back different from the one on the website.
+_ASKS_FOR_SUMMARY = re.compile(
+    r"""(?ix)\b(?: summar (?:ise|ize|y) | recap | rundown | what\s+happened )\b
+        [^0-9]{0,40}
+        (?: ep(?:isode)?\s*)? \#? \s* (\d{1,2}) \b""")
+
+
+def summary_request(question: str) -> int | None:
+    """The episode number someone is asking to have summarised, or None."""
+    found = _ASKS_FOR_SUMMARY.search(question or "")
+    return int(found.group(1)) if found else None
+
+
+def episode_number(title: str) -> int | None:
+    """The show's own number for an episode, from its title."""
+    found = re.search(r"(?ix)(?: market\s+bubble | ep(?:isode)? )\s*\#?\s*(\d{1,2})\b",
+                      title or "")
+    return int(found.group(1)) if found else None
+
+
+def format_summary(summary: str, title: str, limit: int) -> str:
+    """A stored summary, as a reply.
+
+    No link. The summary already names the moments it covers, and a link
+    would push the whole thing to $0.200 for something the reader is not
+    going to click while they are reading three thousand characters.
+    """
+    body = plain_text(soften(strip_urls(summary)), keep_breaks=True)
+    head = _fit(str(title), 70)
+    return _fit(body, limit - len(head) - 2) + f"\n\n{head}"
 
 
 def pinned_answer(question: str, contract_address: str | None,
@@ -524,6 +575,7 @@ class MentionBot:
                  daily_spend_cap_usd: float = 5.0,
                  verified_only: bool = False,
                  post_limit: int = POST_LIMIT,
+                 summaries=None, summary_limit: int = 4000,
                  token_label: str | None = None,
                  state_path: Path = STATE_PATH) -> None:
         self._client = client
@@ -535,6 +587,11 @@ class MentionBot:
         self._spend_cap = daily_spend_cap_usd
         self._verified_only = verified_only
         self._post_limit = post_limit
+        self._summaries = summaries
+        self._summary_limit = summary_limit
+        # Fetched once and kept: 32 summaries change only when an
+        # episode is added, and a lookup should not cost a round trip.
+        self._summary_cache: list | None = None
         self._token_label = token_label
         self._state_path = state_path
         self.state = BotState.load(state_path)
@@ -645,6 +702,23 @@ class MentionBot:
         self.state.replies_today += posted
         return posted
 
+    async def _summary_for(self, number: int) -> dict | None:
+        """The stored summary for an episode number, if there is one.
+
+        Where a show exists as both a YouTube cut and a live broadcast, the
+        longer one wins: it is the version that actually contains
+        everything, and the summary of a cut is a summary of a cut.
+        """
+        if self._summaries is None:
+            return None
+        if self._summary_cache is None:
+            self._summary_cache = await self._summaries.list_all()
+        matches = [s for s in self._summary_cache
+                   if episode_number(s.get("title", "")) == number]
+        if not matches:
+            return None
+        return max(matches, key=lambda s: len(s.get("summary", "")))
+
     async def compose(self, mention: Mention) -> str | None:
         """The reply this mention would get, or None to stay quiet.
 
@@ -665,6 +739,16 @@ class MentionBot:
                                self._token_label)
         if pinned:
             return pinned
+
+        wanted = summary_request(question)
+        if wanted is not None:
+            found = await self._summary_for(wanted)
+            if found:
+                return format_summary(found["summary"], found["title"],
+                                      self._summary_limit)
+            logger.info("%s asked for episode %d, which is not indexed",
+                        mention.id, wanted)
+            return f"I don't have episode {wanted} indexed."
 
         if not looks_like_a_question(question):
             # Checked before retrieval so a compliment costs nothing at all.

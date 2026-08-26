@@ -103,6 +103,10 @@ services:
       # a higher ceiling would only ever buy walls of text.
       - key: X_BOT_POST_LIMIT
         value: "1500"
+      # Summaries already exist and run to ~3,100 characters. Trimming one
+      # to answer size would cut the back half of an episode off.
+      - key: X_BOT_SUMMARY_LIMIT
+        value: "4000"
       - key: X_BOT_CONTRACT_ADDRESS
         value: "8VjFid8BVGcTPpUzf4PAWsA5nHJ5h2GQNXPEjyr2mF7t"
       - key: X_BOT_TOKEN_LABEL

@@ -37,6 +37,7 @@ sys.path.insert(0, str(ROOT))
 
 from app.config import get_settings  # noqa: E402
 from app.podcast import PodcastIndex  # noqa: E402
+from app.summaries import SummaryStore  # noqa: E402
 from app.x_api import OutOfCreditsError, XClient, XCredentials  # noqa: E402
 from app.x_bot import MentionBot, weighted_length  # noqa: E402
 
@@ -77,6 +78,8 @@ def build(dry_run: bool, cap: int | None, links: bool | None):
         daily_spend_cap_usd=settings.x_bot_daily_spend_cap_usd,
         verified_only=settings.x_bot_verified_only,
         post_limit=settings.x_bot_post_limit,
+        summary_limit=settings.x_bot_summary_limit,
+        summaries=SummaryStore(),
     )
     return settings, client, bot
 

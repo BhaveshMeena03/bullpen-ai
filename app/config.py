@@ -287,6 +287,10 @@ class Settings(BaseSettings):
     # it is cheap to find out: raise this, send one reply, and either it
     # posts or X answers 400 "Your Tweet text is too long" and costs nothing.
     x_bot_post_limit: int = 280
+    # Summaries get their own, larger budget. They already exist, already
+    # carry timestamps, and run to about 3,100 characters — trimming one to
+    # fit an answer-sized reply would cut the back half of an episode off.
+    x_bot_summary_limit: int = 4000
 
     @field_validator(
         "anthropic_api_key", "voyage_api_key", "pinecone_api_key",

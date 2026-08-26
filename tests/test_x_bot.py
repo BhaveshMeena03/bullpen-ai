@@ -1273,3 +1273,145 @@ def test_bracketed_timestamp_ranges_are_cleaned(raw, expected):
     from app.x_bot import plain_text
 
     assert plain_text(raw) == expected
+
+
+# --- summarise episode N ---------------------------------------------------
+
+@pytest.mark.parametrize("asked,number", [
+    ("summarize episode 14", 14),
+    ("summarise ep 12", 12),
+    ("summary of episode 3", 3),
+    ("recap #9", 9),
+    ("whats the rundown on episode 16", 16),
+    ("what happened in episode 1", 1),
+])
+def test_summary_requests_are_recognised(asked, number):
+    from app.x_bot import summary_request
+
+    assert summary_request(asked) == number
+
+
+@pytest.mark.parametrize("asked", [
+    "what did ansem say about eth",
+    "summarise the sec stuff",          # no episode number
+    "what did tjr say in the episode",
+])
+def test_ordinary_questions_are_not_summary_requests(asked):
+    from app.x_bot import summary_request
+
+    assert summary_request(asked) is None
+
+
+@pytest.mark.parametrize("title,number", [
+    ("The Best Day Crypto Has Had In Months | Market Bubble #16", 16),
+    ("LIVE W/ TJR & Mert Market Bubble EP 8 - Presented by", 8),
+    ("Our full conversation with Orangie.", None),
+])
+def test_episode_numbers_are_read_from_titles(title, number):
+    from app.x_bot import episode_number
+
+    assert episode_number(title) == number
+
+
+class FakeSummaries:
+    def __init__(self, rows):
+        self.rows = rows
+        self.calls = 0
+
+    async def list_all(self):
+        self.calls += 1
+        return self.rows
+
+
+@pytest.mark.anyio
+async def test_a_summary_request_is_answered_from_storage(tmp_path):
+    """No retrieval and no model call: the summary already exists, already
+    carries timestamps, and cannot come back different from the one on the
+    website."""
+    rows = [{"title": "Market Bubble #14", "summary":
+             "**TL;DR** — Tushar Jain on Solana and Zcash, around 1:15:37."}]
+    client = FakeClient([[mention("1")],
+                         [mention("2", text="@bot summarize episode 14")]])
+    index = FakeIndex()
+    bot = MentionBot(client, index, summaries=FakeSummaries(rows),
+                     state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-27")
+    assert await bot.tick("2026-08-27") == 1
+    assert index.asked == [], "must not have gone to retrieval"
+
+    reply = client.posted[0][1]
+    assert "Tushar Jain" in reply and "1:15:37" in reply
+    assert "**" not in reply, "markdown does not render on X"
+    assert "http" not in reply, "a summary carries no link"
+
+
+@pytest.mark.anyio
+async def test_the_summary_list_is_fetched_once(tmp_path):
+    rows = [{"title": "Market Bubble #14", "summary": "x " * 60}]
+    store = FakeSummaries(rows)
+    client = FakeClient([[mention("1")]]
+                        + [[mention(str(i), text="@bot recap #14")]
+                           for i in range(2, 6)])
+    bot = MentionBot(client, FakeIndex(), summaries=store,
+                     state_path=tmp_path / "s.json")
+    for _ in range(5):
+        await bot.tick("2026-08-27")
+    assert store.calls == 1, "32 summaries change only when an episode lands"
+
+
+@pytest.mark.anyio
+async def test_an_unknown_episode_says_so(tmp_path):
+    client = FakeClient([[mention("1")],
+                         [mention("2", text="@bot summarize episode 99")]])
+    bot = MentionBot(client, FakeIndex(), summaries=FakeSummaries([]),
+                     state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-27")
+    assert await bot.tick("2026-08-27") == 1
+    assert client.posted[0][1] == "I don't have episode 99 indexed."
+
+
+@pytest.mark.anyio
+async def test_the_longer_cut_wins_when_a_show_exists_twice(tmp_path):
+    """A show is often both a YouTube cut and a live broadcast. The summary
+    of a cut is a summary of a cut."""
+    rows = [{"title": "Market Bubble #10", "summary": "short one"},
+            {"title": "LIVE W/ LUCA NETZ: Market Bubble Ep 10",
+             "summary": "the full broadcast, considerably longer " * 8}]
+    client = FakeClient([[mention("1")],
+                         [mention("2", text="@bot summarise ep 10")]])
+    bot = MentionBot(client, FakeIndex(), summaries=FakeSummaries(rows),
+                     state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-27")
+    await bot.tick("2026-08-27")
+    assert "full broadcast" in client.posted[0][1]
+
+
+def test_a_summary_keeps_its_paragraphs():
+    """A 3,000-character summary flattened into one block is a wall nobody
+    reads, and the structure — TL;DR, then a timestamped topic list — is
+    most of what makes it legible.
+
+    strip_urls used text.split(), which splits on every kind of whitespace
+    and rejoins with spaces. Harmless while replies were two sentences;
+    it destroyed the summary.
+    """
+    from app.x_bot import format_summary
+
+    raw = ("**TL;DR** — the episode in one paragraph.\n"
+           "\n"
+           "Topics\n"
+           "0:00:00 intro and recap\n"
+           "0:53:10 guest interview begins\n")
+    out = format_summary(raw, "Market Bubble #14", 4000)
+    assert out.count("\n") >= 4, "paragraph structure must survive"
+    assert "Topics" in out
+    assert "0:53:10" in out
+    assert "**" not in out
+
+
+def test_short_answers_still_get_their_newlines_collapsed():
+    """The default stays as it was: a two-sentence answer arriving with
+    stray newlines reads as broken."""
+    from app.x_bot import plain_text
+
+    assert plain_text("he said\nit\nhere") == "he said it here"
