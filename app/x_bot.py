@@ -227,6 +227,14 @@ def episode_number(title: str) -> int | None:
     return int(found.group(1)) if found else None
 
 
+# "TL;DR —" is the first thing anyone sees in a summary reply, and it spends
+# characters telling them what they already know: they asked for a summary.
+# Stripped here rather than regenerating thirty-two summaries to remove four
+# characters, and the website keeps it, where a labelled block is useful
+# scanning down a page.
+_TLDR = re.compile(r"(?i)^\s*(?:\*\*)?tl;?\s*dr(?:\*\*)?\s*[—–:-]*\s*")
+
+
 # A line that opens with a timestamp is a topic entry.
 _TOPIC_LINE = re.compile(r"^(\d{1,2}:\d{2}(?::\d{2})?)\s+(.+)$")
 
@@ -267,7 +275,9 @@ def format_summary(summary: str, title: str, limit: int,
 
     The title is dropped when a link is present: the card already shows it.
     """
-    body = _space_out(plain_text(soften(strip_urls(summary)), keep_breaks=True))
+    body = _space_out(
+        _TLDR.sub("", plain_text(soften(strip_urls(summary)),
+                                 keep_breaks=True)))
     if url:
         tail = f"\n\nFull episode:\n{url}"
         return _fit(body, limit - URL_WEIGHT - 18) + tail

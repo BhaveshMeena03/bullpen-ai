@@ -1568,3 +1568,28 @@ async def test_links_on_means_the_summary_gets_one(tmp_path):
     await bot.tick("2026-08-27")
     await bot.tick("2026-08-27")
     assert url in client.posted[0][1]
+
+
+@pytest.mark.parametrize("raw", [
+    "**TL;DR** — the episode in a paragraph.",
+    "TL;DR — the episode in a paragraph.",
+    "TL;DR: the episode in a paragraph.",
+    "tldr - the episode in a paragraph.",
+])
+def test_the_tldr_label_is_dropped(raw):
+    """It is the first thing anyone sees in a summary reply, and it spends
+    characters telling them what they already know — they asked for a
+    summary. The website keeps it, where a labelled block helps someone
+    scanning down a page."""
+    from app.x_bot import format_summary
+
+    out = format_summary(raw, "Ep 16", 4000)
+    assert out.startswith("the episode in a paragraph.")
+    assert "TL" not in out.upper()[:6]
+
+
+def test_a_summary_without_the_label_is_untouched():
+    from app.x_bot import format_summary
+
+    out = format_summary("This episode covers a green day.", "Ep 16", 4000)
+    assert out.startswith("This episode covers a green day.")
