@@ -47,6 +47,12 @@ STATE_PATH = ROOT / "data" / "x_bot_state.json"
 # so aim well under 280 rather than discovering the edge in production.
 REPLY_BUDGET = 258
 
+# How many times to retry one mention before stepping over it. Three, because
+# the failures worth retrying are transient — a timeout, a rate limit, a
+# provider blip — and anything that fails three times is a bug that will not
+# fix itself before the next poll.
+MAX_ATTEMPTS = 3
+
 _HANDLE = re.compile(r"@\w{1,15}")
 # A spoken-timestamp citation in the answer text: 16:16, 1:39:15, 4:01:47.
 _CITES_A_TIME = re.compile(r"\b\d{1,2}:\d{2}(?::\d{2})?\b")
@@ -252,6 +258,9 @@ class BotState:
     replied: list[str] = field(default_factory=list)
     day: str = ""
     replies_today: int = 0
+    # How many times each mention has failed, so a permanently broken one
+    # is eventually stepped over instead of blocking everything behind it.
+    attempts: dict = field(default_factory=dict)
     spent_usd: float = 0.0
     # Spend is tracked per UTC day as well as cumulatively, because the
     # reply cap does not bound it. Replies are the expensive part but not
@@ -280,6 +289,7 @@ class BotState:
             "replied": self.replied[-500:],
             "day": self.day,
             "replies_today": self.replies_today,
+            "attempts": self.attempts,
             "spent_usd": round(self.spent_usd, 4),
             "spent_today_usd": round(self.spent_today_usd, 4),
         }))
@@ -356,27 +366,53 @@ class MentionBot:
 
         posted = 0
         replied = set(self.state.replied)
+        # Advanced only past mentions that were actually dealt with. Setting
+        # it per-mention up front meant a failure mid-reply still marked the
+        # question as seen, and it was never looked at again: a crash lost a
+        # real question silently, which is the one outcome this bot cannot
+        # have.
+        handled = self.state.since_id
         for mention in mentions:
-            self.state.since_id = mention.id
             if mention.id in replied:
+                handled = mention.id
                 continue
             if mention.author_id == self._client.bot_user_id:
-                continue                       # never answer itself
+                handled = mention.id           # never answer itself
+                continue
             if self._verified_only and not mention.author_verified:
                 # Checked here rather than inside compose(), so an ignored
                 # account costs nothing beyond the read that already
                 # happened — no retrieval, no model call, no reply.
                 logger.info("%s is from an unverified account — skipping",
                             mention.id)
+                handled = mention.id
                 continue
             if self.state.replies_today + posted >= self.cap:
                 logger.info("hit the daily cap mid-batch — stopping")
                 break
-            if await self._answer(mention):
-                posted += 1
-                replied.add(mention.id)
-                self.state.replied.append(mention.id)
+            try:
+                if await self._answer(mention):
+                    posted += 1
+                    replied.add(mention.id)
+                    self.state.replied.append(mention.id)
+                handled = mention.id
+                self.state.attempts.pop(mention.id, None)
+            except Exception:                              # noqa: BLE001
+                # Left unhandled so the next poll retries it — but only a
+                # few times. A mention that fails every time would otherwise
+                # block every question behind it forever.
+                tries = self.state.attempts.get(mention.id, 0) + 1
+                self.state.attempts[mention.id] = tries
+                logger.exception("%s failed (attempt %d/%d)",
+                                 mention.id, tries, MAX_ATTEMPTS)
+                if tries >= MAX_ATTEMPTS:
+                    logger.error("%s failed %d times — giving up on it",
+                                 mention.id, tries)
+                    handled = mention.id
+                    self.state.attempts.pop(mention.id, None)
+                break
 
+        self.state.since_id = handled
         self.state.replies_today += posted
         return posted
 

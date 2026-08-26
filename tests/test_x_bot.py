@@ -862,3 +862,65 @@ async def test_an_accidental_url_is_still_refused_when_links_are_off(tmp_path):
     await bot.tick("2026-08-26")
     for _, text in client.posted:
         assert_linkless(text)
+
+
+# --- a failure must not silently swallow the question ----------------------
+
+class BreakingClient(FakeClient):
+    """Raises on reply, like a bad request or a provider blip would."""
+
+    def __init__(self, batches, fail_times=99):
+        super().__init__(batches)
+        self.fail_times = fail_times
+        self.attempts = 0
+
+    async def reply(self, text, to_post_id, allow_link=False):
+        self.attempts += 1
+        if self.attempts <= self.fail_times:
+            raise RuntimeError("posting failed")
+        return await super().reply(text, to_post_id, allow_link)
+
+
+@pytest.mark.anyio
+async def test_a_failed_reply_does_not_lose_the_question(tmp_path):
+    """The bug that ate the first live reply.
+
+    since_id was advanced at the top of the loop, before the reply was
+    attempted, so a crash mid-reply still marked the mention as seen. The
+    question was never looked at again and nothing said so — the one
+    outcome this bot cannot have, since being unable to find something is
+    the complaint the whole project exists to answer.
+    """
+    client = BreakingClient([[mention("1")], [mention("2")], [mention("2")]],
+                            fail_times=1)
+    bot = MentionBot(client, FakeIndex(), state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-26")                  # cold start
+    assert await bot.tick("2026-08-26") == 0      # the reply raises
+    assert bot.state.since_id == "1", "must not step past an unanswered one"
+    assert await bot.tick("2026-08-26") == 1, "and the retry answers it"
+
+
+@pytest.mark.anyio
+async def test_a_permanently_broken_mention_is_eventually_stepped_over(tmp_path):
+    """The other direction: one poison mention must not block the queue."""
+    from app.x_bot import MAX_ATTEMPTS
+
+    batches = [[mention("1")]] + [[mention("2")] for _ in range(MAX_ATTEMPTS)]
+    client = BreakingClient(batches)
+    bot = MentionBot(client, FakeIndex(), state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-26")
+    for _ in range(MAX_ATTEMPTS):
+        await bot.tick("2026-08-26")
+    assert bot.state.since_id == "2", "gives up rather than blocking forever"
+    assert "2" not in bot.state.attempts, "and stops tracking it"
+
+
+@pytest.mark.anyio
+async def test_a_skipped_mention_still_advances(tmp_path):
+    """Deliberate skips are handled, not failures — the queue must move."""
+    client = FakeClient([[mention("1")],
+                         [mention("2", text="@bot gm"), mention("3")]])
+    bot = MentionBot(client, FakeIndex(), state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-26")
+    assert await bot.tick("2026-08-26") == 1
+    assert bot.state.since_id == "3"
