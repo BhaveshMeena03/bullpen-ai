@@ -15,6 +15,15 @@ from app.usage import UsageLedger
 
 # --- keys ------------------------------------------------------------------
 
+def fake_request(ip: str = "1.2.3.4"):
+    """A bare Request, because the handlers take one to refund the rate
+    limiter on a cache hit."""
+    from starlette.requests import Request
+
+    return Request({"type": "http", "headers": [], "client": (ip, 1234),
+                    "method": "POST", "path": "/", "scheme": "https"})
+
+
 def test_trivial_variations_are_one_entry():
     """Casing, spacing and a trailing question mark are not different
     questions, and treating them as such would leave most repeats uncached."""
@@ -147,7 +156,7 @@ async def test_second_identical_question_skips_the_model():
     cache = AnswerCache(max_entries=8, ttl_seconds=60)
     body = ChatRequest(message="what are the fees")
     for _ in range(2):
-        r = await main.clawpump_chat(body, retriever=FakeRetriever(),
+        r = await main.clawpump_chat(body, fake_request(), retriever=FakeRetriever(),
                                      agent=FakeAgent(), answers=cache,
                                      usage=UsageLedger())
         assert r.answer == "65%"
@@ -179,10 +188,10 @@ async def test_a_follow_up_is_never_answered_from_cache():
         history=[{"role": "user", "content": "fees"},
                  {"role": "assistant", "content": "65%"}],
     )
-    await main.clawpump_chat(body, retriever=FakeRetriever(),
+    await main.clawpump_chat(body, fake_request(), retriever=FakeRetriever(),
                              agent=FakeAgent(), answers=cache,
                                  usage=UsageLedger())
-    await main.clawpump_chat(body, retriever=FakeRetriever(),
+    await main.clawpump_chat(body, fake_request(), retriever=FakeRetriever(),
                              agent=FakeAgent(), answers=cache,
                                  usage=UsageLedger())
     assert calls["n"] == 2

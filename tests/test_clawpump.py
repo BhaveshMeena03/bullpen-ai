@@ -21,6 +21,15 @@ from app.usage import UsageLedger
 DATA = Path(__file__).resolve().parent.parent / "data"
 
 
+def fake_request(ip: str = "1.2.3.4"):
+    """A bare Request, because the handlers take one to refund the rate
+    limiter on a cache hit."""
+    from starlette.requests import Request
+
+    return Request({"type": "http", "headers": [], "client": (ip, 1234),
+                    "method": "POST", "path": "/", "scheme": "https"})
+
+
 def _docs() -> list[dict]:
     path = DATA / "clawpump_docs.json"
     if not path.exists():
@@ -105,7 +114,7 @@ async def test_search_is_scoped_to_the_clawpump_namespace():
             return ChatResponse(answer="ok", sources=[], model="test")
 
     await main.clawpump_chat(
-        ChatRequest(message="what are the fees"),
+        ChatRequest(message="what are the fees"), fake_request(),
         retriever=FakeRetriever(), agent=FakeAgent(),
         # Disabled, so these assert the routing and not a cache hit.
         answers=AnswerCache(max_entries=0),
@@ -135,6 +144,7 @@ async def test_caller_cannot_redirect_the_search_with_filters():
 
     await main.clawpump_chat(
         ChatRequest(message="hi", filters={"source_type": "podcast"}),
+        fake_request(),
         retriever=FakeRetriever(), agent=FakeAgent(),
         # Disabled, so these assert the routing and not a cache hit.
         answers=AnswerCache(max_entries=0),
