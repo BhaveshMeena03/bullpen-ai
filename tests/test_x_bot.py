@@ -219,7 +219,8 @@ class FakeClient:
 
 
 class FakeIndex:
-    def __init__(self, answer="He said it here.", hits=None, refused=False):
+    def __init__(self, answer="Around 3:52:34 he said it.", hits=None,
+                 refused=False):
         self._answer, self._hits, self._refused = answer, hits, refused
         self.asked: list[str] = []
 
@@ -545,3 +546,110 @@ async def test_a_ca_question_never_reaches_the_model(tmp_path):
     reply = client.posted[0][1]
     assert reply.startswith("MarketBubbleSearch CA:") and CA in reply
     assert len(reply) <= 280
+
+
+# --- not everything that tags you is a question ----------------------------
+
+@pytest.mark.parametrize("text", [
+    "very cool concept!",
+    "Looks cool🔥",
+    "gm",
+    "this is sick",
+    "🔥🔥🔥",
+    "congrats on the launch",
+])
+def test_compliments_are_not_questions(text):
+    """Observed in the first real batch of mentions.
+
+    People tag an account to say "very cool concept!" far more often than to
+    ask it anything. Answering is the worst case on every axis: the model
+    has nothing to answer so it deflects, the formatter staples an unrelated
+    citation to the deflection, and with links on it costs $0.209 to say
+    nothing.
+    """
+    from app.x_bot import looks_like_a_question
+
+    assert not looks_like_a_question(text)
+
+
+@pytest.mark.parametrize("text", [
+    "what did chris gilbert say about squire?",
+    "what did luca netz say about pudgy penguins",
+    "who came on episode 10",
+    "did ansem talk about ethereum",
+    "any timestamp for the blackrock bit",
+    "tell me what tjr said",
+    "thoughts on $MBS",
+    "is bitcoin mentioned",
+])
+def test_real_questions_get_through(text):
+    from app.x_bot import looks_like_a_question
+
+    assert looks_like_a_question(text)
+
+
+@pytest.mark.anyio
+async def test_a_compliment_never_reaches_the_model(tmp_path):
+    """It must cost nothing — that is the point of gating before retrieval."""
+    client = FakeClient([[mention("1")],
+                         [mention("2", text="@bot very cool concept!")]])
+    index = FakeIndex()
+    bot = MentionBot(client, index, state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-26")
+    assert await bot.tick("2026-08-26") == 0
+    assert index.asked == [], "retrieval must not have been called"
+    assert client.posted == []
+
+
+@pytest.mark.anyio
+async def test_an_answer_with_no_citation_is_not_posted(tmp_path):
+    """The deflection that got through once.
+
+    "I appreciate your enthusiasm, but I'm here to answer questions about
+    the Market Bubble podcast" was posted with "3:35:39 · LIVE W/ TJR &
+    Mert" underneath it. A real answer always names a moment.
+    """
+    client = FakeClient([[mention("1")], [mention("2", text="@bot what is this")]])
+    index = FakeIndex(answer="I appreciate your enthusiasm, but I'm here to "
+                             "answer questions about the podcast.")
+    bot = MentionBot(client, index, state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-26")
+    assert await bot.tick("2026-08-26") == 0
+    assert client.posted == []
+
+
+@pytest.mark.anyio
+async def test_an_honest_miss_is_still_posted(tmp_path):
+    """Silence on a real question would look broken — that complaint is why
+    the X broadcasts got indexed in the first place."""
+    from app.podcast import NOT_FOUND_ANSWER
+
+    client = FakeClient([[mention("1")],
+                         [mention("2", text="@bot what did taylor swift say")]])
+    bot = MentionBot(client, FakeIndex(answer=NOT_FOUND_ANSWER + "."),
+                     state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-26")
+    assert await bot.tick("2026-08-26") == 1
+    assert client.posted[0][1] == NOT_FOUND_ANSWER + "."
+
+
+@pytest.mark.parametrize("text", ["whats the CA", "what's the ca", "hows it work"])
+def test_contracted_question_words_count(text):
+    """\\bwhat\\b does not match "whats", and people rarely type apostrophes."""
+    from app.x_bot import looks_like_a_question
+
+    assert looks_like_a_question(text)
+
+
+@pytest.mark.anyio
+async def test_a_casual_ca_request_is_still_answered(tmp_path):
+    """"ca pls" is a request, not a question, and must not be gated out."""
+    client = FakeClient([[mention("1")], [mention("2", text="@bot ca pls")]])
+    index = FakeIndex()
+    bot = MentionBot(client, index, contract_address=CA,
+                     token_label="MarketBubbleSearch",
+                     state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-26")
+    assert await bot.tick("2026-08-26") == 1
+    assert index.asked == []
+    assert CA in client.posted[0][1]

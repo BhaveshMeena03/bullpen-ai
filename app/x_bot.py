@@ -136,6 +136,41 @@ def pinned_answer(question: str, contract_address: str | None,
             f"That is the only official one.")
 
 
+# People tag an account to say "very cool concept!" far more often than to
+# ask it anything. Those are not questions, and answering them is the worst
+# case on every axis: the model has nothing to answer so it produces a canned
+# deflection, the formatter staples an unrelated citation to it, and with
+# links enabled the whole thing costs $0.209 to say nothing.
+# Two shapes. Wh-words and asking verbs count anywhere in the text; bare
+# auxiliaries only count at the start, where they actually invert a question
+# ("is bitcoin mentioned"). Matching "is" anywhere made "this is sick" a
+# question.
+_ASKING = re.compile(
+    r"""(?ix)\b(?: wh(?:at|o|en|ere|y|ich)(?:'?s)? | how(?:'?s)?
+                 | tell\s+me | explain | thoughts\s+on
+                 | timestamp | quote | search\s+for
+    )\b""")
+_OPENS_A_QUESTION = re.compile(
+    r"""(?ix)^\W*(?: did | does | do | is | are | was | were | has | have
+                   | can | could | would | should | any | find | show | give
+    )\b""")
+
+
+def looks_like_a_question(text: str) -> bool:
+    """Is this actually asking something?
+
+    A question mark, or an interrogative word. Deliberately generous — a
+    false negative costs one unanswered compliment, a false positive costs
+    a nonsense reply in public with a link attached.
+    """
+    text = (text or "").strip()
+    if not text:
+        return False
+    return ("?" in text
+            or bool(_ASKING.search(text))
+            or bool(_OPENS_A_QUESTION.match(text)))
+
+
 def is_a_miss(answer: str) -> bool:
     """Did the model say it could not find this?
 
@@ -303,19 +338,35 @@ class MentionBot:
         if len(question) < self._min_question:
             logger.info("%s is a tag with no question — skipping", mention.id)
             return None
-
-        # Before retrieval, because the contract address is a fact about the
-        # project rather than something said on the podcast. Answering it
-        # from a constant costs nothing, cannot be paraphrased wrong, and
-        # skips the model entirely.
+        # Pinned answers come first, ahead of the question gate: "ca pls" is
+        # a request even though it is not shaped like a question, and the
+        # contract address is a fact about the project rather than something
+        # said on the podcast. Free, instant, and it cannot come back
+        # paraphrased.
         pinned = pinned_answer(question, self._contract_address,
                                self._token_label)
         if pinned:
             return pinned
 
+        if not looks_like_a_question(question):
+            # Checked before retrieval so a compliment costs nothing at all.
+            logger.info("%s is not a question (%r) — staying quiet",
+                        mention.id, question[:60])
+            return None
+
         result = await self._index.search(question)
         if getattr(result, "refused", False):
             logger.info("%s refused by the model — staying quiet", mention.id)
+            return None
+        if not is_a_miss(result.answer) and not _CITES_A_TIME.search(result.answer):
+            # A real answer from this index always names a moment — the
+            # prompt requires it, and citing is the entire point. An answer
+            # with no timestamp that is not the honest "couldn't find it" is
+            # the model talking about itself ("I appreciate your enthusiasm,
+            # but I'm here to answer questions about..."), which reached a
+            # reply once with an unrelated episode stapled underneath.
+            logger.info("%s produced no citation (%r) — staying quiet",
+                        mention.id, result.answer[:70])
             return None
         return format_reply(result.answer, result.hits,
                             include_links=self.include_links) or None
