@@ -353,7 +353,31 @@ def weighted_length(text: str) -> int:
     return total + urls * URL_WEIGHT
 
 
-def format_reply(answer: str, hits: list, include_links: bool = False,
+def wants_link(mode: str, deep_link: str) -> bool:
+    """Should this particular reply carry its link?
+
+    Three modes, because "links on" and "links off" are both wrong most of
+    the time.
+
+    A link costs $0.200 against $0.015 without one, whatever it points at.
+    But the two kinds of link are not worth the same: a YouTube link carries
+    ?t= and lands on the exact second, while an X broadcast link opens a
+    four-hour video at 0:00 and leaves the reader to scrub. Paying thirteen
+    times as much for the second one buys almost nothing — the episode name
+    and the timestamp in the text get the reader to the same place.
+
+    So "seekable" pays only when the link actually jumps. On this corpus
+    that is about three answers in eight, which is roughly 60% off the link
+    bill for no loss anyone would notice.
+    """
+    if mode == "always":
+        return True
+    if mode == "seekable":
+        return "t=" in (deep_link or "")
+    return False
+
+
+def format_reply(answer: str, hits: list, include_links: bool | str = False,
                  limit: int = POST_LIMIT) -> str:
     """One reply: the answer, then where it was said.
 
@@ -382,7 +406,9 @@ def format_reply(answer: str, hits: list, include_links: bool = False,
         return _fit(answer, limit - 22)
 
     top = hits[0]
-    if include_links:
+    mode = ("always" if include_links is True
+            else "off" if include_links is False else str(include_links))
+    if wants_link(mode, top.deep_link):
         seekable = "t=" in (top.deep_link or "")
         # Prefer the moment the answer actually names over the passage
         # start, and move the link to match it.

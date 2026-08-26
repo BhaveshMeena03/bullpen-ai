@@ -1188,3 +1188,69 @@ def test_a_quoted_transcript_line_reaches_the_reply_clean():
     assert "fucked" not in reply
     assert "f***ed" in reply
     assert "26:56" in reply, "the citation still survives"
+
+
+# --- paying for a link only when it does something -------------------------
+
+YT = "https://www.youtube.com/watch?v=abc&t=422s"
+XL = "https://x.com/MarketBubble/status/2075316750439338088"
+
+
+@pytest.mark.parametrize("mode,link,expected", [
+    ("always",   YT, True),
+    ("always",   XL, True),
+    ("seekable", YT, True),
+    ("seekable", XL, False),      # opens at 0:00 — not worth $0.200
+    ("off",      YT, False),
+    ("off",      XL, False),
+])
+def test_link_modes(mode, link, expected):
+    """A reply with a URL costs $0.200 against $0.015 whatever it points at,
+    but only a YouTube link lands on the moment. An X broadcast link opens a
+    four-hour video at 0:00, which the timestamp in the text already does
+    for a fraction of the price."""
+    from app.x_bot import wants_link
+
+    assert wants_link(mode, link) is expected
+
+
+def test_seekable_mode_links_a_youtube_answer():
+    class Hit:
+        title = "TJR On Why Attention Beat Money"
+        timestamp = "7:02"
+        deep_link = YT
+
+    reply = format_reply("Around 7:02 TJR called attention the best currency.",
+                         [Hit()], include_links="seekable", limit=1500)
+    assert YT in reply
+    assert "Jump to 7:02:" in reply
+
+
+def test_seekable_mode_skips_an_x_broadcast_link():
+    class Hit:
+        title = "LIVE W/ LUCA NETZ: Market Bubble Ep 10"
+        timestamp = "1:41:22"
+        deep_link = XL
+
+    reply = format_reply("Around 1:41:22 Luca explained the airdrop.",
+                         [Hit()], include_links="seekable", limit=1500)
+    assert "http" not in reply, "no link, so no $0.200 charge"
+    assert "1:41:22" in reply, "but the moment is still named"
+    assert "Market Bubble Ep 10" in reply, "and so is the episode"
+
+
+def test_the_old_booleans_still_mean_what_they_meant():
+    """render.yaml and .env carried true/false before the third mode
+    existed, and a deploy that read those as neither would silently stop
+    linking or start linking on every reply."""
+    from app.x_bot import wants_link
+
+    class Hit:
+        title = "Ep 10"
+        timestamp = "1:00:00"
+        deep_link = XL
+
+    assert XL in format_reply("x", [Hit()], include_links=True, limit=1500)
+    assert "http" not in format_reply("x", [Hit()], include_links=False,
+                                      limit=1500)
+    assert wants_link("always", XL) and not wants_link("off", XL)

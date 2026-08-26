@@ -72,11 +72,12 @@ services:
       # present in the environment are never enough on their own.
       - key: X_BOT_ENABLED
         value: "false"
-      # A reply carrying a URL costs $0.200 against $0.015 without one, so
-      # this is the difference between roughly $5 and $5.25 a day at the cap
-      # below — and between $36 and $313 a month at fifty replies a day.
+      # off | seekable | always. A reply with a URL costs $0.200 against
+      # $0.015, whatever it links to — but only a YouTube link actually
+      # jumps to the moment. "seekable" pays for those and skips the X
+      # broadcast links, which open a four-hour video at 0:00 either way.
       - key: X_BOT_INCLUDE_LINKS
-        value: "true"
+        value: "seekable"
       - key: X_BOT_DAILY_REPLY_CAP
         value: "25"
       # The ceiling the reply cap is not: a mention read costs $0.001

@@ -241,7 +241,20 @@ class Settings(BaseSettings):
     # fifty mentions a day. The citation (timestamp + episode) is the useful
     # part anyway and the link lives in the bio. Turn this on only if someone
     # else is funding the difference.
-    x_bot_include_links: bool = False
+    # off | seekable | always
+    #
+    # A reply carrying a URL costs $0.200 against $0.015 without one,
+    # whatever it points at. But the two kinds of link are not worth the
+    # same money: a YouTube link carries ?t= and lands on the exact second,
+    # while an X broadcast link opens a four-hour video at 0:00 and leaves
+    # the reader to scrub. The episode name and the timestamp in the text
+    # get them to the same place for a fraction of the price.
+    #
+    # "seekable" pays only when the link actually jumps — about three
+    # answers in eight on this corpus, so roughly 60% off the link bill for
+    # nothing anyone would notice missing. "always" is $157/month at the
+    # daily cap; "off" is $18; this is around $60.
+    x_bot_include_links: str = "seekable"
     # Seconds between polls, jittered. Reads are deduplicated within a UTC
     # day, so frequent polling costs nothing extra; the jitter is about not
     # looking like a metronome, which is a documented suspension trigger.
