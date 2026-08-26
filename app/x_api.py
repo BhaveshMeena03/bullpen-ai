@@ -270,14 +270,20 @@ class XClient:
             for m in reversed(found)
         ]
 
-    async def reply(self, text: str, to_post_id: str) -> str | None:
+    async def reply(self, text: str, to_post_id: str,
+                    allow_link: bool = False) -> str | None:
         """Reply to the post that tagged the bot. Returns the new post id.
 
         Permitted because the author mentioned the bot first: X restricted
         programmatic replies in February 2026 to exactly that case, which is
         why tag-to-ask still works when generic reply bots do not.
         """
-        assert_linkless(text)
+        if not allow_link:
+            # The guard is against a URL nobody meant to send — one read
+            # aloud in a transcript, or a model writing one unprompted. When
+            # links are deliberately enabled the charge is the point, so
+            # asserting here refused the very mode that was switched on.
+            assert_linkless(text)
         if self._dry_run:
             logger.info("[dry run] would reply to %s: %s", to_post_id, text)
             return None
@@ -300,5 +306,5 @@ class XClient:
             return None
         _raise_if_out_of_credits(response)
         response.raise_for_status()
-        self.spent_usd += PRICE_POST
+        self.spent_usd += PRICE_POST_WITH_URL if allow_link else PRICE_POST
         return (response.json().get("data") or {}).get("id")

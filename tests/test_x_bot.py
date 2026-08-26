@@ -213,7 +213,11 @@ class FakeClient:
         self.spent_usd += len(got) * PRICE_OWNED_READ
         return got
 
-    async def reply(self, text, to_post_id):
+    async def reply(self, text, to_post_id, allow_link=False):
+        # Mirrors the real client: the no-URL guard applies only when links
+        # were not deliberately enabled.
+        if not allow_link:
+            assert_linkless(text)
         self.posted.append((to_post_id, text))
         return f"reply-to-{to_post_id}"
 
@@ -701,9 +705,9 @@ class SpendingClient(FakeClient):
         self.spent_usd += len(got) * PRICE_OWNED_READ
         return got
 
-    async def reply(self, text, to_post_id):
+    async def reply(self, text, to_post_id, allow_link=False):
         self.spent_usd += 0.200          # a reply carrying a link
-        return await super().reply(text, to_post_id)
+        return await super().reply(text, to_post_id, allow_link)
 
 
 @pytest.mark.anyio
@@ -823,3 +827,38 @@ def test_author_verification_is_parsed_from_the_expansion():
     m = body["data"][0]
     assert authors[m["author_id"]]["verified"] is True
     assert authors[m["author_id"]]["verified_type"] == "blue"
+
+
+@pytest.mark.anyio
+async def test_links_enabled_actually_posts_the_link(tmp_path):
+    """The bug the first live reply hit.
+
+    reply() asserted no-URL unconditionally, so switching links on produced
+    a reply the client then refused to send — the guard rejecting the very
+    mode that had been deliberately enabled. Nothing posted; it raised.
+    """
+    class Hit:
+        title = "Market Bubble Ep 10"
+        timestamp = "1:39:15"
+        deep_link = "https://x.com/MarketBubble/status/2075316750439338088"
+
+    client = FakeClient([[mention("1")], [mention("2")]])
+    bot = MentionBot(client, FakeIndex(answer="Around 1:39:33 he bought it.",
+                                       hits=[Hit()]),
+                     include_links=True, state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-26")
+    assert await bot.tick("2026-08-26") == 1
+    assert Hit.deep_link in client.posted[0][1]
+
+
+@pytest.mark.anyio
+async def test_an_accidental_url_is_still_refused_when_links_are_off(tmp_path):
+    """The guard must keep working in the default mode: a URL read aloud in
+    a transcript, or one the model writes unprompted, still costs 13x."""
+    client = FakeClient([[mention("1")], [mention("2")]])
+    bot = MentionBot(client, FakeIndex(), include_links=False,
+                     state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-26")
+    await bot.tick("2026-08-26")
+    for _, text in client.posted:
+        assert_linkless(text)

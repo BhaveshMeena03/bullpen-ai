@@ -428,7 +428,8 @@ class MentionBot:
         text = await self.compose(mention)
         if not text:
             return False
-        posted = await self._client.reply(text, mention.id)
+        posted = await self._client.reply(text, mention.id,
+                                          allow_link=self.include_links)
         logger.info("replied to %s -> %s", mention.id, posted or "dry run")
         return True
 
