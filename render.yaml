@@ -88,6 +88,12 @@ services:
       # genuine people who do not pay X for a checkmark.
       - key: X_BOT_VERIFIED_ONLY
         value: "false"
+      # 280 is what X API v2 is widely reported to enforce on POST /2/tweets
+      # even for Premium accounts, while automated accounts are visibly
+      # posting far longer. Raise it to find out: either it posts, or X
+      # answers 400 and the failed request costs nothing.
+      - key: X_BOT_POST_LIMIT
+        value: "280"
       - key: X_BOT_CONTRACT_ADDRESS
         value: "8VjFid8BVGcTPpUzf4PAWsA5nHJ5h2GQNXPEjyr2mF7t"
       - key: X_BOT_TOKEN_LABEL

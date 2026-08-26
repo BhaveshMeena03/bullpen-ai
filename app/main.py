@@ -159,6 +159,7 @@ async def _run_x_bot(app: FastAPI, settings) -> None:
         token_label=settings.x_bot_token_label,
         daily_spend_cap_usd=settings.x_bot_daily_spend_cap_usd,
         verified_only=settings.x_bot_verified_only,
+        post_limit=settings.x_bot_post_limit,
     )
     while True:
         try:

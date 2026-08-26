@@ -76,6 +76,7 @@ def build(dry_run: bool, cap: int | None, links: bool | None):
         token_label=settings.x_bot_token_label,
         daily_spend_cap_usd=settings.x_bot_daily_spend_cap_usd,
         verified_only=settings.x_bot_verified_only,
+        post_limit=settings.x_bot_post_limit,
     )
     return settings, client, bot
 

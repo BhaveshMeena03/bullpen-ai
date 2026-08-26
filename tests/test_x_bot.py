@@ -671,14 +671,14 @@ async def test_the_bot_asks_for_a_reply_not_a_web_answer(tmp_path):
     """The style note is what stops "your question is pretty broad! Could
     you be more specific?" being posted as a reply — fine on a search page,
     a wasted $0.209 in a thread nobody returns to."""
-    from app.x_bot import REPLY_STYLE
+    from app.x_bot import POST_LIMIT, reply_style
 
     client = FakeClient([[mention("1")], [mention("2")]])
     index = FakeIndex()
     bot = MentionBot(client, index, state_path=tmp_path / "s.json")
     await bot.tick("2026-08-26")
     await bot.tick("2026-08-26")
-    assert index.instructed == REPLY_STYLE
+    assert index.instructed == reply_style(POST_LIMIT)
 
 
 def test_the_style_note_never_reaches_the_embedder():
@@ -968,3 +968,29 @@ def test_a_reply_with_a_link_fits_as_x_counts_it():
     reply = format_reply("Ansem said a great deal about this. " * 20, [Hit()],
                          include_links=True)
     assert weighted_length(reply) <= 280
+
+
+def test_the_style_scales_with_what_the_account_can_post():
+    """At 280 the instruction is "be short or you get cut off"; with real
+    headroom it is "use the room, quote what was said". Asking for two
+    terse sentences when 4000 characters are available wastes the account's
+    only advantage."""
+    from app.x_bot import reply_style
+
+    short, long = reply_style(280), reply_style(4000)
+    assert "complete short answer beats a truncated full one" in short
+    assert "room for real detail" in long
+    assert "201 characters" in short and "2880 characters" in long
+
+
+def test_a_longer_limit_produces_a_longer_reply():
+    class Hit:
+        title = "Market Bubble Ep 10"
+        timestamp = "1:39:15"
+        deep_link = "https://x.com/MarketBubble/status/2075316750439338088"
+
+    answer = "Luca bought Pudgy Penguins for 750 ETH. " * 40
+    short = format_reply(answer, [Hit()], include_links=True, limit=280)
+    long = format_reply(answer, [Hit()], include_links=True, limit=4000)
+    assert len(long) > len(short) * 3
+    assert Hit.deep_link in short and Hit.deep_link in long

@@ -183,6 +183,41 @@ _OPENS_A_QUESTION = re.compile(
 # "I couldn't find a comprehensive summary of everything PoorGoat said, but
 # here are the main things" spent a third of the 280 characters before
 # reaching the answer.
+def reply_style(limit: int = POST_LIMIT) -> str:
+    """The answering style, sized to whatever the account can actually post.
+
+    Each rule here is a reply that went wrong. "Your question is pretty
+    broad! Could you be more specific?" is fine on a search page and a
+    wasted $0.209 in a thread nobody returns to. "I couldn't find a
+    comprehensive summary of everything PoorGoat said, but here are the main
+    things" spent a third of the characters before reaching the answer.
+    """
+    budget = max(120, int(limit * 0.72))      # leaves room for the tail
+    length = (f"- Under {budget} characters. This is a hard limit, not a "
+              "target: anything longer is cut off mid-word, so a complete "
+              "short answer beats a truncated full one. Count as you write.\n"
+              "- One or two sentences. Say the single most concrete thing — "
+              "a number, a name, what somebody actually did — and stop."
+              if limit <= 400 else
+              f"- Under {budget} characters, which is room for real detail. "
+              "Use it: quote what was actually said, give the numbers, name "
+              "the people. Do not pad to fill it either — stop when the "
+              "answer is complete.\n"
+              "- Several short paragraphs are fine. Blank lines between them.")
+    return f"""\
+This answer will be posted as a social media reply, not shown on a web page.
+So:
+{length}
+- Never ask a follow-up question and never ask the person to be more \
+specific. If the question is broad, pick the most striking thing in the \
+excerpts and answer with that.
+- Do not open by saying what you could not find, and do not open by \
+restating the question. Lead with the answer.
+- Give the timestamp. The episode name is added for you, so do not repeat \
+it."""
+
+
+# Kept for callers that want the default shape.
 REPLY_STYLE = """\
 This answer will be posted as a single social media reply, not shown on a \
 web page. So:
@@ -237,7 +272,8 @@ def weighted_length(text: str) -> int:
     return total + urls * URL_WEIGHT
 
 
-def format_reply(answer: str, hits: list, include_links: bool = False) -> str:
+def format_reply(answer: str, hits: list, include_links: bool = False,
+                 limit: int = POST_LIMIT) -> str:
     """One reply: the answer, then where it was said.
 
     Two shapes, because what X renders differs.
@@ -263,7 +299,7 @@ def format_reply(answer: str, hits: list, include_links: bool = False) -> str:
         # padding in a reply — and gets cut mid-word by the length budget.
         return NOT_FOUND_ANSWER + "."
     if not hits:
-        return _fit(answer, REPLY_BUDGET)
+        return _fit(answer, limit - 22)
 
     top = hits[0]
     if include_links:
@@ -277,7 +313,7 @@ def format_reply(answer: str, hits: list, include_links: bool = False) -> str:
             else:
                 lead = (f"Watch from {top.timestamp}:" if seekable
                         else f"Full episode ({top.timestamp}):")
-            return lead, POST_LIMIT - len(lead) - 1 - URL_WEIGHT - 2
+            return lead, limit - len(lead) - 1 - URL_WEIGHT - 2
 
         lead, budget = build(cites=True)
         fitted = _fit(answer, budget)
@@ -294,10 +330,10 @@ def format_reply(answer: str, hits: list, include_links: bool = False) -> str:
     # than the original: deciding on the full answer and trimming afterwards
     # can cut the very timestamp that justified leaving it out.
     tail = f"\n\n{title}"
-    fitted = _fit(answer, REPLY_BUDGET - len(tail))
+    fitted = _fit(answer, limit - 22 - len(tail))
     if not _CITES_A_TIME.search(fitted):
         tail = f"\n\n{top.timestamp} · {title}"
-        fitted = _fit(answer, REPLY_BUDGET - len(tail))
+        fitted = _fit(answer, limit - 22 - len(tail))
     return fitted + tail
 
 @dataclass
@@ -366,6 +402,7 @@ class MentionBot:
                  contract_address: str | None = None,
                  daily_spend_cap_usd: float = 5.0,
                  verified_only: bool = False,
+                 post_limit: int = POST_LIMIT,
                  token_label: str | None = None,
                  state_path: Path = STATE_PATH) -> None:
         self._client = client
@@ -376,6 +413,7 @@ class MentionBot:
         self._contract_address = contract_address
         self._spend_cap = daily_spend_cap_usd
         self._verified_only = verified_only
+        self._post_limit = post_limit
         self._token_label = token_label
         self._state_path = state_path
         self.state = BotState.load(state_path)
@@ -499,7 +537,8 @@ class MentionBot:
                         mention.id, question[:60])
             return None
 
-        result = await self._index.search(question, instruction=REPLY_STYLE)
+        result = await self._index.search(
+            question, instruction=reply_style(self._post_limit))
         if getattr(result, "refused", False):
             logger.info("%s refused by the model — staying quiet", mention.id)
             return None
@@ -514,7 +553,8 @@ class MentionBot:
                         mention.id, result.answer[:70])
             return None
         return format_reply(result.answer, result.hits,
-                            include_links=self.include_links) or None
+                            include_links=self.include_links,
+                            limit=self._post_limit) or None
 
     async def _answer(self, mention: Mention) -> bool:
         text = await self.compose(mention)

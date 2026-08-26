@@ -268,6 +268,12 @@ class Settings(BaseSettings):
     # for a checkmark, and on a tool whose whole pitch is being useful to
     # whoever asks, that is a real thing to give up. Off by default.
     x_bot_verified_only: bool = False
+    # Longest reply to compose. 280 is what X API v2 is widely reported to
+    # enforce on POST /2/tweets even for Premium accounts — but automated
+    # accounts are visibly posting far longer, so one of those is wrong and
+    # it is cheap to find out: raise this, send one reply, and either it
+    # posts or X answers 400 "Your Tweet text is too long" and costs nothing.
+    x_bot_post_limit: int = 280
 
     @field_validator(
         "anthropic_api_key", "voyage_api_key", "pinecone_api_key",
