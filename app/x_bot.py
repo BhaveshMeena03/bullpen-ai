@@ -262,6 +262,10 @@ class MentionBot:
             # nothing this round. Skipping a few questions is recoverable;
             # replying to a backlog all at once is not.
             self.state.since_id = mentions[-1].id
+            # Record the read before returning: the mentions call was paid
+            # for, and a run that exits here would otherwise lose it from
+            # the running total every time the state file is empty.
+            self.state.spent_usd = round(self._client.spent_usd, 4)
             self.state.save(self._state_path)
             logger.info("cold start — skipping %d existing mention(s)",
                         len(mentions))
@@ -288,36 +292,40 @@ class MentionBot:
         self.state.save(self._state_path)
         return posted
 
-    async def _answer(self, mention: Mention) -> bool:
+    async def compose(self, mention: Mention) -> str | None:
+        """The reply this mention would get, or None to stay quiet.
+
+        Separate from posting so a reply can be read before it is sent.
+        Every reply defect found so far came from looking at composed output
+        on a real question rather than from a test.
+        """
         question = question_from(mention.text)
         if len(question) < self._min_question:
             logger.info("%s is a tag with no question — skipping", mention.id)
-            return False
+            return None
 
         # Before retrieval, because the contract address is a fact about the
         # project rather than something said on the podcast. Answering it
         # from a constant costs nothing, cannot be paraphrased wrong, and
         # skips the model entirely.
         pinned = pinned_answer(question, self._contract_address,
-                                self._token_label)
+                               self._token_label)
         if pinned:
-            posted = await self._client.reply(pinned, mention.id)
-            logger.info("replied to %s with the pinned CA -> %s",
-                        mention.id, posted or "dry run")
-            return True
+            return pinned
 
         result = await self._index.search(question)
         if getattr(result, "refused", False):
             logger.info("%s refused by the model — staying quiet", mention.id)
-            return False
+            return None
+        return format_reply(result.answer, result.hits,
+                            include_links=self.include_links) or None
 
-        text = format_reply(result.answer, result.hits,
-                            include_links=self.include_links)
+    async def _answer(self, mention: Mention) -> bool:
+        text = await self.compose(mention)
         if not text:
             return False
         posted = await self._client.reply(text, mention.id)
-        logger.info("replied to %s (%s hits) -> %s",
-                    mention.id, len(result.hits), posted or "dry run")
+        logger.info("replied to %s -> %s", mention.id, posted or "dry run")
         return True
 
     @staticmethod

@@ -86,6 +86,9 @@ async def main() -> int:
                     help="read and compose, but never post")
     ap.add_argument("--cap", type=int,
                     help="override the daily reply cap")
+    ap.add_argument("--replay", type=int, metavar="N",
+                    help="compose replies for the N most recent mentions and "
+                         "print them, posting nothing and touching no state")
     ap.add_argument("--links", action="store_true",
                     help="include deep links — costs $0.200 per reply "
                          "instead of $0.015")
@@ -100,6 +103,27 @@ async def main() -> int:
         # own to start replying in public.
         sys.exit("X_BOT_ENABLED is not set — refusing to run the live loop. "
                  "Use --once or --dry-run while testing.")
+
+    if args.replay:
+        # --dry-run alone shows nothing on a fresh state file, because the
+        # cold start deliberately skips whatever is already there. This
+        # ignores state entirely and just composes, so the replies can be
+        # read before any of them is sent.
+        mentions = await client.mentions(since_id=None, limit=args.replay)
+        log.info("composing %d mention(s) — nothing will be posted",
+                 len(mentions))
+        for mention in mentions[-args.replay:]:
+            text = await bot.compose(mention)
+            print(f"\n  ── @{mention.author_id} · {mention.id}")
+            print(f"     {mention.text}")
+            if text is None:
+                print("     (the bot would stay quiet)")
+                continue
+            for line in text.splitlines():
+                print(f"     | {line}")
+            print(f"     {len(text)}/280 chars")
+        print(f"\n  X spend this process: ${client.spent_usd:.3f}\n")
+        return 0
 
     mode = "DRY RUN — nothing will be posted" if args.dry_run else "LIVE"
     log.info("%s · cap %d/day · links %s", mode, bot.cap,
