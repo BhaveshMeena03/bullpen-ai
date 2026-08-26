@@ -105,6 +105,32 @@ _BRACKET_TIME = re.compile(r"\[(\d{1,2}:\d{2}(?::\d{2})?)\]")
 _LIST_MARK = re.compile(r"(?m)^\s*[-*+]\s+|^#{1,6}\s+")
 
 
+# X's rules: "Don't Direct Message, mention, or reply to users with
+# potentially sensitive content (including profanity), unless they've clearly
+# indicated an intent to receive it in advance." Someone asking what Ansem
+# said about Ethereum has not indicated any such thing.
+#
+# The transcripts are full of it — 2,689 lines — because it is a live crypto
+# show, and an answer quoting one of those lines put the word in a reply to a
+# stranger. Masked rather than dropped: the quote stays faithful, and the
+# reader can see exactly what was said without this account being the one
+# that said it.
+_PROFANITY = re.compile(
+    r"""(?ix)\b(?: f+u+c+k | sh+i+t | bitch | cunt | dick(?:head)?
+                 | asshole | bastard | wank\w* | prick | tw?at
+    )(\w*)\b""")
+
+
+def soften(text: str) -> str:
+    """Mask profanity, keeping the first letter and any suffix."""
+    def mask(m: re.Match) -> str:
+        word = m.group(0)
+        tail = m.group(1) or ""
+        core = word[:len(word) - len(tail)]
+        return word[0] + "*" * (len(core) - 1) + tail
+    return _PROFANITY.sub(mask, text or "")
+
+
 def plain_text(answer: str) -> str:
     """Strip web-page formatting a plain-text reply cannot render."""
     text = _BRACKET_TIME.sub(r"\1", answer or "")
@@ -213,6 +239,8 @@ specific. If the question is broad, pick the most striking thing in the \
 excerpts and answer with that.
 - Do not open by saying what you could not find, and do not open by \
 restating the question. Lead with the answer.
+- The transcripts contain a lot of swearing. Paraphrase around it rather \
+than quoting it — the person asking has not asked to be sworn at.
 - Give the timestamp. The episode name is added for you, so do not repeat \
 it."""
 
@@ -344,8 +372,7 @@ def format_reply(answer: str, hits: list, include_links: bool = False,
     episode…" above "1:39:15 ·" — a contradiction in the one detail this
     tool claims to get right.
     """
-    answer = plain_text(strip_urls(answer))   # guests read links aloud;
-                                              # the model writes markdown
+    answer = soften(plain_text(strip_urls(answer)))
     if is_a_miss(answer):
         # Just the sentence. The model tends to follow it with an offer to
         # try another question, which is fine on a web page and reads as

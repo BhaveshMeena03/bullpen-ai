@@ -1140,3 +1140,51 @@ async def test_opting_out_does_not_silence_anyone_else(tmp_path):
     await bot.tick("2026-08-26")
     assert await bot.tick("2026-08-26") == 1
     assert client.posted[0][0] == "3"
+
+
+# --- not swearing at strangers ---------------------------------------------
+
+@pytest.mark.parametrize("raw,expected", [
+    ("they just fucked up the tokenomics", "they just f***ed up the tokenomics"),
+    ("That shit is so fire", "That s*** is so fire"),
+    ("he called it a shitcoin", "he called it a s***coin"),
+    ("fuck", "f***"),
+])
+def test_profanity_is_masked_not_dropped(raw, expected):
+    """X's rules: do not reply to users with potentially sensitive content,
+    including profanity, unless they have indicated they want it. Someone
+    asking what Ansem said about Ethereum has indicated no such thing.
+
+    Masked rather than removed, so the quote stays faithful — the reader can
+    see what was said without this account being the one that said it.
+    """
+    from app.x_bot import soften
+
+    assert soften(raw) == expected
+
+
+@pytest.mark.parametrize("clean", [
+    "he shifted his position on ethereum",
+    "the ticker was $CLAW and it ran 4x",
+    "around 1:39:15 he explains the airdrop",
+    "Scunthorpe",                       # the classic false positive
+])
+def test_ordinary_words_are_left_alone(clean):
+    from app.x_bot import soften
+
+    assert soften(clean) == clean
+
+
+def test_a_quoted_transcript_line_reaches_the_reply_clean():
+    """The real case: an answer quoting Ansem put the word in a reply to a
+    stranger."""
+    class Hit:
+        title = "Market Bubble #4"
+        timestamp = "26:56"
+        deep_link = "https://www.youtube.com/watch?v=abc&t=1616s"
+
+    answer = ('Around 26:56 Ansem argues "they just fucked up" the tokenomics.')
+    reply = format_reply(answer, [Hit()], include_links=True, limit=1500)
+    assert "fucked" not in reply
+    assert "f***ed" in reply
+    assert "26:56" in reply, "the citation still survives"
