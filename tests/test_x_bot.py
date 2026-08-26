@@ -1482,3 +1482,89 @@ async def test_a_cold_start_answers_only_the_recent_half(tmp_path):
     bot = MentionBot(client, FakeIndex(), state_path=tmp_path / "s.json")
     await bot.tick("2026-08-27")
     assert [p for p, _ in client.posted] == ["200"], "not the old one"
+
+
+def test_topics_get_their_own_blocks():
+    """Run together, a dozen three-line entries are a wall with nowhere for
+    the eye to land — every timestamp buried mid-paragraph, reading as part
+    of the sentence before it. The blank line makes each one an anchor you
+    can scan down, which is the only way anyone finds the bit they came
+    for."""
+    from app.x_bot import format_summary
+
+    raw = ("**TL;DR** — the episode in one paragraph.\n"
+           "\n"
+           "Topics\n"
+           "0:00:00 Show open and announcements\n"
+           "0:07:15 A fund forced to liquidate\n"
+           "0:18:19 A trader who turned 500 into 40M\n")
+    out = format_summary(raw, "Market Bubble #13", 4000)
+
+    assert "0:00:00 · Show open" in out, "separator after the time"
+    assert "\n\n0:07:15" in out, "a blank line before each entry"
+    assert "\n\n0:18:19" in out
+    assert "**" not in out
+
+
+def test_prose_paragraphs_are_left_alone():
+    """Only timestamped lines are topic entries. A paragraph that happens to
+    mention a time mid-sentence is prose."""
+    from app.x_bot import format_summary
+
+    raw = ("TL;DR — around 1:39:15 he explains the airdrop, and the rest of "
+           "the paragraph continues normally.\n"
+           "\n"
+           "Topics\n"
+           "0:00:00 intro\n")
+    out = format_summary(raw, "Ep 10", 4000)
+    assert "around 1:39:15 he explains" in out, "prose is untouched"
+    assert "0:00:00 · intro" in out
+
+
+def test_a_summary_carries_the_episode_link():
+    """Worth its $0.200 here in a way it is not on a two-sentence answer: a
+    summary is what someone reads while deciding whether to watch the
+    episode, so the thing to hand them next is the episode."""
+    from app.x_bot import format_summary
+
+    url = "https://www.youtube.com/watch?v=47AACkIhtG8"
+    out = format_summary("TL;DR — the episode.\n\n0:00:00 intro\n",
+                         "Market Bubble #13", 4000, url=url)
+    assert out.endswith(url)
+    assert "Full episode:" in out
+    assert "Market Bubble #13" not in out, "the card already shows the title"
+
+
+def test_a_summary_without_a_link_keeps_its_title():
+    from app.x_bot import format_summary
+
+    out = format_summary("TL;DR — the episode.\n", "Market Bubble #13", 4000)
+    assert "Market Bubble #13" in out
+    assert "http" not in out
+
+
+@pytest.mark.anyio
+async def test_links_off_means_no_link_on_summaries_either(tmp_path):
+    rows = [{"title": "Market Bubble #14", "summary": "TL;DR — a summary.",
+             "url": "https://www.youtube.com/watch?v=abc"}]
+    client = FakeClient([[mention("1")],
+                         [mention("2", text="@bot summarize episode 14")]])
+    bot = MentionBot(client, FakeIndex(), summaries=FakeSummaries(rows),
+                     include_links=False, state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-27")
+    await bot.tick("2026-08-27")
+    assert "http" not in client.posted[0][1]
+
+
+@pytest.mark.anyio
+async def test_links_on_means_the_summary_gets_one(tmp_path):
+    url = "https://www.youtube.com/watch?v=abc"
+    rows = [{"title": "Market Bubble #14", "summary": "TL;DR — a summary.",
+             "url": url}]
+    client = FakeClient([[mention("1")],
+                         [mention("2", text="@bot summarize episode 14")]])
+    bot = MentionBot(client, FakeIndex(), summaries=FakeSummaries(rows),
+                     include_links="always", state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-27")
+    await bot.tick("2026-08-27")
+    assert url in client.posted[0][1]

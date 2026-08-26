@@ -227,14 +227,50 @@ def episode_number(title: str) -> int | None:
     return int(found.group(1)) if found else None
 
 
-def format_summary(summary: str, title: str, limit: int) -> str:
+# A line that opens with a timestamp is a topic entry.
+_TOPIC_LINE = re.compile(r"^(\d{1,2}:\d{2}(?::\d{2})?)\s+(.+)$")
+
+
+def _space_out(body: str) -> str:
+    """Give each timestamped topic its own block.
+
+    Run together, a dozen entries of three lines each are a wall with
+    nowhere for the eye to land — every timestamp is buried mid-paragraph
+    where it reads as part of the sentence before it. A blank line between
+    them turns each timestamp into an anchor you can scan down, which is the
+    only way anyone finds the bit they came for.
+
+    The separator after the time does the same job at word level: it stops
+    "0:07:15 Discussion of" parsing as one phrase.
+    """
+    out: list[str] = []
+    for line in body.splitlines():
+        entry = _TOPIC_LINE.match(line.strip())
+        if entry:
+            if out and out[-1]:
+                out.append("")
+            out.append(f"{entry.group(1)} · {entry.group(2)}")
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+
+def format_summary(summary: str, title: str, limit: int,
+                   url: str | None = None) -> str:
     """A stored summary, as a reply.
 
-    No link. The summary already names the moments it covers, and a link
-    would push the whole thing to $0.200 for something the reader is not
-    going to click while they are reading three thousand characters.
+    The link is worth its $0.200 here in a way it is not on a two-sentence
+    answer. A summary is what someone reads when deciding whether to watch
+    the episode at all, so the thing to hand them next is the episode — and
+    X renders it as a card with the title and thumbnail, which is most of
+    what makes a wall of text look like something rather than a dump.
+
+    The title is dropped when a link is present: the card already shows it.
     """
-    body = plain_text(soften(strip_urls(summary)), keep_breaks=True)
+    body = _space_out(plain_text(soften(strip_urls(summary)), keep_breaks=True))
+    if url:
+        tail = f"\n\nFull episode:\n{url}"
+        return _fit(body, limit - URL_WEIGHT - 18) + tail
     head = _fit(str(title), 70)
     return _fit(body, limit - len(head) - 2) + f"\n\n{head}"
 
@@ -816,8 +852,12 @@ class MentionBot:
         if wanted is not None:
             found = await self._summary_for(wanted)
             if found:
-                return format_summary(found["summary"], found["title"],
-                                      self._summary_limit)
+                mode = ("always" if self.include_links is True
+                        else "off" if self.include_links is False
+                        else str(self.include_links))
+                return format_summary(
+                    found["summary"], found["title"], self._summary_limit,
+                    url=found.get("url") if mode != "off" else None)
             logger.info("%s asked for episode %d, which is not indexed",
                         mention.id, wanted)
             return f"I don't have episode {wanted} indexed."
