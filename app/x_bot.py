@@ -487,7 +487,9 @@ def reply_style(limit: int = POST_LIMIT) -> str:
               "Use it: quote what was actually said, give the numbers, name "
               "the people. Do not pad to fill it either — stop when the "
               "answer is complete.\n"
-              "- Several short paragraphs are fine. Blank lines between them.")
+              "- Break it into short paragraphs with a blank line between "
+              "each. One unbroken block of 800 characters is a wall on a "
+              "phone and nobody reads to the end of it.")
     return f"""\
 This answer will be posted as a social media reply, not shown on a web page.
 So:
@@ -796,10 +798,14 @@ def format_reply(answer: str, hits: list, include_links: bool | str = False,
         # dash where the card swallowed the URL.
         if seekable:
             lead = f"Jump to {moment}:"
-        elif _CITES_A_TIME.search(answer):
-            lead = "Full episode:"
         else:
-            lead = f"Full episode — the moment is at {moment}:"
+            # X has no timestamp parameter for video, so this link opens at
+            # 0:00 whatever the text says. Telling the reader to scrub is
+            # the difference between a link that looks broken and one that
+            # is honest about what it does — the website has said this for
+            # months and the replies did not.
+            lead = (f"Full episode — scrub to {moment} "
+                    f"(X can't jump to a timestamp):")
         tail = f"\n\n{lead}\n{link}"
         return _fit(answer, limit - len(lead) - URL_WEIGHT - 3) + tail
 

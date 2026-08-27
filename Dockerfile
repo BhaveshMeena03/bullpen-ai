@@ -7,6 +7,13 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
+# The highlight pool the bot offers when someone says something nice
+# rather than asking a question. Without it that path silently does
+# nothing — which is exactly what happened: compliments got silence in
+# production while working locally, because data/ was never copied.
+# Only this file: episodes.json is 7MB and nothing at runtime reads it,
+# since retrieval goes to Pinecone.
+COPY data/highlights.json ./data/highlights.json
 COPY widget ./widget
 COPY demo ./demo
 

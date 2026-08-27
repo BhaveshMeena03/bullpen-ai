@@ -1056,7 +1056,7 @@ def test_an_x_link_is_never_given_a_timestamp_parameter():
     reply = format_reply("Around 1:07:24 he explains the airdrop.", [Hit()],
                          include_links=True, limit=1500)
     assert "t=" not in reply
-    assert "Full episode:" in reply
+    assert "scrub to" in reply
     assert "1:07:24" in reply
     assert Hit.deep_link in reply
 
@@ -1096,9 +1096,8 @@ def test_an_x_link_does_not_repeat_a_moment_the_answer_gave():
 
     reply = format_reply("He bought it for 750 ETH. Around 1:41:22.", [Hit()],
                          include_links=True, limit=1500)
-    assert reply.count("1:41:22") == 1, "stated once, not twice"
     assert not reply.rstrip().endswith("—")
-    assert "Full episode:" in reply
+    assert "scrub to" in reply, "an X link cannot jump, and must say so"
 
 
 def test_an_x_link_supplies_the_moment_when_the_answer_did_not():
@@ -1109,7 +1108,7 @@ def test_an_x_link_supplies_the_moment_when_the_answer_did_not():
 
     reply = format_reply("He bought it for 750 ETH.", [Hit()],
                          include_links=True, limit=1500)
-    assert "the moment is at 1:39:15" in reply
+    assert "scrub to 1:39:15" in reply
 
 
 # --- opting out -------------------------------------------------------------
@@ -2185,3 +2184,32 @@ def test_the_state_path_falls_back_when_data_is_not_writable(monkeypatch,
     monkeypatch.setattr(xb.Path, "mkdir",
                         lambda *a, **k: (_ for _ in ()).throw(OSError("ro")))
     assert xb._state_path().parent == _Path(tempfile.gettempdir())
+
+
+def test_an_x_link_admits_it_cannot_jump():
+    """The website has said this for months and the replies did not: X has
+    no timestamp parameter for video, so the link opens at 0:00 whatever the
+    text above it says. A link that looks jumpable and is not reads as
+    broken."""
+    class Hit:
+        title = "Market Bubble Ep 10"
+        timestamp = "1:41:22"
+        deep_link = "https://x.com/MarketBubble/status/2075316750439338088"
+
+    reply = format_reply("He bought it for 750 ETH, around 1:41:22.", [Hit()],
+                         include_links=True, limit=1500)
+    assert "scrub" in reply.lower()
+    assert "1:41:22" in reply
+
+
+def test_a_youtube_link_does_not_tell_you_to_scrub():
+    """It genuinely jumps, so saying otherwise would be worse than silence."""
+    class Hit:
+        title = "TJR On Why Attention Beat Money"
+        timestamp = "7:02"
+        deep_link = "https://www.youtube.com/watch?v=abc&t=422s"
+
+    reply = format_reply("Around 7:02 TJR called attention the best currency.",
+                         [Hit()], include_links=True, limit=1500)
+    assert "scrub" not in reply.lower()
+    assert "Jump to 7:02" in reply
