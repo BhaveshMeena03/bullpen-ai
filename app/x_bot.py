@@ -813,6 +813,39 @@ _FRAGMENTS = frozenset({
 })
 
 
+# Question words and auxiliaries. Their absence, in a short message, is
+# what separates "Study @mbubbleSearch, that's all i can say now" from
+# "what did ansem say about eth" once retrieval has already come up empty.
+# Anchored, because what makes a question is inversion at the start, not an
+# auxiliary anywhere in the sentence: "all i CAN say now" and "this tool IS
+# useful" both matched an unanchored version and were treated as questions.
+# A couple of leading fillers are allowed through — "yo", "so", "ok".
+_INTERROGATIVE = re.compile(
+    r"""(?ix)^\W*
+    (?:(?:yo+|hey|hi|so|ok|okay|pls|please|sir|ser|and|but|also)\W+){0,2}
+    (?: what|why|how|who|whom|whose|when|where|which
+      | did|does|do|is|are|was|were|can|could|should|would|will
+      | tell\s+me | any\b )\b""")
+_SOCIAL_MAX_WORDS = 14
+
+
+def reads_as_social(text: str) -> bool:
+    """Short, not asking anything, and retrieval had nothing for it.
+
+    Only consulted after a search has already missed, so it cannot swallow
+    a real question. It exists because the first genuinely valuable
+    endorsement the account received — posted to three large accounts —
+    was met with silence: "Study @mbubbleSearch, that's all i can say now"
+    is praise, but it is not on any list of compliments, and it parses as
+    a statement rather than a greeting.
+    """
+    text = (text or "").strip()
+    if not text or "?" in text:
+        return False
+    return (len(text.split()) <= _SOCIAL_MAX_WORDS
+            and not _INTERROGATIVE.search(text))
+
+
 def is_a_pleasantry(text: str) -> bool:
     """Social noise, rather than a question the archive could answer.
 
@@ -1178,6 +1211,82 @@ def format_reply(answer: str, hits: list, include_links: bool | str = False,
     return _within(_paragraphs(fitted), tail, limit)
 
 @dataclass
+class Heartbeat:
+    """What the bot is actually doing, readable from outside the process.
+
+    /healthz answers "is the web server up", which stayed true for twenty
+    minutes while the bot was dead — a failed build meant Render kept
+    serving the previous image, so the URL, the health check and the logs
+    all looked normal and the only signal was someone tagging the account
+    and getting nothing.
+
+    So this reports the two things that check could not: which build is
+    actually running, and when the poll loop last completed a cycle.
+    """
+
+    version: str = "unknown"
+    started_at: float = 0.0
+    last_poll_at: float = 0.0
+    last_reply_at: float = 0.0
+    polls: int = 0
+    replies: int = 0
+    consecutive_errors: int = 0
+    highlights: int = 0
+    enabled: bool = False
+    poll_seconds: float = 20.0
+
+    def polled(self) -> None:
+        self.last_poll_at = time.time()
+        self.polls += 1
+        self.consecutive_errors = 0
+
+    def posted(self, count: int) -> None:
+        if count:
+            self.last_reply_at = time.time()
+            self.replies += count
+
+    def failed(self) -> None:
+        self.consecutive_errors += 1
+
+    def stale_after(self) -> float:
+        """How long without a poll counts as dead.
+
+        Three cycles plus a margin: one slow answer should not raise an
+        alarm, and three missed in a row is not a slow answer.
+        """
+        return max(90.0, self.poll_seconds * 3 + 60)
+
+    def healthy(self) -> bool:
+        if not self.enabled:
+            return True                  # off on purpose is not broken
+        if not self.last_poll_at:
+            # Starting up. The grace is generous because the first cycle
+            # builds clients and reads back the account's own timeline.
+            return time.time() - self.started_at < 180
+        return time.time() - self.last_poll_at < self.stale_after()
+
+    def report(self) -> dict:
+        """Non-sensitive fields only — this is readable without a token so
+        that checking it is easy enough to actually happen."""
+        now = time.time()
+        return {
+            "version": self.version,
+            "enabled": self.enabled,
+            "healthy": self.healthy(),
+            "highlights": self.highlights,
+            "polls": self.polls,
+            "replies": self.replies,
+            "consecutive_errors": self.consecutive_errors,
+            "seconds_since_poll": (round(now - self.last_poll_at, 1)
+                                   if self.last_poll_at else None),
+            "seconds_since_reply": (round(now - self.last_reply_at, 1)
+                                    if self.last_reply_at else None),
+            "uptime_seconds": round(now - self.started_at, 1)
+                              if self.started_at else None,
+        }
+
+
+@dataclass
 class BotState:
     """What must survive a restart so nobody gets answered twice.
 
@@ -1415,7 +1524,8 @@ class MentionBot:
                 self.state.opted_out.append(mention.author_id)
                 handled = mention.id
                 continue
-            if self._verified_only and not mention.author_verified:
+            if (self._verified_only and not mention.author_verified
+                    and mention.author_id not in self._priority):
                 # Checked here rather than inside compose(), so an ignored
                 # account costs nothing beyond the read that already
                 # happened — no retrieval, no model call, no reply.
@@ -1474,6 +1584,26 @@ class MentionBot:
         logger.info("%s is a priority account — answering honestly instead "
                     "of staying silent", mention.author_id)
         return _pick(_MISS_PHRASINGS, mention.id)
+
+    def _social_fallback(self, mention: Mention) -> str | None:
+        """A fact, for praise that retrieval could not answer.
+
+        Runs only after a search has already come up empty, so it cannot
+        take a real question. The case it exists for: "Study
+        @mbubbleSearch, that's all i can say now", posted to three large
+        accounts, which is an endorsement rather than a query — it parses
+        as a statement, matches no list of compliments, retrieves nothing,
+        and got silence at the moment a reply was worth the most.
+        """
+        if not reads_as_social(question_from(mention.text)):
+            return None
+        found = self._next_highlight(mention.id)
+        if not found:
+            return None
+        logger.info("%s reads as praise rather than a question — offering "
+                    "a fact", mention.id)
+        return format_highlight(found, mention.id, self.include_links,
+                                self._post_limit)
 
     def _next_highlight(self, seed: str) -> dict | None:
         """A moment this account has not offered before.
@@ -1638,7 +1768,8 @@ class MentionBot:
             # a live reply with a link attached.
             logger.info("%s deflected (%r) — staying quiet",
                         mention.id, result.answer[:70])
-            return self._fallback(mention) if priority else None
+            return (self._fallback(mention) if priority
+                    else self._social_fallback(mention))
         if (not rescued and not is_a_miss(result.answer)
                 and not _CITES_A_TIME.search(result.answer)):
             # A real answer from this index always names a moment — the
@@ -1649,7 +1780,8 @@ class MentionBot:
             # reply once with an unrelated episode stapled underneath.
             logger.info("%s produced no citation (%r) — staying quiet",
                         mention.id, result.answer[:70])
-            return self._fallback(mention) if priority else None
+            return (self._fallback(mention) if priority
+                    else self._social_fallback(mention))
         return format_reply(result.answer, result.hits,
                             include_links=self.include_links,
                             limit=self._post_limit) or None

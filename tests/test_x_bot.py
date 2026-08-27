@@ -2768,3 +2768,62 @@ def test_two_sentences_are_spaced_when_they_are_long():
     # No block is a stub, and none is still a wall.
     for block in blocks:
         assert 60 <= len(block) <= 300, len(block)
+
+
+@pytest.mark.anyio
+async def test_a_priority_account_is_answered_even_without_a_badge(tmp_path):
+    """The badge filter ran before the priority list was consulted, so an
+    account named explicitly as never-to-be-ignored was ignored anyway.
+
+    That matters most for the people who are not badged and are worth
+    answering — the first real advocate the account picked up posted an
+    endorsement to three large accounts and would have got silence.
+    """
+    index = FakeIndex()
+    client = FakeClient([
+        [mention("0")],
+        [mention("1", author="advocate", text="@mbubbleSearch who is kimchi",
+                 verified=False)],
+    ])
+    bot = MentionBot(client, index, state_path=tmp_path / "s.json",
+                     verified_only=True, priority_authors=["advocate"])
+    await bot.tick("2026-08-27")
+    await bot.tick("2026-08-27")
+    assert client.posted, "a priority account must not be filtered out"
+
+
+@pytest.mark.anyio
+async def test_an_unverified_stranger_is_still_filtered(tmp_path):
+    index = FakeIndex()
+    client = FakeClient([
+        [mention("0")],
+        [mention("1", author="stranger", text="@mbubbleSearch who is kimchi",
+                 verified=False)],
+    ])
+    bot = MentionBot(client, index, state_path=tmp_path / "s.json",
+                     verified_only=True, priority_authors=["someone-else"])
+    await bot.tick("2026-08-27")
+    await bot.tick("2026-08-27")
+    assert not client.posted
+    assert not index.asked, "and it costs nothing — no retrieval, no model"
+
+
+def test_praise_that_is_not_phrased_as_a_compliment_still_reads_as_social():
+    """"Study @mbubbleSearch, that's all i can say now" is an endorsement.
+
+    It parses as a statement, matches no list of compliments, retrieves
+    nothing — and got silence at the moment a reply was worth the most.
+    """
+    from app.x_bot import reads_as_social
+
+    for praise in ("Study , that's all i can say now",
+                   "this tool is gonna be useful",
+                   "the goat has spoken",
+                   "incredible work here honestly"):
+        assert reads_as_social(praise), praise
+
+    # A real question must never be mistaken for praise, even after a miss.
+    for question in ("what did ansem say about eth", "who is kimchi",
+                     "is ansem having fun?", "did anyone disagree",
+                     "yo what did banks say", "tell me about kimchi"):
+        assert not reads_as_social(question), question

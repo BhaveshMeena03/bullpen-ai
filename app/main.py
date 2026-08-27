@@ -11,6 +11,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
 import time
 from collections import Counter, deque
 from contextlib import asynccontextmanager
@@ -143,7 +144,12 @@ async def _run_x_bot(app: FastAPI, settings) -> None:
     is a fact about billing, and a cancelled task is a shutdown.
     """
     from app.x_api import OutOfCreditsError, XClient, XCredentials
-    from app.x_bot import MentionBot
+    from app.x_bot import STATE_PATH, MentionBot, load_highlights
+
+    beat = app.state.x_bot_heartbeat
+    beat.enabled = True
+    beat.poll_seconds = settings.x_bot_poll_seconds
+    beat.highlights = len(load_highlights())
 
     bot = MentionBot(
         XClient(
@@ -164,9 +170,23 @@ async def _run_x_bot(app: FastAPI, settings) -> None:
         priority_authors=settings.priority_author_ids,
         site=settings.x_bot_site,
     )
+    # Says whether it can actually work, not just that it started. Both of
+    # the silent outages — a state file it could not write, and a highlight
+    # pool that never reached the image — would have been one glance here.
+    logger.info("x_bot: build %s · cap %d/day · links %s",
+                beat.version, settings.x_bot_daily_reply_cap,
+                settings.x_bot_include_links)
+    logger.info("x_bot:   state file : %s", STATE_PATH)
+    logger.info("x_bot:   highlights : %d loaded", beat.highlights)
+    logger.info("x_bot:   verified   : %s",
+                "badged accounts only" if settings.x_bot_verified_only
+                else "everyone")
+
     while True:
         try:
             posted = await bot.tick(time.strftime("%Y-%m-%d", time.gmtime()))
+            beat.polled()
+            beat.posted(posted)
             if posted:
                 logger.info("x_bot: posted %d repl%s today=%d",
                             posted, "y" if posted == 1 else "ies",
@@ -180,7 +200,9 @@ async def _run_x_bot(app: FastAPI, settings) -> None:
             await asyncio.sleep(3600)
             continue
         except Exception:                                   # noqa: BLE001
-            logger.exception("x_bot: poll failed — continuing")
+            beat.failed()
+            logger.exception("x_bot: poll failed (%d in a row) — continuing",
+                             beat.consecutive_errors)
         await asyncio.sleep(
             MentionBot.pause_seconds(settings.x_bot_poll_seconds))
 
@@ -210,6 +232,16 @@ async def lifespan(app: FastAPI):
     # symbol table. Both fill lazily — startup must not wait on a third party.
     app.state._market_cache = {}
     app.state._cg_table = None
+
+    # Created whether or not the bot runs, so "switched off" and "died" are
+    # distinguishable from outside. Render exports the commit it built, and
+    # reporting it is the one signal that would have caught the outage where
+    # a failed build left the previous image serving happily.
+    from app.x_bot import Heartbeat
+    app.state.x_bot_heartbeat = Heartbeat(
+        version=(os.environ.get("RENDER_GIT_COMMIT") or "local")[:7],
+        started_at=time.time(),
+    )
 
     # The X mention bot, in this process rather than a service of its own.
     # It shares the PodcastIndex already built above, which is the point:
@@ -410,6 +442,23 @@ async def usage_report(usage: UsageLedger = Depends(get_usage)) -> dict:
 @app.get("/healthz")
 async def healthz() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/x-bot/status")
+async def x_bot_status(request: Request) -> dict:
+    """Whether the mention bot is alive, and which build is running.
+
+    Deliberately unauthenticated and free of anything sensitive: the point
+    of this endpoint is that checking it is cheap enough to be automated,
+    and a check nobody can run without a token is a check nobody runs. It
+    carries no credentials, no user data and no file paths — counters, a
+    commit hash, and how long since the loop last completed a cycle.
+    """
+    beat = getattr(request.app.state, "x_bot_heartbeat", None)
+    if beat is None:
+        return {"enabled": False, "healthy": True, "version": "unknown",
+                "note": "no heartbeat — app started without one"}
+    return beat.report()
 
 
 @app.post("/v1/chat", response_model=ChatResponse,
