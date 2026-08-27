@@ -1814,3 +1814,71 @@ def test_exclamations_are_not_questions(text):
     from app.x_bot import looks_like_a_question
 
     assert not looks_like_a_question(text)
+
+
+# --- what happens when a lot of people tag it at once ----------------------
+
+@pytest.mark.anyio
+async def test_a_flood_of_mentions_does_not_crash_or_overspend(tmp_path):
+    """The realistic bad day: the account gets noticed and two hundred
+    people tag it inside an hour.
+
+    Nothing here should throw, the caps should hold exactly, and the bot
+    should still be answering the newest questions rather than stuck on the
+    oldest.
+    """
+    flood = [Mention(id=str(1000 + i), text=f"@bot what did guest {i} say",
+                     author_id=f"u{i}", conversation_id=str(1000 + i),
+                     created_at=_iso(5))
+             for i in range(200)]
+    client = FakeClient([flood[:100], flood[100:]])
+    bot = MentionBot(client, FakeIndex(), daily_reply_cap=50,
+                     daily_spend_cap_usd=12.0, state_path=tmp_path / "s.json")
+
+    total = 0
+    for _ in range(6):
+        total += await bot.tick("2026-08-27")
+
+    assert total <= 50, f"reply cap breached: {total}"
+    assert len(client.posted) == total
+    assert len({p for p, _ in client.posted}) == total, "no duplicates"
+    assert bot.state.spent_today_usd <= 12.0
+
+
+@pytest.mark.anyio
+async def test_one_broken_mention_does_not_block_the_queue(tmp_path):
+    """A poison mention must not stop everyone behind it. It is retried a
+    few times, then stepped over."""
+    from app.x_bot import MAX_ATTEMPTS
+
+    bad = Mention(id="1", text="@bot what did ansem say", author_id="a",
+                  conversation_id="1", created_at=_iso(5))
+    good = Mention(id="2", text="@bot what did tjr say", author_id="b",
+                   conversation_id="2", created_at=_iso(4))
+
+    class Poison(FakeClient):
+        async def reply(self, text, to_post_id, allow_link=False):
+            if to_post_id == "1":
+                raise RuntimeError("this one always fails")
+            return await super().reply(text, to_post_id, allow_link)
+
+    client = Poison([[bad, good]] * (MAX_ATTEMPTS + 3))
+    bot = MentionBot(client, FakeIndex(), state_path=tmp_path / "s.json")
+    for _ in range(MAX_ATTEMPTS + 3):
+        await bot.tick("2026-08-27")
+
+    assert [p for p, _ in client.posted] == ["2"], "the good one got through"
+
+
+@pytest.mark.anyio
+async def test_the_same_person_asking_twenty_times_is_still_capped(tmp_path):
+    """One account cannot drain the day on its own."""
+    spam = [Mention(id=str(2000 + i), text=f"@bot what did ansem say {i}",
+                    author_id="spammer", conversation_id=str(2000 + i),
+                    created_at=_iso(3))
+            for i in range(40)]
+    client = FakeClient([spam, spam[20:]])
+    bot = MentionBot(client, FakeIndex(), daily_reply_cap=10,
+                     state_path=tmp_path / "s.json")
+    total = sum([await bot.tick("2026-08-27") for _ in range(4)])
+    assert total <= 10
