@@ -345,7 +345,7 @@ _SENTENCE_END = re.compile(
     r"""(?:(?<=[.!?]["'\u201d\u2019)\]])|(?<=[.!?]))\s+""")
 
 
-def _paragraphs(text: str, target: int = 190) -> str:
+def _paragraphs(text: str, target: int = 240) -> str:
     """Break a long answer into blocks at sentence boundaries.
 
     Summaries have been readable for a while and answers have not, because
@@ -367,13 +367,17 @@ def _paragraphs(text: str, target: int = 190) -> str:
     if len(sentences) < 2:
         return text
 
+    # Closed before the sentence that would overflow, not after it. Closing
+    # after meant two sentences of 128 and 237 characters both landed in the
+    # first block and nothing was ever spaced — the wall this exists to fix.
     blocks: list[str] = []
     current = ""
     for sentence in sentences:
-        current = f"{current} {sentence}".strip() if current else sentence
-        if len(current) >= target:
+        if current and len(current) + 1 + len(sentence) > target:
             blocks.append(current)
-            current = ""
+            current = sentence
+        else:
+            current = f"{current} {sentence}".strip() if current else sentence
     if current:
         # A one-line orphan at the end reads as a mistake, so it joins the
         # block above it instead of standing alone.
@@ -679,13 +683,29 @@ it."""
 # in a reply, matched generously — someone asking to be left alone should
 # never have to guess the magic phrase.
 # Unambiguous phrases: these mean one thing wherever they appear.
+# Aimed at the reader, so safe to match anywhere in a message: "me" is what
+# separates "never reply to me again" from "why did ansem never reply to
+# banks", and the second must never silence a real person forever.
 _OPT_OUT = re.compile(
     r"""(?ix)\b(?: unsubscribe | opt\s*-?\s*out | leave\s+me\s+alone
-                 | don'?t\s+(?:reply|respond|message|tag|@)
-                 | stop\s+(?:replying|responding|tagging|messaging)
+                 | (?:never|do\s*not|don'?t|stop)\s+
+                   (?:reply|replying|respond|responding|message|messaging
+                     |tag|tagging|contact|bother|bothering)\s+
+                   (?:to\s+|with\s+)?me\b
+                 | block\s+me | ignore\s+me
                  | no\s+more\s+(?:replies|messages|bots?)
                  | mute\s+me | remove\s+me | unfollow\s+me
     )\b""")
+
+# The same intent without the "me", which is a normal thing to say and also
+# a normal thing to ask about: "did anyone tell him to stop replying to
+# trolls" matched, and would have blocked whoever asked it. Only counted
+# when it is the whole message rather than part of a sentence.
+_OPT_OUT_TERSE = re.compile(
+    r"""(?ix)\b(?: don'?t\s+(?:reply|respond|message|tag|@)
+                 | stop\s+(?:replying|responding|tagging|messaging)
+    )\b""")
+_OPT_OUT_MAX_WORDS = 6
 # A bare "stop" is only an opt-out when it is the whole message. Matching it
 # anywhere turned "what did ansem say about the stop loss" into a permanent
 # block on a real person, and a false positive here is much worse than a
@@ -699,7 +719,11 @@ def asks_to_be_left_alone(text: str) -> bool:
     text = (text or "").strip()
     if _OPT_OUT.search(text):
         return True
-    return bool(_BARE_STOP.match(question_from(text)))
+    stripped = question_from(text)
+    if (_OPT_OUT_TERSE.search(stripped)
+            and len(stripped.split()) <= _OPT_OUT_MAX_WORDS):
+        return True
+    return bool(_BARE_STOP.match(stripped))
 
 
 # Compliments, greetings and reactions. Short, enumerable, and the whole

@@ -49,19 +49,39 @@ def test_question_from(post, expected):
 @pytest.mark.parametrize("text", [
     "see https://search.lexthedev.com",
     "go to www.example.com",
-    "it's at search.lexthedev.com",          # bare domain, no scheme
-    "the token is on pump.fun",
-    "check base.org for details",
+    "watch youtube.com/watch?v=abc",         # no scheme, but a path
+    "shortened t.co/AbCdEf here",
 ])
-def test_assert_linkless_rejects_url_shapes(text):
-    """Broader than "starts with http" on purpose.
-
-    X publishes a $0.200 charge for a post "with a URL" and does not say
-    what their detector counts. Refusing anything URL-shaped keeps the
-    $0.015 rate whichever way the rule actually works.
-    """
+def test_assert_linkless_rejects_real_links(text):
+    """A scheme, the www prefix, or a path after the domain."""
     with pytest.raises(LinkInReplyError):
         assert_linkless(text)
+
+
+@pytest.mark.parametrize("text", [
+    "the token is on pump.fun",
+    "he mentioned friend.tech and gmgn.ai",
+    "check base.org for details",
+])
+def test_a_project_name_is_not_a_link(text):
+    """Deliberately narrower than it was, and the reason is measured.
+
+    This used to reject any "name.tld", because X publishes $0.200 for a
+    post "with a URL" and does not document what their detector counts.
+    Billing since showed a mention-gated reply costs $0.015 whether or not
+    it carries a real URL — so the broad rule was buying nothing.
+
+    What it cost was names. Half the projects this show discusses are named
+    that way, and stripping them deleted them from mid-sentence: "the
+    competitive dynamics between FOMO and Pump.fun. The most interesting
+    thread…" went out as "between FOMO and The most interesting thread",
+    which loses the company and leaves a sentence that does not parse.
+
+    The trade is that a domain a guest reads aloud now survives in the
+    text. That is the safe direction: a stray domain is untidy, a deleted
+    company name is wrong.
+    """
+    assert_linkless(text)          # does not raise
 
 
 @pytest.mark.parametrize("text", [
@@ -76,9 +96,21 @@ def test_assert_linkless_allows_ordinary_replies(text):
 
 def test_strip_urls_cleans_a_quoted_transcript_line():
     """Guests read links aloud and Whisper writes them down."""
-    quoted = "go sign up at usepod.io it's a marketplace for inference"
+    quoted = "go sign up at https://usepod.io it's a marketplace"
     assert "usepod.io" not in strip_urls(quoted)
-    assert "marketplace for inference" in strip_urls(quoted)
+    assert "marketplace" in strip_urls(quoted)
+
+
+def test_strip_urls_leaves_the_names_of_projects_alone():
+    """The bug this caught: every mention of Pump.fun was deleted."""
+    line = "dynamics between FOMO and Pump.fun. The most interesting thread"
+    assert strip_urls(line) == line
+    assert strip_urls("he mentioned friend.tech and gmgn.ai briefly") == (
+        "he mentioned friend.tech and gmgn.ai briefly")
+    # A real link in the same sentence still goes.
+    assert "youtube.com" not in strip_urls(
+        "Pump.fun is at youtube.com/watch?v=x now")
+    assert "Pump.fun" in strip_urls("Pump.fun is at youtube.com/watch?v=x now")
 
 
 # --- the reply itself ------------------------------------------------------
@@ -2650,3 +2682,89 @@ def test_the_account_says_plainly_that_it_is_automated():
     # A real question is still a real question.
     assert about_answer("what did ansem say about eth") is None
     assert automation_answer("what did ansem say about eth") is None
+
+
+# --- findings from the third sweep ------------------------------------------
+
+def test_a_project_name_survives_the_url_stripper():
+    """Half of what this show discusses is named like a domain.
+
+    "the competitive dynamics between FOMO and Pump.fun. The most
+    interesting thread…" was posted as "between FOMO and The most
+    interesting thread" — the company deleted, the sentence broken.
+    """
+    from app.x_api import strip_urls
+
+    line = "dynamics between FOMO and Pump.fun. The most interesting thread"
+    assert strip_urls(line) == line
+    for name in ("friend.tech", "gmgn.ai", "pump.fun", "base.org"):
+        assert name in strip_urls(f"he mentioned {name} in passing")
+    # Real links still go, even beside a project name.
+    out = strip_urls("Pump.fun is at youtube.com/watch?v=x now")
+    assert "Pump.fun" in out and "youtube.com" not in out
+
+
+@pytest.mark.parametrize("text", [
+    "never reply to me again",
+    "block me",
+    "ignore me",
+    "do not message me",
+    "stop bothering me",
+    "stop replying",
+    "unsubscribe",
+    "stop",
+])
+def test_every_way_someone_asks_to_be_left_alone(text):
+    """Silence for an unrelated reason is not an opt-out: the next thing
+    they say gets answered, after they asked you to stop."""
+    from app.x_bot import asks_to_be_left_alone
+
+    assert asks_to_be_left_alone(text), text
+
+
+@pytest.mark.parametrize("text", [
+    "why did ansem never reply to banks",
+    "did anyone tell him to stop replying to trolls",
+    "what did they say about stop losses",
+    "how do i block someone on x",
+    "what did they say about people who dont reply to dms",
+])
+def test_asking_about_an_opt_out_is_not_one(text):
+    """A false positive here silences a real person permanently, which is
+    much worse than making them say it more plainly."""
+    from app.x_bot import asks_to_be_left_alone
+
+    assert not asks_to_be_left_alone(text), text
+
+
+@pytest.mark.anyio
+async def test_an_opt_out_is_remembered_after_it_is_honoured(tmp_path):
+    index = FakeIndex()
+    client = FakeClient([
+        [mention("0")],
+        [mention("1", author="quiet", text="@mbubbleSearch never reply to me again")],
+        [mention("2", author="quiet", text="@mbubbleSearch what did ansem say")],
+    ])
+    bot = MentionBot(client, index, state_path=tmp_path / "s.json")
+    for _ in range(3):
+        await bot.tick("2026-08-27")
+
+    assert "quiet" in bot.state.opted_out
+    assert not client.posted, "nothing after being asked to stop"
+
+
+def test_two_sentences_are_spaced_when_they_are_long():
+    """Closing a block after the overflowing sentence meant 128 + 237
+    characters both landed in the first block and nothing was spaced."""
+    from app.x_bot import _paragraphs
+
+    body = ("Orangie has made a few million dollars since winning $500K in "
+            "Dookie Dash back in 2022, according to the hosts around 44:45. "
+            "He started by trading meme coins after being inspired by "
+            "Ansem's Twitter takes, then moved to bigger positions and now "
+            "runs a large book that the hosts call disciplined.")
+    blocks = _paragraphs(body).split("\n\n")
+    assert len(blocks) == 2, blocks
+    # No block is a stub, and none is still a wall.
+    for block in blocks:
+        assert 60 <= len(block) <= 300, len(block)

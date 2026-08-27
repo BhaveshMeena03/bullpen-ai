@@ -67,13 +67,24 @@ PRICE_POST_WITH_URL = 0.200
 # Anything a link detector might plausibly catch. Deliberately broader than
 # "starts with http": a bare domain in a quoted transcript line would still
 # be a URL to X, and being wrong here costs 13x per reply.
+# A bare "name.tld" is not enough. Half the projects this show talks about
+# are named that way — Pump.fun, friend.tech, gmgn.ai — and treating them as
+# links deleted them from the middle of sentences: "the competitive dynamics
+# between FOMO and Pump.fun. The most interesting thread…" was posted as
+# "between FOMO and The most interesting thread", losing the company and
+# leaving a sentence that does not parse.
+#
+# So a link needs a scheme, the www prefix, or a path after the domain.
+# A bare domain someone actually meant as a link survives in the text, which
+# is the safe direction: X bills a mention-gated reply the same either way.
 _URL_SHAPED = re.compile(
     r"""(?xi)
     (?: https?://                       # explicit scheme
       | www\.                           # conventional prefix
-      | \b[a-z0-9][a-z0-9-]*\.          # bare domain: name.tld
+      | \b[a-z0-9][a-z0-9-]*\.          # bare domain followed by a path,
         (?: com|org|net|io|ai|co|xyz|app|dev|tech|gg|so|fun|me|tv
-          | link|sh|to|us|uk|info|biz|eth|sol|fi|xx )\b
+          | link|sh|to|us|uk|info|biz|eth|sol|fi|xx )
+        /                               # which is what makes it a link
     )""")
 
 
