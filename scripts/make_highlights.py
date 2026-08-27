@@ -78,7 +78,50 @@ A thin moment is worse than no moment.
 """
 
 
-async def highlights_for(client, model, episode: dict, n: int) -> list[dict]:
+FUNNY_PROMPT = """\
+Below is a transcript of one episode of a crypto podcast, with a timestamp \
+on every line.
+
+Pick the {n} funniest moments in it — the bits someone would clip and send \
+to a friend. A line that lands, a story that goes somewhere stupid, a \
+reaction, someone being roasted by their own admission.
+
+For each, write ONE sentence naming WHO said or did it and what happened, \
+followed by the timestamp of the line you took it from, exactly as it \
+appears in brackets.
+
+These get posted publicly, on their own, with nobody checking them first. \
+So:
+
+1. Name the person. If the transcript does not make clear who is speaking, \
+skip that moment. An unattributed joke reads as a rumour.
+
+2. Nothing at anyone's expense. No jokes about how somebody looks, their \
+weight, their intelligence, their relationships, or anything they would be \
+embarrassed to see quoted back at them by a stranger. The hosts roast each \
+other constantly and that is their business, not this account's. If the \
+funny part is that someone is being mocked, skip it.
+
+3. It has to be funny without the video. No "you had to see his face".
+
+3a. Nothing about crime committed against someone, illness, medication, \
+addiction, or money someone lost. A robbery is not a joke because it has \
+an absurd detail in it, and a line about somebody's antidepressants is not \
+a joke at all. Both of those were returned the first time this prompt ran.
+
+4. Quote numbers exactly as they were said. Never compute one.
+
+Format, one per line, nothing else:
+<sentence> | <timestamp>
+
+If fewer than {n} moments genuinely qualify, return fewer. A weak joke \
+posted unprompted is worse than no joke.
+"""
+
+
+async def highlights_for(client, model, episode: dict, n: int,
+                         prompt: str | None = None,
+                         kind: str = "fact") -> list[dict]:
     lines = [f"[{_timestamp(s['t'])}] {s['text'].strip()}"
              for s in episode["segments"] if s.get("text", "").strip()]
     # Every third line, capped: enough of the shape of the episode to judge
@@ -88,7 +131,8 @@ async def highlights_for(client, model, episode: dict, n: int) -> list[dict]:
     response = await client.messages.create(
         model=model, max_tokens=1024,
         messages=[{"role": "user", "content":
-                   f"{PROMPT.format(n=n)}\n\n<transcript>\n{sampled}\n</transcript>"}],
+                   f"{(prompt or PROMPT).format(n=n)}\n\n"
+                   f"<transcript>\n{sampled}\n</transcript>"}],
     )
     text = "".join(b.text for b in response.content if b.type == "text")
 
@@ -119,7 +163,9 @@ async def highlights_for(client, model, episode: dict, n: int) -> list[dict]:
         if not cites_its_moment(episode, stamp, said):
             print(f"     dropped (timestamp does not match): {said[:60]}")
             continue
-        out.append(_entry(episode, stamp, said))
+        entry = _entry(episode, stamp, said)
+        entry["kind"] = kind
+        out.append(entry)
     return out
 
 
@@ -209,6 +255,9 @@ def relink(pool: list[dict], episodes: list[dict]) -> tuple[list[dict], int]:
 async def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--per-episode", type=int, default=2)
+    ap.add_argument("--kind", choices=("fact", "funny"), default="fact",
+                    help="what to look for. 'funny' appends to the pool "
+                         "rather than replacing it")
     ap.add_argument("--verify", action="store_true",
                     help="check the existing pool against the transcripts "
                          "and drop entries whose timestamp does not match")
@@ -250,8 +299,10 @@ async def main() -> int:
     pool: list[dict] = []
     for i, episode in enumerate(episodes, 1):
         try:
-            found = await highlights_for(client, settings.summary_model,
-                                         episode, args.per_episode)
+            found = await highlights_for(
+                client, settings.summary_model, episode, args.per_episode,
+                prompt=FUNNY_PROMPT if args.kind == "funny" else None,
+                kind=args.kind)
         except Exception as exc:                              # noqa: BLE001
             print(f"  [{i}/{len(episodes)}] FAILED {episode['title'][:40]}: {exc}")
             continue
@@ -259,6 +310,10 @@ async def main() -> int:
         print(f"  [{i}/{len(episodes)}] {len(found)} from "
               f"{episode['title'][:44]}")
 
+    if args.kind == "funny" and OUT.exists():
+        # Appended, so a run for jokes does not throw away the facts that
+        # were already read and approved.
+        pool = json.loads(OUT.read_text()) + pool
     OUT.write_text(json.dumps(pool, ensure_ascii=False, indent=2))
     print(f"\n  {len(pool)} highlights -> {OUT.relative_to(ROOT)}")
     print("  Read them before enabling: these get posted unprompted, so a "

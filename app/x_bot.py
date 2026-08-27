@@ -1088,6 +1088,15 @@ def load_highlights(path: Path = HIGHLIGHTS) -> list[dict]:
     return keep
 
 
+# A joke introduced as "one from the archive" reads as a fact and lands
+# wrong. Separate openers, so the reader knows which they are getting.
+_FUNNY_LEADS = (
+    "thanks 🙏 one that still makes me laugh:",
+    "appreciate it — this one is worth it for the line alone:",
+    "cheers. a good one:",
+)
+
+
 def format_highlight(highlight: dict, seed: str,
                      include_links: bool | str = False,
                      limit: int = POST_LIMIT) -> str:
@@ -1098,7 +1107,8 @@ def format_highlight(highlight: dict, seed: str,
     before the pool carried URLs simply has no link, which is why this
     reads the field rather than assuming it.
     """
-    lead = _pick(_HIGHLIGHT_LEADS, seed)
+    lead = _pick(_FUNNY_LEADS if highlight.get("kind") == "funny"
+                 else _HIGHLIGHT_LEADS, seed)
     fact = soften(plain_text(strip_urls(highlight.get("text", ""))))
     stamp = highlight.get("timestamp", "")
     url = highlight.get("url") or ""
