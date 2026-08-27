@@ -1753,3 +1753,64 @@ def test_a_reply_is_costed_at_what_x_actually_charges():
                      dry_run=True)
     assert PRICE_POST == 0.015
     assert client.spent_usd == 0.0
+
+
+# --- a non-answer must never be posted, however it is worded ---------------
+
+@pytest.mark.parametrize("answer", [
+    # The one that went out live, under a real post, with a link attached.
+    "I don't have enough information to answer this question. The excerpts "
+    "provided don't contain a clear discussion of what \"beauty\" means, "
+    "like around 1:31:26-1:33:04. Could you ask about a specific moment?",
+    "I'm here to answer questions about the Market Bubble podcast using the "
+    "excerpts I've been given.",
+    "The excerpts don't mention that. Can you be more specific?",
+    "Your question is pretty broad! Could you clarify what you mean?",
+    "That is not discussed in the excerpts provided.",
+])
+def test_a_deflection_is_never_posted(answer):
+    """Third time a model non-answer reached a reply, each in different
+    words. Matching one canonical phrase kept failing, so this matches the
+    shape instead: a stock refusal, or an answer that closes by asking the
+    reader a question — which a real answer to "what did X say" does not do.
+    """
+    from app.x_bot import is_a_deflection
+
+    assert is_a_deflection(answer)
+
+
+@pytest.mark.parametrize("answer", [
+    "Around 7:02 TJR called attention the best currency nowadays.",
+    "Luca bought Pudgy Penguins for 750 ETH during NFT mania, at 1:41:22.",
+    "I couldn't find that in the episodes I've indexed.",
+    "Ansem argued Ethereum got outcompeted — around 26:56 — and that its "
+    "tokenomics were mishandled.",
+])
+def test_real_answers_are_not_mistaken_for_deflections(answer):
+    from app.x_bot import is_a_deflection
+
+    assert not is_a_deflection(answer)
+
+
+@pytest.mark.anyio
+async def test_a_deflection_reaches_no_one(tmp_path):
+    client = FakeClient([[mention("1")],
+                         [mention("2", text="@bot you beauty")]])
+    deflecting = FakeIndex(
+        answer="I don't have enough information to answer this. The excerpts "
+               "don't contain that, around 1:31:26. Could you ask about a "
+               "specific moment?")
+    bot = MentionBot(client, deflecting, state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-27")
+    assert await bot.tick("2026-08-27") == 0
+    assert client.posted == []
+
+
+@pytest.mark.parametrize("text", [
+    "you beauty", "absolute legend", "lets go", "no way", "holy",
+])
+def test_exclamations_are_not_questions(text):
+    """"you beauty @mbubbleSearch" got a full rambling reply."""
+    from app.x_bot import looks_like_a_question
+
+    assert not looks_like_a_question(text)

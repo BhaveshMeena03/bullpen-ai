@@ -459,6 +459,8 @@ _PLEASANTRY = re.compile(
         g[mn] | hi | hey | yo | lfg | based | dub | fire | goat | gg | ty
       | thanks? | thank\s+you | congrats\w* | welcome | respect | salute
       | (?:this|that|it)\s+is | looks? | seems? | feels?
+      | you\s+(?:beauty|legend|genius|star|beaut)
+      | (?:absolute|actual)\s+\w+ | let'?s\s+go | no\s+way | holy
       | (?:very|so|really|pretty|super|quite)
       | (?:good|nice|great|solid|clean|sick|dope|cool|huge|wild|insane)
       | love\s+(?:it|this) | (?:i\s+)?appreciate
@@ -494,6 +496,45 @@ def looks_like_a_question(text: str) -> bool:
         return False
     # Nothing but emoji and punctuation.
     return bool(re.search(r"[a-z0-9]{3}", text, re.I))
+
+
+# Ways the model says "no" without using the sentence it was told to use.
+# Phrase-matching one canonical string kept letting a differently-worded
+# deflection through: "I don't have enough information to answer this
+# question. The excerpts provided don't contain..." went out under a real
+# post, with a citation and a link attached to it.
+_DEFLECTION = re.compile(
+    r"""(?ix)
+    (?: (?:do(?:n't|es\ not|\ not)|did\ not)\s+ (?:have|contain|include|
+                                                 mention|discuss|specify)
+      | not\s+enough\s+(?:information|context|detail)
+      | (?:no|nothing)\s+(?:clear\s+)?(?:discussion|mention|reference)\s+of
+      | (?:is|are|was|were)\s+not\s+(?:discussed|mentioned|covered|addressed)
+      | in\s+the\s+excerpts\s+provided
+      | (?:i'?m|i\ am)\s+(?:here\ to|ready\ to|happy\ to)
+      | could\ you\ (?:ask|clarify|be\ more)
+      | can\ you\ (?:be\ more|clarify|tell\ me\ what)
+      | (?:what|which)\ (?:specifically|exactly)\ (?:would|do)\ you
+    )""")
+
+
+def is_a_deflection(answer: str) -> bool:
+    """Did the model decline rather than answer?
+
+    Two signals, because the wording varies and the shape does not:
+
+    A stock refusal phrase. And an answer that ends by asking the reader a
+    question — a real answer to "what did X say" does not close with "could
+    you ask about a specific moment?", and REPLY_STYLE already forbids it,
+    which is exactly why a guard is needed rather than an instruction.
+    """
+    text = (answer or "").strip()
+    if not text:
+        return True
+    if _DEFLECTION.search(text):
+        return True
+    tail = text.rstrip()[-160:]
+    return tail.endswith("?")
 
 
 def is_a_miss(answer: str) -> bool:
@@ -935,6 +976,13 @@ class MentionBot:
             question, instruction=reply_style(self._post_limit))
         if getattr(result, "refused", False):
             logger.info("%s refused by the model — staying quiet", mention.id)
+            return None
+        if is_a_deflection(result.answer):
+            # A non-answer with a timestamp in it still passes the citation
+            # check, which is how "I don't have enough information" reached
+            # a live reply with a link attached.
+            logger.info("%s deflected (%r) — staying quiet",
+                        mention.id, result.answer[:70])
             return None
         if not is_a_miss(result.answer) and not _CITES_A_TIME.search(result.answer):
             # A real answer from this index always names a moment — the
