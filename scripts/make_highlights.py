@@ -116,8 +116,49 @@ async def highlights_for(client, model, episode: dict, n: int) -> list[dict]:
         # inside the thing that would have been posted.
         if _UNSURE.search(said):
             continue
+        if not cites_its_moment(episode, stamp, said):
+            print(f"     dropped (timestamp does not match): {said[:60]}")
+            continue
         out.append(_entry(episode, stamp, said))
     return out
+
+
+# How far either side of the cited moment to look for the claim. Wide
+# enough for a sentence that runs on, narrow enough that a citation three
+# hours out cannot pass.
+VERIFY_WINDOW = 120
+
+
+def _near(episode: dict, seconds: int) -> str:
+    return " ".join(s.get("text", "") for s in episode["segments"]
+                    if abs(s.get("t", 0) - seconds) <= VERIFY_WINDOW).lower()
+
+
+def cites_its_moment(episode: dict, stamp: str, said: str) -> bool:
+    """Does the transcript at that timestamp actually contain the claim?
+
+    Nothing checked this, and two entries in the live pool were wrong. One
+    said "Ansem said SpaceX traded at 175 on Hyperliquid" and pointed at
+    3:07:00, where the show is running a bracket on who is best looking —
+    the real discussion is at 14:07, nearly three hours earlier.
+
+    That is the worst thing this archive can do. A wrong answer is a bad
+    answer; a confident citation to a moment that says something else is
+    the thing the whole tool exists to be trusted about.
+
+    Deliberately shallow: it looks for the numbers and proper nouns in the
+    sentence, not for meaning. A model call would judge better and would
+    also be the same kind of judgement that produced the error.
+    """
+    try:
+        window = _near(episode, _seconds(stamp))
+    except ValueError:
+        return False
+    numbers = re.findall(r"\d[\d.,]*", said)
+    names = re.findall(r"\b[A-Z][a-zA-Z]{3,}\b", said)
+    if any(n.rstrip(".,") in window for n in numbers):
+        return True
+    return any(n.lower() in window for n in names)
 
 
 def _entry(episode: dict, stamp: str, said: str) -> dict:
@@ -168,10 +209,31 @@ def relink(pool: list[dict], episodes: list[dict]) -> tuple[list[dict], int]:
 async def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--per-episode", type=int, default=2)
+    ap.add_argument("--verify", action="store_true",
+                    help="check the existing pool against the transcripts "
+                         "and drop entries whose timestamp does not match")
     ap.add_argument("--relink", action="store_true",
                     help="only add missing watch links to the existing pool "
                          "— no model calls, no new facts, nothing to review")
     args = ap.parse_args()
+
+    if args.verify:
+        pool = json.loads(OUT.read_text())
+        episodes = {e["episode_id"]: e
+                    for e in json.loads(EPISODES.read_text())}
+        keep = []
+        for entry in pool:
+            episode = episodes.get(entry.get("episode_id"))
+            if episode and cites_its_moment(episode, entry.get("timestamp", ""),
+                                            entry.get("text", "")):
+                keep.append(entry)
+            else:
+                print(f"  dropped {entry.get('timestamp')} — "
+                      f"{entry.get('text','')[:66]}")
+        OUT.write_text(json.dumps(keep, ensure_ascii=False, indent=2))
+        print(f"\n  {len(keep)}/{len(pool)} highlights cite a moment that "
+              f"actually mentions them")
+        return 0
 
     if args.relink:
         pool = json.loads(OUT.read_text())
