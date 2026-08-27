@@ -460,6 +460,8 @@ _PLEASANTRY = re.compile(
       | thanks? | thank\s+you | congrats\w* | welcome | respect | salute
       | (?:this|that|it)\s+is | looks? | seems? | feels?
       | you\s+(?:beauty|legend|genius|star|beaut)
+      # "you are so freaking cool", "you're a genius", "that's sick"
+      | (?:you'?re | you\s+are | that'?s | thats | these\s+are)\b
       | (?:absolute|actual)\s+\w+ | let'?s\s+go | no\s+way | holy
       | (?:very|so|really|pretty|super|quite)
       | (?:good|nice|great|solid|clean|sick|dope|cool|huge|wild|insane)

@@ -1994,3 +1994,34 @@ def test_highlight_openers_vary():
     leads = {format_highlight(POOL[0], s).splitlines()[0]
              for s in ("a", "b", "c", "d", "e", "f", "g")}
     assert len(leads) >= 3, "twenty compliments should not open identically"
+
+
+@pytest.mark.parametrize("text", [
+    "you are so freaking cool",
+    "you're a genius",
+    "that's sick",
+    "thats actually insane",
+    "these are great",
+    "you beauty",
+])
+def test_praise_aimed_at_the_bot_is_not_a_question(text):
+    """"you beauty" was caught; "you are so freaking cool" was not, and went
+    to retrieval instead — where the model deflected and the guard
+    suppressed it, so a compliment got silence rather than a fact. Worse
+    than either intended outcome."""
+    from app.x_bot import looks_like_a_question
+
+    assert not looks_like_a_question(text)
+
+
+@pytest.mark.anyio
+async def test_praise_gets_a_fact_rather_than_a_dead_end(tmp_path):
+    client = FakeClient([[mention("1")],
+                         [mention("2", text="@bot you are so freaking cool")]])
+    index = FakeIndex()
+    bot = MentionBot(client, index, highlights=POOL,
+                     state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-27")
+    assert await bot.tick("2026-08-27") == 1
+    assert index.asked == [], "never reaches the model"
+    assert any(h["timestamp"] in client.posted[0][1] for h in POOL)
