@@ -705,7 +705,42 @@ async def test_an_honest_miss_is_still_posted(tmp_path):
                      state_path=tmp_path / "s.json")
     await bot.tick("2026-08-26")
     assert await bot.tick("2026-08-26") == 1
-    assert client.posted[0][1] == NOT_FOUND_ANSWER + "."
+    # The honest sentence, whichever variant is picked. This question is a
+    # name and nothing else, so it also gets the "add a topic" nudge — the
+    # thing being pinned is that something honest goes out, not silence.
+    assert client.posted[0][1].startswith(NOT_FOUND_ANSWER)
+
+
+@pytest.mark.anyio
+async def test_a_question_that_is_only_a_name_suggests_a_topic(tmp_path):
+    """A bare first name is almost no signal to an embedding, so a miss
+    here often means the person IS in the archive: "what did andre say"
+    came back with Andrew Tate while Andre from Grass sat in it, and
+    "what did andre say about grass" finds him at once."""
+    from app.podcast import NOT_FOUND_ANSWER
+
+    client = FakeClient([[mention("1")],
+                         [mention("2", text="@bot what did andre say")]])
+    bot = MentionBot(client, FakeIndex(answer=NOT_FOUND_ANSWER + "."),
+                     state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-26")
+    await bot.tick("2026-08-26")
+
+    posted = client.posted[0][1]
+    assert posted.startswith(NOT_FOUND_ANSWER), posted
+    assert "topic" in posted or "about" in posted, posted
+
+
+def test_a_question_with_a_topic_is_not_treated_as_a_bare_name():
+    from app.x_bot import asks_only_about_a_name
+
+    for bare in ("what did andre say", "what did andrej karpathy say",
+                 "who is kimchi"):
+        assert asks_only_about_a_name(bare), bare
+    for anchored in ("what did andre from grass say",
+                     "what did ansem say about solana",
+                     "what did they say about pump fun fees"):
+        assert not asks_only_about_a_name(anchored), anchored
 
 
 @pytest.mark.parametrize("text", ["whats the CA", "what's the ca", "hows it work"])

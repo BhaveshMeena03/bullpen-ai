@@ -450,6 +450,35 @@ _MISS_PHRASINGS = (
 )
 
 
+# "what did andre say", "who is kimchi" with nothing else in it. A bare
+# first name is almost no signal to an embedding, so retrieval matches the
+# shape of the question instead of the person — "what did andre say" came
+# back with Andrew Tate while Andre from Grass sat in the archive, and
+# "what did andre from grass say" finds him immediately.
+_JUST_A_NAME = re.compile(
+    r"""(?ix)^\W*
+    (?: what\ (?:did|does|has)\s+ [\w'.-]+ (?:\s+[\w'.-]+)?
+        \s+ (?:say|said|think|mention)
+      | (?:who|what)\ (?:is|was)\s+ [\w'.-]+ )
+    \W*$""")
+
+# Built on the same sentence every other miss uses, so the reply is still
+# recognisable as one — to a reader, to is_a_miss, and to the audit script
+# that counts them.
+_NAME_ONLY_MISS = (
+    NOT_FOUND_ANSWER + ". Try adding what it was about — "
+    "\"what did andre say about grass\" finds him where the name alone "
+    "does not.",
+    NOT_FOUND_ANSWER + " by that name alone. Adding a topic usually finds "
+    "it: \"what did X say about solana\" rather than just the name.",
+)
+
+
+def asks_only_about_a_name(question: str) -> bool:
+    """Is this a person's name and nothing else to search on?"""
+    return bool(_JUST_A_NAME.match((question or "").strip()))
+
+
 def _pick(options: tuple, seed: str) -> str:
     """Choose deterministically from `seed`, so a repeat is consistent."""
     return options[int(hashlib.sha256(seed.encode()).hexdigest(), 16)
@@ -1887,6 +1916,16 @@ class MentionBot:
         if is_a_miss(result.answer) and not rescued:
             if not asks_something(question_from(mention.text)):
                 return self._instead_of_a_miss(mention)
+            # A name on its own is almost no signal to an embedding, so a
+            # miss here often means the person IS in the archive and the
+            # query had nothing to anchor on: "what did andre say" came
+            # back with Andrew Tate while Andre from Grass sat in it, and
+            # "what did andre say about grass" finds him at once. Saying
+            # that turns a dead end into the next thing to try.
+            if asks_only_about_a_name(question):
+                logger.info("%s asked about a name alone — suggesting a "
+                            "topic", mention.id)
+                return _pick(_NAME_ONLY_MISS, mention.id)
 
         room = self._post_limit - (len(lead) + 2 if lead else 0)
         reply = format_reply(result.answer, result.hits,
