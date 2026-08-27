@@ -80,6 +80,8 @@ def build(dry_run: bool, cap: int | None, links: bool | None):
         post_limit=settings.x_bot_post_limit,
         summary_limit=settings.x_bot_summary_limit,
         summaries=SummaryStore(),
+        priority_authors=settings.priority_author_ids,
+        site=settings.x_bot_site,
     )
     return settings, client, bot
 

@@ -161,6 +161,8 @@ async def _run_x_bot(app: FastAPI, settings) -> None:
         post_limit=settings.x_bot_post_limit,
         summary_limit=settings.x_bot_summary_limit,
         summaries=SummaryStore(),
+        priority_authors=settings.priority_author_ids,
+        site=settings.x_bot_site,
     )
     while True:
         try:

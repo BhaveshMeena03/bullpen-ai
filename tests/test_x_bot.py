@@ -644,7 +644,8 @@ async def test_an_answer_with_no_citation_is_not_posted(tmp_path):
     the Market Bubble podcast" was posted with "3:35:39 · LIVE W/ TJR &
     Mert" underneath it. A real answer always names a moment.
     """
-    client = FakeClient([[mention("1")], [mention("2", text="@bot what is this")]])
+    client = FakeClient([[mention("1")],
+                         [mention("2", text="@bot what did ansem say about eth")]])
     index = FakeIndex(answer="I appreciate your enthusiasm, but I'm here to "
                              "answer questions about the podcast.")
     bot = MentionBot(client, index, state_path=tmp_path / "s.json")
@@ -2025,3 +2026,87 @@ async def test_praise_gets_a_fact_rather_than_a_dead_end(tmp_path):
     assert await bot.tick("2026-08-27") == 1
     assert index.asked == [], "never reaches the model"
     assert any(h["timestamp"] in client.posted[0][1] for h in POOL)
+
+
+# --- "what is this?" -------------------------------------------------------
+
+@pytest.mark.parametrize("asked", [
+    "what is marketbubblesearch", "what is mbubbleSearch", "what do you do",
+    "who are you", "what is this bot", "how does this work", "wtf is this",
+    "what can you do", "whats this", "explain yourself",
+])
+def test_questions_about_the_account_get_a_fixed_answer(asked):
+    """Asked what it was, the bot searched the transcripts, found nothing,
+    and said "I couldn't find that in the episodes I've indexed" — the one
+    reply guaranteed to look broken to someone deciding whether it works."""
+    from app.x_bot import about_answer
+
+    got = about_answer(asked, "search.lexthedev.com")
+    assert got and "Market Bubble" in got
+    assert "search.lexthedev.com" in got, "this is the one reply that should "
+    "send someone somewhere"
+
+
+@pytest.mark.parametrize("asked", [
+    "what did ansem say about eth",
+    "what is grass",
+    "what did tjr say about attention",
+])
+def test_real_questions_do_not_get_the_about_answer(asked):
+    from app.x_bot import about_answer
+
+    assert about_answer(asked, "search.lexthedev.com") is None
+
+
+def test_the_about_answer_never_mentions_anyone():
+    """X restricts mentioning accounts that are not already in the thread,
+    and a reply tagging someone uninvolved is what the automation rules are
+    written about."""
+    from app.x_bot import _ABOUT_PHRASINGS
+
+    for phrasing in _ABOUT_PHRASINGS:
+        assert "@" not in phrasing
+
+
+def test_the_about_answer_varies():
+    from app.x_bot import about_answer
+
+    replies = {about_answer(q, None) for q in
+               ("what is this", "who are you", "what do you do",
+                "how does this work", "wtf is this", "what can you do")}
+    assert len(replies) >= 3
+
+
+@pytest.mark.anyio
+async def test_asking_what_this_is_never_reaches_the_model(tmp_path):
+    client = FakeClient([[mention("1")],
+                         [mention("2", text="@bot what is marketbubblesearch")]])
+    index = FakeIndex()
+    bot = MentionBot(client, index, site="search.lexthedev.com",
+                     state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-27")
+    assert await bot.tick("2026-08-27") == 1
+    assert index.asked == []
+    assert "Market Bubble" in client.posted[0][1]
+
+
+def test_the_about_answer_says_where_it_came_from():
+    from app.x_bot import about_answer
+
+    got = about_answer("what is this", None)
+    assert "AnsemHack Clawrena" in got
+
+
+@pytest.mark.anyio
+async def test_the_about_answer_posts_even_with_links_off(tmp_path):
+    """It carries the site link by design, and the link guard rejected it —
+    so with links off that reply could never be sent at all. The guard is
+    for URLs leaking out of transcript text, which strip_urls already
+    handles long before this point."""
+    client = FakeClient([[mention("1")],
+                         [mention("2", text="@bot what is this")]])
+    bot = MentionBot(client, FakeIndex(), site="search.lexthedev.com",
+                     include_links=False, state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-27")
+    assert await bot.tick("2026-08-27") == 1
+    assert "search.lexthedev.com" in client.posted[0][1]

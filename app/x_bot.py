@@ -316,6 +316,64 @@ def _pick(options: tuple, seed: str) -> str:
                    % len(options)]
 
 
+# "what is this", "what do you do", "who are you". Obvious in hindsight and
+# badly handled: asked what it was, the bot searched the transcripts for an
+# answer, found nothing, and said "I couldn't find that in the episodes I've
+# indexed" — which is the one reply guaranteed to make it look broken to
+# someone deciding whether it works.
+_ASKS_WHAT_THIS_IS = re.compile(
+    r"""(?ix)
+    (?: wh(?:at|o)(?:'?s|\ is|\ are|\ the\ hell\ is|\ tf\ is)?\s+
+        (?: this | that | it | you | u | mbubble\w* | marketbubblesearch
+          | your\ (?:deal|purpose) )\b
+      | what\ (?:do|can)\s+(?:you|u|this|it)\s+do
+      | how\s+(?:do(?:es)?\s+)?(?:you|this|it)\s+work
+      | explain\s+(?:yourself|this)
+      | wtf\ is\ (?:this|that|it)
+    )""")
+
+
+def about_answer(question: str, site: str | None = None) -> str | None:
+    """What this account is, when someone asks.
+
+    A fixed answer rather than a retrieved one, for the same reason as the
+    contract address: it is a fact about the project, not something anyone
+    said on the podcast, and the index has nothing to say about it.
+    """
+    if not _ASKS_WHAT_THIS_IS.search(question or ""):
+        return None
+    body = f"{_pick(_ABOUT_PHRASINGS, question)}\n\n{_ABOUT_ORIGIN}"
+    return f"{body}\n\n{site}" if site else body
+
+
+# No @mention of the operator in any of these. X restricts mentioning
+# accounts that are not already in the thread, and a reply that tags someone
+# uninvolved is the kind of thing the automation rules are written about.
+_ABOUT_PHRASINGS = (
+    "I search every Market Bubble episode. Ask me anything from any of them "
+    "and I'll reply with the answer and the exact timestamp it was said — "
+    "including the live broadcasts, not just the YouTube cuts.",
+
+    "I'm a search engine over the Market Bubble archive. Tag me with a "
+    "question about any episode and I'll tell you what was said and when, "
+    "down to the second. The live broadcasts are in there too.",
+
+    "Ask me about anything from any Market Bubble episode and I'll find the "
+    "moment it was said and give you the timestamp. Every episode is "
+    "indexed, including the parts of the live shows that never reach "
+    "YouTube.",
+
+    "I read every Market Bubble episode so you don't have to scrub through "
+    "four hours of video. Ask a question, get the answer and the exact "
+    "moment it was said.",
+)
+
+# Appended to whichever phrasing is chosen. Separate so the four above stay
+# about what the thing does — someone asking "what is this" wants that
+# first, and where it came from second.
+_ABOUT_ORIGIN = "Built for the AnsemHack Clawrena."
+
+
 def pinned_answer(question: str, contract_address: str | None,
                   token_label: str | None = None) -> str | None:
     """A fixed reply for questions retrieval should not be asked.
@@ -795,6 +853,8 @@ class MentionBot:
                  post_limit: int = POST_LIMIT,
                  summaries=None, summary_limit: int = 4000,
                  highlights: list | None = None,
+                 priority_authors: set | None = None,
+                 site: str | None = None,
                  token_label: str | None = None,
                  state_path: Path = STATE_PATH) -> None:
         self._client = client
@@ -815,6 +875,12 @@ class MentionBot:
         # future surface with its own pool — can supply its own.
         self._highlights = (load_highlights() if highlights is None
                             else highlights)
+        # Accounts that must never be met with silence — the hosts, the
+        # show, the people who could actually put this in front of an
+        # audience. A stranger getting no reply costs nothing. One of
+        # them getting no reply is the only failure here that does.
+        self._priority = set(priority_authors or ())
+        self._site = site
         self._token_label = token_label
         self._state_path = state_path
         self.state = BotState.load(state_path)
@@ -936,7 +1002,11 @@ class MentionBot:
                             mention.id)
                 handled = mention.id
                 continue
-            if self.state.replies_today + posted >= self.cap:
+            if (self.state.replies_today + posted >= self.cap
+                    and mention.author_id not in self._priority):
+                # A priority account is answered even on a day the cap has
+                # already been reached: the cap exists to bound a stranger's
+                # spam, and these are the people it must never silence.
                 logger.info("hit the daily cap mid-batch — stopping")
                 break
             try:
@@ -964,6 +1034,22 @@ class MentionBot:
         self.state.since_id = handled
         self.state.replies_today += posted
         return posted
+
+    def _fallback(self, mention: Mention) -> str | None:
+        """Something to say when the answer was not good enough to post.
+
+        Only for the priority accounts. Everyone else gets silence, which is
+        correct — a weak reply to a stranger is worse than none. But silence
+        aimed at one of the hosts reads as a broken tool in front of exactly
+        the people who would otherwise pass it on, so they get a real fact
+        from the archive rather than nothing.
+        """
+        found = self._next_highlight(mention.id)
+        if found:
+            logger.info("%s is a priority account — offering a fact instead "
+                        "of silence", mention.author_id)
+            return format_highlight(found, mention.id)
+        return None
 
     def _next_highlight(self, seed: str) -> dict | None:
         """A moment this account has not offered before.
@@ -1027,6 +1113,12 @@ class MentionBot:
         if pinned:
             return pinned
 
+        about = about_answer(question, self._site)
+        if about:
+            logger.info("%s asked what this is — answering from the fixed "
+                        "description", mention.id)
+            return about
+
         wanted = summary_request(question)
         if wanted is not None:
             found = await self._summary_for(wanted)
@@ -1058,18 +1150,19 @@ class MentionBot:
                         mention.id, question[:60])
             return None
 
+        priority = mention.author_id in self._priority
         result = await self._index.search(
             question, instruction=reply_style(self._post_limit))
         if getattr(result, "refused", False):
             logger.info("%s refused by the model — staying quiet", mention.id)
-            return None
+            return self._fallback(mention) if priority else None
         if is_a_deflection(result.answer):
             # A non-answer with a timestamp in it still passes the citation
             # check, which is how "I don't have enough information" reached
             # a live reply with a link attached.
             logger.info("%s deflected (%r) — staying quiet",
                         mention.id, result.answer[:70])
-            return None
+            return self._fallback(mention) if priority else None
         if not is_a_miss(result.answer) and not _CITES_A_TIME.search(result.answer):
             # A real answer from this index always names a moment — the
             # prompt requires it, and citing is the entire point. An answer
@@ -1079,7 +1172,7 @@ class MentionBot:
             # reply once with an unrelated episode stapled underneath.
             logger.info("%s produced no citation (%r) — staying quiet",
                         mention.id, result.answer[:70])
-            return None
+            return self._fallback(mention) if priority else None
         return format_reply(result.answer, result.hits,
                             include_links=self.include_links,
                             limit=self._post_limit) or None
@@ -1088,8 +1181,15 @@ class MentionBot:
         text = await self.compose(mention)
         if not text:
             return False
-        posted = await self._client.reply(text, mention.id,
-                                          allow_link=self.include_links)
+        # Any URL still in the text at this point is one this code put
+        # there — a deep link, or the site in the "what is this" answer.
+        # Transcript URLs were stripped much earlier, which is what the
+        # guard in reply() is actually for. Deriving the flag from the
+        # include_links setting instead meant the about answer, which
+        # carries the site link by design, could not be posted at all when
+        # links were off.
+        posted = await self._client.reply(
+            text, mention.id, allow_link=bool(_URL_SHAPED.search(text)))
         logger.info("replied to %s -> %s", mention.id, posted or "dry run")
         return True
 

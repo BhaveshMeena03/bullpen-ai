@@ -303,6 +303,33 @@ class Settings(BaseSettings):
     # carry timestamps, and run to about 3,100 characters — trimming one to
     # fit an answer-sized reply would cut the back half of an episode off.
     x_bot_summary_limit: int = 4000
+    # Numeric user ids that must never be met with silence, comma-separated.
+    #
+    # A stranger getting no reply costs nothing — a weak answer to them is
+    # worse than none. One of the hosts getting no reply is different: it
+    # reads as a broken tool in front of exactly the people who could put it
+    # in front of an audience.
+    #
+    # So for these, a question that would otherwise produce silence gets a
+    # real fact from the archive instead, and the daily cap does not apply.
+    # Ids rather than handles because that is what a mention carries, and
+    # because a handle can change hands.
+    #
+    #   948689053            @TheGreatCattsby  co-founder, Market Bubble
+    #   363811679            @Banks            host
+    #   973261472            @blknoiz06        Ansem, host
+    #   1729276822485889024  @MarketBubble     the show
+    #   1070767274808696832  @Lexx_eth         runs this account
+    x_bot_priority_authors: str = ""
+    # Shown when someone asks what this account is. Worth carrying the link
+    # here specifically: that question is the one moment where the person
+    # asking actually wants somewhere to go.
+    x_bot_site: str = "search.lexthedev.com"
+
+    @property
+    def priority_author_ids(self) -> set[str]:
+        return {p.strip() for p in self.x_bot_priority_authors.split(",")
+                if p.strip()}
 
     @field_validator(
         "anthropic_api_key", "voyage_api_key", "pinecone_api_key",

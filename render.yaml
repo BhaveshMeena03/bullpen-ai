@@ -124,6 +124,13 @@ services:
       # to answer size would cut the back half of an episode off.
       - key: X_BOT_SUMMARY_LIMIT
         value: "4000"
+      # Never met with silence: @TheGreatCattsby, @Banks, @blknoiz06,
+      # @MarketBubble, @Lexx_eth. Ids because that is what a mention
+      # carries, and a handle can change hands.
+      - key: X_BOT_SITE
+        value: "search.lexthedev.com"
+      - key: X_BOT_PRIORITY_AUTHORS
+        value: "948689053,363811679,973261472,1729276822485889024,1070767274808696832"
       # Nearly all the latency was here. Answering takes 4-8 seconds; at 60s
       # a mention waited up to 84 just to be noticed. Polling is free — X
       # charges per resource returned and deduplicates within the UTC day —
