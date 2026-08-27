@@ -2994,3 +2994,44 @@ def test_a_summons_in_a_quote_tweet_still_counts():
 
     # A link at the end must not turn a real question into a summons.
     assert not summons("what did ansem say about solana https://t.co/x")
+
+
+@pytest.mark.anyio
+async def test_the_bare_name_nudge_survives_a_deflection(tmp_path):
+    """It was unreachable for the case it was built for.
+
+    "what did andre say" comes back "I couldn't find that. Could you
+    clarify who you're asking about?" — a miss AND a deflection. The
+    deflection gate ran first and returned silence, so the nudge never
+    fired on the one question shape it exists for.
+    """
+    from app.podcast import NOT_FOUND_ANSWER
+
+    both = (NOT_FOUND_ANSWER + ". Could you clarify who you're asking "
+            "about? The transcripts mention Andrew Tate and a few others.")
+    client = FakeClient([[mention("1")],
+                         [mention("2", text="@bot what did andre say")]])
+    bot = MentionBot(client, FakeIndex(answer=both),
+                     state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-27")
+    await bot.tick("2026-08-27")
+
+    assert client.posted, "a name-only miss must not be silent"
+    posted = client.posted[0][1]
+    assert posted.startswith(NOT_FOUND_ANSWER)
+    assert "topic" in posted or "about" in posted
+
+
+@pytest.mark.anyio
+async def test_a_deflection_on_a_real_question_is_still_silence(tmp_path):
+    """Moving the nudge earlier must not let every deflection through."""
+    client = FakeClient([
+        [mention("1")],
+        [mention("2", text="@bot what did they say about the fed meeting")]])
+    bot = MentionBot(
+        client,
+        FakeIndex(answer="I don't have enough information to answer this."),
+        state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-27")
+    await bot.tick("2026-08-27")
+    assert not client.posted

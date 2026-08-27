@@ -1940,6 +1940,18 @@ class MentionBot:
         if getattr(result, "refused", False):
             logger.info("%s refused by the model — staying quiet", mention.id)
             return self._fallback(mention) if priority else None
+
+        # Before the deflection gate, because a name-only miss looks like
+        # one: "what did andre say" comes back "I couldn't find that. Could
+        # you clarify who you're asking about?" — a miss AND a deflection,
+        # so the gate returned silence and the nudge built for exactly this
+        # case could never fire.
+        if (is_a_miss(result.answer) and not rescued
+                and asks_only_about_a_name(question)):
+            logger.info("%s asked about a name alone — suggesting a topic",
+                        mention.id)
+            return _pick(_NAME_ONLY_MISS, mention.id)
+
         if not rescued and is_a_deflection(result.answer):
             # A non-answer with a timestamp in it still passes the citation
             # check, which is how "I don't have enough information" reached
@@ -1969,16 +1981,6 @@ class MentionBot:
         if is_a_miss(result.answer) and not rescued:
             if not asks_something(question_from(mention.text)):
                 return self._instead_of_a_miss(mention)
-            # A name on its own is almost no signal to an embedding, so a
-            # miss here often means the person IS in the archive and the
-            # query had nothing to anchor on: "what did andre say" came
-            # back with Andrew Tate while Andre from Grass sat in it, and
-            # "what did andre say about grass" finds him at once. Saying
-            # that turns a dead end into the next thing to try.
-            if asks_only_about_a_name(question):
-                logger.info("%s asked about a name alone — suggesting a "
-                            "topic", mention.id)
-                return _pick(_NAME_ONLY_MISS, mention.id)
 
         room = self._post_limit - (len(lead) + 2 if lead else 0)
         reply = format_reply(result.answer, result.hits,
