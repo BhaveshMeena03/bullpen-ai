@@ -493,6 +493,29 @@ _ASKS_IF_AUTOMATED = re.compile(
     )""")
 
 
+def _is_the_whole_question(found: re.Match, question: str) -> bool:
+    """Is the matched phrase most of what was asked?
+
+    The fixed answers are checked before retrieval, so a mention carrying
+    both a meta question and a real one lost the real one: "are you a bot"
+    plus "kimchi?" in a single post returned the description and never
+    searched. One reply per mention means one of them has to win, and it
+    should be the archive answer — the description is in the bio and the
+    pinned post, and the answer is the only thing this account can give.
+    """
+    rest = (question[:found.start()] + " " + question[found.end():])
+    rest = rest.strip(" ,.;:&/-\n\t")
+    if not looks_like_a_question(rest.strip("?!")):
+        return True
+    # The leftover has to read as a question in its own right, not as the
+    # tail of the one that matched: "how far back does your archive go"
+    # leaves "archive go", which is two stray words rather than a second
+    # question, and treating it as one lost the answer entirely.
+    return not (rest.endswith("?")
+                or _INTERROGATIVE.search(rest)
+                or len(rest.split()) >= 3)
+
+
 def automation_answer(question: str, site: str | None = None) -> str | None:
     """Yes, and who runs it.
 
@@ -501,7 +524,8 @@ def automation_answer(question: str, site: str | None = None) -> str | None:
     a product blurb reads as dodging it — which is the one impression an
     automated account cannot afford to give.
     """
-    if not _ASKS_IF_AUTOMATED.search(question or ""):
+    found = _ASKS_IF_AUTOMATED.search(question or "")
+    if not found or not _is_the_whole_question(found, question):
         return None
     body = (
         "Yes — automated, and run by Lex.\n\n"
@@ -521,7 +545,8 @@ def about_answer(question: str, site: str | None = None) -> str | None:
     contract address: it is a fact about the project, not something anyone
     said on the podcast, and the index has nothing to say about it.
     """
-    if not _ASKS_WHAT_THIS_IS.search(question or ""):
+    found = _ASKS_WHAT_THIS_IS.search(question or "")
+    if not found or not _is_the_whole_question(found, question):
         return None
     body = f"{_pick(_ABOUT_PHRASINGS, question)}\n\n{_ABOUT_ORIGIN}"
     return f"{body}\n\n{site}" if site else body

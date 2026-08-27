@@ -2827,3 +2827,29 @@ def test_praise_that_is_not_phrased_as_a_compliment_still_reads_as_social():
                      "is ansem having fun?", "did anyone disagree",
                      "yo what did banks say", "tell me about kimchi"):
         assert not reads_as_social(question), question
+
+
+def test_a_real_question_outranks_the_meta_answer():
+    """One post carried "are you a bot" and "kimchi?" — the description
+    went out and the archive question was never searched.
+
+    One reply per mention means one has to win, and it should be the
+    answer: the description is already in the bio and the pinned post.
+    """
+    from app.x_bot import about_answer, automation_answer
+
+    def meta(text):
+        return bool(automation_answer(text) or about_answer(text))
+
+    # Alone, the meta question is the whole message and wins.
+    for alone in ("are you a bot", "who made you", "what do you do",
+                  "is this a bot?", "what is marketbubblesearch",
+                  "how far back does your archive go",
+                  "do you have the live streams"):
+        assert meta(alone), alone
+
+    # Carrying a real question too, the archive answer wins.
+    for compound in ("are you a bot kimchi?",
+                     "are you a bot and what did ansem say about eth",
+                     "what is marketbubblesearch and who is kimchi"):
+        assert not meta(compound), compound
