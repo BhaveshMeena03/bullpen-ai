@@ -2976,3 +2976,21 @@ def test_the_account_can_be_summoned_to_introduce_itself():
 
     # And the direct question still answers the way it did.
     assert automation_answer("are you a bot", "example.com").startswith("Yes")
+
+
+def test_a_summons_in_a_quote_tweet_still_counts():
+    """X appends the quoted post's link to the text, and the pattern
+    anchors at the end — so "introduce yourself https://t.co/..." did not
+    match while the same words as a plain reply did. It went out as an
+    unrelated fact about GPU pricing."""
+    from app.x_bot import question_from, summons
+
+    quoted = ("yoo gm legend\n@mbubbleSearch introduce yourself "
+              "https://t.co/XueQrE3H2x")
+    assert summons(question_from(quoted))
+    assert summons(question_from("@mbubbleSearch introduce yourself"))
+    assert summons(question_from(
+        "gm @mbubbleSearch do your thing https://t.co/abcdef"))
+
+    # A link at the end must not turn a real question into a summons.
+    assert not summons("what did ansem say about solana https://t.co/x")

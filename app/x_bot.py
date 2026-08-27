@@ -603,8 +603,14 @@ _SUMMONS = re.compile(
 
 
 def summons(question: str) -> bool:
-    """Is this asking the account to introduce itself to a thread?"""
-    return bool(_SUMMONS.search((question or "").strip()))
+    """Is this asking the account to introduce itself to a thread?
+
+    URLs are removed first because the pattern anchors at the end, and a
+    quote tweet arrives with the quoted post's link appended: "yoo gm
+    legend @mbubbleSearch introduce yourself https://t.co/..." did not
+    match, while the same words as a plain reply did.
+    """
+    return bool(_SUMMONS.search(strip_urls(question or "").strip()))
 
 
 def automation_answer(question: str, site: str | None = None) -> str | None:
