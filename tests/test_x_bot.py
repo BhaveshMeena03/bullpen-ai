@@ -418,7 +418,9 @@ def test_a_miss_gets_no_citation():
     reply = format_reply(miss, [FakeHit()])
     assert "3:52:34" not in reply, "a miss must not carry a timestamp"
     assert "Market Bubble Ep 10" not in reply
-    assert NOT_FOUND_ANSWER in reply, "but it should still say so honestly"
+    # The exact phrasing is picked by hashing the answer, so pin the part
+    # that carries the meaning rather than one of the four variants.
+    assert NOT_FOUND_ANSWER[2:] in reply, "but it should still say so honestly"
 
 
 def test_a_real_answer_still_gets_its_citation():
@@ -2563,3 +2565,88 @@ def test_a_long_answer_is_broken_into_blocks():
     assert _paragraphs(short) == short
     for block in _paragraphs(two_long).split("\n\n"):
         assert block.strip()[0].isupper()
+
+
+# --- findings from the second sweep -----------------------------------------
+
+def test_a_timestamp_is_not_an_episode_number():
+    """"what happened at 1:22:17" captured the 1 and replied with a
+    three-thousand-character summary of episode 1, to a question about a
+    single moment."""
+    from app.x_bot import summary_request
+
+    assert summary_request("what happened at 1:22:17") is None
+    assert summary_request("what was said at 2:00 in episode 9") is None
+    assert summary_request("what happened at 12:30") is None
+    # Real requests, in either order.
+    assert summary_request("summarize episode 14") == 14
+    assert summary_request("summarise ep 3") == 3
+    assert summary_request("episode 12 summary") == 12
+    assert summary_request("recap episode 9") == 9
+
+
+def test_a_sentence_ending_in_a_quote_is_still_a_sentence():
+    """`he said "100%." He then…` stayed one block, and quoting is what
+    this tool does constantly."""
+    from app.x_bot import _SENTENCE_END
+
+    split = _SENTENCE_END.split('He said "100%." He elaborated later on.')
+    assert split == ['He said "100%."', "He elaborated later on."]
+    # The closing mark must survive — dropping it corrupts the quotation.
+    assert split[0].endswith('"')
+
+
+def test_retrieval_plumbing_does_not_reach_the_reader():
+    """"In the excerpts from this episode…" — nobody asking about a podcast
+    knows what an excerpt is."""
+    from app.x_bot import plain_text
+
+    assert plain_text("In the excerpts from this episode, they agreed.") == (
+        "In the transcripts from this episode, they agreed.")
+    assert plain_text("The excerpts provided do not contain that.") == (
+        "The transcripts I have do not contain that.")
+    # The capital survives, or the sentence starts lowercase.
+    assert plain_text("Based on the excerpts, no.").startswith("Based")
+    for text in ("In the excerpts x.", "the excerpts x.", "These excerpts x."):
+        assert "excerpt" not in plain_text(text).lower()
+
+
+def test_a_single_word_is_a_search_not_silence():
+    """"kimchi?" and "zcash" are how people use a search box."""
+    from app.x_bot import is_a_pleasantry, looks_like_a_question
+
+    for topic in ("kimchi?", "zcash", "hyperliquid", "solana"):
+        assert looks_like_a_question(topic), topic
+    # Social noise still earns a fact rather than a search.
+    for social in ("gm", "ty", "lol", "based", "wow"):
+        assert not looks_like_a_question(social), social
+        assert is_a_pleasantry(social), social
+    # Thread fragments earn neither.
+    for fragment in ("more", "source?", "when", "again", "proof"):
+        assert not looks_like_a_question(fragment), fragment
+        assert not is_a_pleasantry(fragment), fragment
+
+
+def test_the_account_says_plainly_that_it_is_automated():
+    """Silence in front of "are you a bot" is the worst possible answer:
+    X requires the automation to be disclosed."""
+    from app.x_bot import about_answer, automation_answer
+
+    for question in ("are you an ai", "are you a bot", "r u a bot",
+                     "is this a bot", "are you chatgpt",
+                     "who made you", "who built this"):
+        reply = automation_answer(question, "example.com")
+        assert reply, question
+        # It has to say so in the first line, not bury it under a blurb.
+        assert reply.lower().startswith("yes"), reply[:40]
+        assert "automated" in reply.lower()
+
+    # The wider "what is this" questions still get the description.
+    for question in ("how far back does your archive go",
+                     "do you have the live streams",
+                     "what is marketbubblesearch"):
+        assert about_answer(question, "example.com"), question
+
+    # A real question is still a real question.
+    assert about_answer("what did ansem say about eth") is None
+    assert automation_answer("what did ansem say about eth") is None

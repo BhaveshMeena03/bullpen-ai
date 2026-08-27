@@ -200,6 +200,27 @@ def soften(text: str) -> str:
     return _PROFANITY.sub(mask, text or "")
 
 
+# "the excerpts" is the word the prompt uses for retrieved passages, and it
+# reached replies constantly — "In the excerpts from this episode…". Nobody
+# reading a reply knows what an excerpt is; they asked about a podcast.
+# "transcripts" rather than "episodes": "in the episodes from this episode"
+# is what the obvious substitution produced.
+_PLUMBING = (
+    (re.compile(r"(?i)\bthe excerpts provided\b"), "the transcripts I have"),
+    (re.compile(r"(?i)\bexcerpts provided\b"), "transcripts I have"),
+    (re.compile(r"(?i)\bexcerpts\b"), "transcripts"),
+    (re.compile(r"(?i)\bexcerpt\b"), "transcript"),
+)
+
+
+def _matching_case(original: str, replacement: str) -> str:
+    """Keep the capital the original had, so a sentence still starts with
+    one. Substituting blindly turned "In the excerpts…" into "in the…"."""
+    if original[:1].isupper():
+        return replacement[:1].upper() + replacement[1:]
+    return replacement
+
+
 def plain_text(answer: str, keep_breaks: bool = False) -> str:
     """Strip web-page formatting a plain-text reply cannot render.
 
@@ -215,6 +236,9 @@ def plain_text(answer: str, keep_breaks: bool = False) -> str:
     text = _BOLD.sub(lambda m: m.group(1) or m.group(2), text)
     text = _ITALIC.sub(r"\1", text)
     text = _CODE.sub(r"\1", text)
+    for pattern, replacement in _PLUMBING:
+        text = pattern.sub(
+            lambda m, r=replacement: _matching_case(m.group(0), r), text)
     text = _LIST_MARK.sub("", text)
     if not keep_breaks:
         return _WHITESPACE.sub(" ", text).strip()
@@ -247,16 +271,25 @@ _ASKS_FOR_CA = re.compile(
 # episode summaries already exist and already carry timestamps, so this is a
 # lookup rather than a question — no retrieval, no model call, and the answer
 # cannot come back different from the one on the website.
+# Either order — "summarize episode 14" and "episode 12 recap" are both
+# how people ask. The number must not be part of a clock time: "what
+# happened at 1:22:17" captured the 1 and replied with a whole summary of
+# episode 1, three thousand characters answering a question about a moment.
+_NUMBER = r"(?<![:.\d])(\d{1,2})(?!\s*[:.\d])"
+_ASKS = r"summar(?:ise|ize|y)|recap|rundown|what\s+happened"
 _ASKS_FOR_SUMMARY = re.compile(
-    r"""(?ix)\b(?: summar (?:ise|ize|y) | recap | rundown | what\s+happened )\b
-        [^0-9]{0,40}
-        (?: ep(?:isode)?\s*)? \#? \s* (\d{1,2}) \b""")
+    rf"""(?ix)
+      (?: \b(?:{_ASKS})\b [^0-9]{{0,40}} (?:ep(?:isode)?\s*)? \#?\s* {_NUMBER}
+        | \bep(?:isode)?\s*\#?\s* {_NUMBER} [^0-9]{{0,20}} \b(?:{_ASKS})\b )""")
 
 
 def summary_request(question: str) -> int | None:
     """The episode number someone is asking to have summarised, or None."""
     found = _ASKS_FOR_SUMMARY.search(question or "")
-    return int(found.group(1)) if found else None
+    if not found:
+        return None
+    number = found.group(1) or found.group(2)
+    return int(number) if number else None
 
 
 def episode_number(title: str) -> int | None:
@@ -302,7 +335,14 @@ def _space_out(body: str) -> str:
     return "\n".join(out)
 
 
-_SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+# The closing quote matters: an answer reading `he said "100%." He then…`
+# has no `.` immediately before the space, so the whole thing stayed one
+# block — and quoting is what this tool does constantly.
+# Lookbehind only, so the quote is not consumed: splitting on it turned
+# `he said "100%."` into `he said "100%.` and dropped the closing mark from
+# a quotation, which is worse than the wall of text it was fixing.
+_SENTENCE_END = re.compile(
+    r"""(?:(?<=[.!?]["'\u201d\u2019)\]])|(?<=[.!?]))\s+""")
 
 
 def _paragraphs(text: str, target: int = 190) -> str:
@@ -426,7 +466,48 @@ _ASKS_WHAT_THIS_IS = re.compile(
       | how\s+(?:do(?:es)?\s+)?(?:you|this|it)\s+work
       | explain\s+(?:yourself|this)
       | wtf\ is\ (?:this|that|it)
+      # All of these went out as silence, which in front of someone asking
+      # "are you a bot" is the worst possible answer: X requires automation
+      # to be disclosed, and the account should say so plainly when asked
+      # rather than appear to dodge it.
+      | how\ far\ back\ (?:does|do)\ (?:your|the|this)
+      | do\ (?:you|u)\ have\ (?:the\ )?(?:live|broadcasts?|streams?)
     )""")
+
+
+# Asked directly whether it is a bot, the account should say so in the first
+# word. The general description was reaching these and never answering the
+# question — and X's rules are about disclosing exactly this.
+_ASKS_IF_AUTOMATED = re.compile(
+    r"""(?ix)
+    (?: (?:are|r)\s+(?:you|u)\s+(?:an?\s+)?
+        (?:ai|a\.i\.|bot|robot|human|real|a\ person|automated|automatic)
+      | (?:are|r)\s+(?:you|u)\s+(?:auto|being\ run)
+      | is\ this\ (?:a\ )?(?:bot|ai|automated)
+      | who\s+(?:made|built|runs|owns|created)\s+(?:you|u|this)
+      | are\ you\ (?:chatgpt|claude|gpt)
+    )""")
+
+
+def automation_answer(question: str, site: str | None = None) -> str | None:
+    """Yes, and who runs it.
+
+    Said plainly and first. The description of what the archive contains is
+    not an answer to "are you a bot", and answering a direct question with
+    a product blurb reads as dodging it — which is the one impression an
+    automated account cannot afford to give.
+    """
+    if not _ASKS_IF_AUTOMATED.search(question or ""):
+        return None
+    body = (
+        "Yes — automated, and run by Lex.\n\n"
+        "I'm a search engine over the Market Bubble archive: tag me with a "
+        "question about anything said on the show and I answer from the "
+        "transcripts, with the timestamp it was said at.\n\n"
+        "I only answer from what is actually in the episodes. If it is not "
+        "in there, I say so."
+    )
+    return f"{body}\n\n{site}" if site else body
 
 
 def about_answer(question: str, site: str | None = None) -> str | None:
@@ -635,7 +716,7 @@ _PLEASANTRY = re.compile(
       | (?:very|so|really|pretty|super|quite)
       | (?:good|nice|great|solid|clean|sick|dope|cool|huge|wild|insane)
       | love\s+(?:it|this) | (?:i\s+)?appreciate
-      | lol | lmao | lmfao | haha+ | hehe+ | ser | wagmi
+      | lol | lmao | lmfao | haha+ | hehe+ | ser | wagmi | wow | woah | whoa
       | test(?:ing|ed)?
     )\b""")
 
@@ -679,13 +760,33 @@ def looks_like_a_question(text: str) -> bool:
     the silent direction is what made the account look broken.
     """
     text = (text or "").strip()
-    if not text or len(text.split()) < 2:
+    if not text:
         return False
     words = text.split()
+    # Social noise first, so "based" and "wow" keep getting a fact rather
+    # than being searched for as topics.
     if len(words) <= _PLEASANTRY_MAX_WORDS and _PLEASANTRY.match(text):
         return False
+    # One word is a perfectly normal way to use a search engine — "kimchi?",
+    # "zcash", "hyperliquid" — and requiring two got them silence. Four
+    # characters or more, and not a thread fragment: "more" and "source?"
+    # are things people say mid-conversation, not topics to look up.
+    if len(words) < 2:
+        return (len(words) == 1
+                and len(words[0].strip("?!.,")) >= 4
+                and words[0].strip("?!.,").lower() not in _FRAGMENTS)
     # Nothing but emoji and punctuation.
     return bool(re.search(r"[a-z0-9]{3}", text, re.I))
+
+
+# Words that are follow-ups in a thread rather than things to search for.
+# Each of these alone would otherwise be sent to the index as a topic.
+_FRAGMENTS = frozenset({
+    "more", "when", "where", "what", "which", "again", "source", "sources",
+    "proof", "link", "links", "yes", "yeah", "nope", "okay", "sure", "really",
+    "seriously", "wrong", "right", "same", "this", "that", "them", "next",
+    "continue", "explain", "elaborate", "details", "context",
+})
 
 
 def is_a_pleasantry(text: str) -> bool:
@@ -1411,6 +1512,12 @@ class MentionBot:
                                self._token_label)
         if pinned:
             return pinned
+
+        automated = automation_answer(question, self._site)
+        if automated:
+            logger.info("%s asked whether this is a bot — saying so",
+                        mention.id)
+            return automated
 
         about = about_answer(question, self._site)
         if about:
