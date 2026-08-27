@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -34,6 +35,13 @@ from anthropic import AsyncAnthropic  # noqa: E402
 from app.config import get_settings  # noqa: E402
 from app.podcast import _deep_link, _timestamp  # noqa: E402
 from app.x_bot import _seconds  # noqa: E402
+
+# The shapes the model uses when it cannot tell who was speaking.
+_UNSURE = re.compile(
+    r"""(?ix) unnamed\s+speaker | speaker\s+(?:identity|unclear)
+      | unclear\s+from\s+(?:the\s+)?transcript | identity\s+unclear
+      | (?:likely|possibly|presumably)\s+(?:said|stated|claimed)
+      | \bunidentified\b""")
 
 EPISODES = ROOT / "data" / "episodes.json"
 OUT = ROOT / "data" / "highlights.json"
@@ -90,7 +98,23 @@ async def highlights_for(client, model, episode: dict, n: int) -> list[dict]:
             continue
         said, _, stamp = line.rpartition("|")
         said, stamp = said.strip(" -–—"), stamp.strip().strip("[]")
+        # The model sometimes wraps its answer in the tag from the format
+        # block. Four of these reached the live pool and would have posted
+        # "<sentence>…</sentence>" to the timeline.
+        said = re.sub(r"</?[a-z_]+>", "", said).strip()
         if len(said) < 40 or not stamp:
+            continue
+        # Rule 1 of the prompt is to name the person. Only genuinely
+        # anonymous attributions are rejected — a one-letter name is a
+        # nickname on this show, not a missing source: Banks calls Ansem Z.
+        if re.match(r"^(?:someone|a guest|one host|a host)\b", said, re.I):
+            continue
+        # And the model hedging about who spoke, anywhere in the sentence.
+        # One of these reached the pool complete with its own parenthetical:
+        # "(unnamed speaker's estimate, though speaker identity unclear from
+        # transcript)" — which is the admission that it broke rule 1, left
+        # inside the thing that would have been posted.
+        if _UNSURE.search(said):
             continue
         out.append(_entry(episode, stamp, said))
     return out

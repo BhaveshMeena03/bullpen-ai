@@ -2455,3 +2455,111 @@ def test_a_highlight_carries_its_link():
     old = {k: v for k, v in seekable.items() if k != "url"}
     out = format_highlight(old, "seed", "always", 1500)
     assert "http" not in out and "1:58:06 · Ep 12" in out
+
+
+# --- findings from the 51-case sweep ----------------------------------------
+
+def test_highlight_markup_never_reaches_a_reply():
+    """Four pool entries were wrapped in the tag from the prompt's format
+    block and would have posted "<sentence>…</sentence>" to the timeline."""
+    from app.x_bot import load_highlights
+
+    for entry in load_highlights():
+        assert "<" not in entry["text"], entry["text"][:60]
+
+
+def test_a_highlight_that_admits_it_cannot_name_the_speaker_is_dropped():
+    """It carried the admission into the fact itself: "(unnamed speaker's
+    estimate, though speaker identity unclear from transcript)"."""
+    import json
+
+    from app.x_bot import HIGHLIGHTS as HIGHLIGHTS_PATH
+    from app.x_bot import load_highlights
+
+    for entry in load_highlights():
+        low = entry["text"].lower()
+        assert "unnamed speaker" not in low
+        assert "identity unclear" not in low
+    # The raw file may still hold it; the guard is at the point of reading.
+    assert json.loads(HIGHLIGHTS_PATH.read_text()), "pool is not empty"
+
+
+def test_markup_is_stripped_rather_than_costing_the_fact(tmp_path):
+    import json
+
+    from app.x_bot import load_highlights
+
+    path = tmp_path / "h.json"
+    path.write_text(json.dumps([
+        {"text": "<sentence>Z claims the backlog is 90% OpenAI.</sentence>",
+         "timestamp": "17:01", "title": "Ep 3"},
+    ]))
+    pool = load_highlights(path)
+    assert len(pool) == 1, "the fact survives; only the wrapper goes"
+    assert pool[0]["text"] == "Z claims the backlog is 90% OpenAI."
+
+
+def test_a_thread_fragment_does_not_get_an_unrelated_fact():
+    """"source?" mid-thread answered with OnlyFans median earnings."""
+    from app.x_bot import is_a_pleasantry
+
+    for social in ("gm", "based", "lol", "this is sick", "\U0001F525\U0001F525"):
+        assert is_a_pleasantry(social), social
+    for fragment in ("more", "source?", "when", "which episode", "try again"):
+        assert not is_a_pleasantry(fragment), fragment
+
+
+@pytest.mark.anyio
+async def test_a_priority_account_gets_an_honest_miss_not_a_random_fact(
+        tmp_path):
+    """Asked whether Ansem said entertainment finance would 100x, the reply
+    was an unrelated line about a robotics fund going 100x."""
+    from app.podcast import NOT_FOUND_ANSWER
+
+    index = FakeIndex(answer="I don't have enough information to answer this.")
+    client = FakeClient([
+        [mention("0")],
+        [mention("1", author="948689053",
+                 text="@mbubbleSearch did ansem say finance would 100x")],
+    ])
+    bot = MentionBot(client, index, state_path=tmp_path / "s.json",
+                     priority_authors=["948689053"],
+                     highlights=[{"text": "Andrew Kang's fund went 100x.",
+                                  "timestamp": "1:58:06", "title": "Ep 12"}])
+    await bot.tick("2026-08-27")
+    await bot.tick("2026-08-27")
+
+    assert client.posted, "a host must not get silence"
+    posted = client.posted[0][1]
+    assert NOT_FOUND_ANSWER.lower() in posted.lower()
+    assert "Andrew Kang" not in posted
+
+
+def test_the_i_looked_phrasing_is_not_lowercased():
+    """It read "in the episodes i've indexed" — a typo in the one reply
+    that is already admitting it has nothing."""
+    from app.x_bot import _MISS_PHRASINGS
+
+    for phrasing in _MISS_PHRASINGS:
+        assert "i've" not in phrasing, phrasing
+        assert phrasing[0].isupper()
+
+
+def test_a_long_answer_is_broken_into_blocks():
+    """Summaries have been readable for a while and answers have not."""
+    from app.x_bot import _paragraphs
+
+    two_long = (
+        "Ansem said he holds no Bitcoin or Solana around 8:05 in episode 4, "
+        "but by July he had shifted and was bullish on Solana, with a target "
+        "of around $990 matching Ethereum's all-time high market cap. "
+        "He likes Solana's UX and the way it feels to use around 15:54, and "
+        "he is bullish on the ecosystem because teams work together to help "
+        "each other rather than competing across separate L2 chains.")
+    assert "\n\n" in _paragraphs(two_long), "two long sentences still wrap"
+
+    # Short answers are left alone, and spacing is never inserted mid-sentence.
+    short = "Ansem called it a mega trend around 1:22:17."
+    assert _paragraphs(short) == short
+    for block in _paragraphs(two_long).split("\n\n"):
+        assert block.strip()[0].isupper()

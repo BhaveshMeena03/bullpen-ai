@@ -302,6 +302,61 @@ def _space_out(body: str) -> str:
     return "\n".join(out)
 
 
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+
+
+def _paragraphs(text: str, target: int = 190) -> str:
+    """Break a long answer into blocks at sentence boundaries.
+
+    Summaries have been readable for a while and answers have not, because
+    the spacing only ever ran inside format_summary. A 600-character answer
+    arrives as one grey block with three timestamps buried in it, and on a
+    phone that is where people stop reading.
+
+    Breaks only between sentences, so no citation is ever split from the
+    claim it supports.
+    """
+    text = text.strip()
+    if "\n\n" in text or len(text) <= 280:
+        return text                      # already spaced, or short enough
+
+    sentences = [s for s in _SENTENCE_END.split(text) if s.strip()]
+    # Two is enough. The answer that prompted this was two sentences of
+    # roughly 260 characters each — the exact shape a "needs three" rule
+    # leaves as a wall.
+    if len(sentences) < 2:
+        return text
+
+    blocks: list[str] = []
+    current = ""
+    for sentence in sentences:
+        current = f"{current} {sentence}".strip() if current else sentence
+        if len(current) >= target:
+            blocks.append(current)
+            current = ""
+    if current:
+        # A one-line orphan at the end reads as a mistake, so it joins the
+        # block above it instead of standing alone.
+        if blocks and len(current) < 70:
+            blocks[-1] = f"{blocks[-1]} {current}"
+        else:
+            blocks.append(current)
+    return "\n\n".join(blocks) if len(blocks) > 1 else text
+
+
+def _within(body: str, tail: str, limit: int) -> str:
+    """body + tail, giving up the blank lines rather than the limit.
+
+    Each break costs one extra character against X's count, which the trim
+    did not budget for. Two lines of arithmetic beats a reply rejected by
+    the API for being three characters long.
+    """
+    spaced = body + tail
+    if weighted_length(spaced) <= limit:
+        return spaced
+    return body.replace("\n\n", " ") + tail
+
+
 def format_summary(summary: str, title: str, limit: int,
                    url: str | None = None) -> str:
     """A stored summary, as a reply.
@@ -343,7 +398,10 @@ _CA_PHRASINGS = (
 _MISS_PHRASINGS = (
     NOT_FOUND_ANSWER + ".",
     NOT_FOUND_ANSWER + " — it may be in a part I have not indexed yet.",
-    "I looked, and " + NOT_FOUND_ANSWER[2:].lower() + ".",
+    # Drops the leading "I ", rather than lowercasing the tail — .lower()
+    # turned "I've" into "i've", a typo in the one reply that is already
+    # admitting it has nothing.
+    "I looked, and " + NOT_FOUND_ANSWER[2:] + ".",
     NOT_FOUND_ANSWER + ". Try naming the guest or the episode?",
 )
 
@@ -577,6 +635,7 @@ _PLEASANTRY = re.compile(
       | (?:very|so|really|pretty|super|quite)
       | (?:good|nice|great|solid|clean|sick|dope|cool|huge|wild|insane)
       | love\s+(?:it|this) | (?:i\s+)?appreciate
+      | lol | lmao | lmfao | haha+ | hehe+ | ser | wagmi
       | test(?:ing|ed)?
     )\b""")
 
@@ -629,6 +688,27 @@ def looks_like_a_question(text: str) -> bool:
     return bool(re.search(r"[a-z0-9]{3}", text, re.I))
 
 
+def is_a_pleasantry(text: str) -> bool:
+    """Social noise, rather than a question the archive could answer.
+
+    Not the same as "not a question", which is what this used to be judged
+    on, and the difference showed: "more", "source?" and "when" are none of
+    them questions this index can search, but they are follow-ups in a
+    thread — and answering them with an unrelated fact about OnlyFans
+    earnings is a non-sequitur in front of someone mid-conversation.
+
+    A compliment earns a fact. A fragment earns silence.
+    """
+    text = (text or "").strip()
+    if not text:
+        return False
+    if not re.search(r"[a-z0-9]{3}", text, re.I):
+        return True                      # emoji or punctuation only
+    words = text.split()
+    return (len(words) <= _PLEASANTRY_MAX_WORDS
+            and bool(_PLEASANTRY.match(text)))
+
+
 # Ways the model says "no" without using the sentence it was told to use.
 # Phrase-matching one canonical string kept letting a differently-worded
 # deflection through: "I don't have enough information to answer this
@@ -662,6 +742,13 @@ _HIGHLIGHT_LEADS = (
 )
 
 
+_MARKUP = re.compile(r"</?[a-z_]+>")
+_UNSURE = re.compile(
+    r"""(?ix) unnamed\s+speaker | speaker\s+(?:identity|unclear)
+      | unclear\s+from\s+(?:the\s+)?transcript | identity\s+unclear
+      | \bunidentified\b""")
+
+
 def load_highlights(path: Path = HIGHLIGHTS) -> list[dict]:
     """Moments the bot can offer when nobody asked a question.
 
@@ -673,11 +760,34 @@ def load_highlights(path: Path = HIGHLIGHTS) -> list[dict]:
     if not path.exists():
         return []
     try:
-        return json.loads(path.read_text())
+        pool = json.loads(path.read_text())
     except json.JSONDecodeError:
         logger.warning("highlights.json is unreadable — compliments will "
                        "get silence rather than a bad fact")
         return []
+
+    # Checked here as well as where it is written, because the pool is model
+    # output sitting in a file: a regeneration months from now must not be
+    # able to put "<sentence>…</sentence>" on the timeline. Stripped rather
+    # than dropped — the fact is fine, the wrapper is not.
+    fixed = 0
+    for entry in pool:
+        text = entry.get("text", "")
+        if _MARKUP.search(text):
+            entry["text"] = _MARKUP.sub("", text).strip()
+            fixed += 1
+    if fixed:
+        logger.warning("stripped markup from %d highlight(s) — rerun "
+                       "scripts/make_highlights.py", fixed)
+
+    # An entry that admits it does not know who spoke is not a fact, and it
+    # carries the admission with it into the reply. Dropped, not stripped:
+    # there is no version of it worth posting.
+    keep = [h for h in pool if not _UNSURE.search(h.get("text", ""))]
+    if len(keep) != len(pool):
+        logger.warning("dropped %d highlight(s) with an unnamed speaker",
+                       len(pool) - len(keep))
+    return keep
 
 
 def format_highlight(highlight: dict, seed: str,
@@ -926,7 +1036,10 @@ def format_reply(answer: str, hits: list, include_links: bool | str = False,
             lead = (f"Full episode — scrub to {moment} "
                     f"(X can't jump to a timestamp):")
         tail = f"\n\n{lead}\n{link}"
-        return _fit(answer, limit - len(lead) - URL_WEIGHT - 3) + tail
+        # Spaced after fitting, so the breaks cannot eat the budget the
+        # trim already allowed for; the guard below puts it back if they do.
+        body = _paragraphs(_fit(answer, limit - len(lead) - URL_WEIGHT - 3))
+        return _within(body, tail, limit)
 
     title = _fit(str(top.title), 60)
     # Assume the answer cites a moment, then check the TRIMMED text rather
@@ -937,7 +1050,7 @@ def format_reply(answer: str, hits: list, include_links: bool | str = False,
     if not _CITES_A_TIME.search(fitted):
         tail = f"\n\n{top.timestamp} · {title}"
         fitted = _fit(answer, limit - 22 - len(tail))
-    return fitted + tail
+    return _within(_paragraphs(fitted), tail, limit)
 
 @dataclass
 class BotState:
@@ -1224,17 +1337,18 @@ class MentionBot:
         Only for the priority accounts. Everyone else gets silence, which is
         correct — a weak reply to a stranger is worse than none. But silence
         aimed at one of the hosts reads as a broken tool in front of exactly
-        the people who would otherwise pass it on, so they get a real fact
-        from the archive rather than nothing.
+        the people who would otherwise pass it on.
+
+        They get the honest miss, not a fact from the pool. A fact was the
+        first attempt at this and it is worse: asked whether Ansem said
+        entertainment finance would 100x, the reply was an unrelated line
+        about a robotics fund going 100x — which reads as the bot not
+        having understood the question at all. "I could not find that"
+        at least answers what was asked.
         """
-        found = self._next_highlight(mention.id)
-        if found:
-            logger.info("%s is a priority account — offering a fact instead "
-                        "of silence", mention.author_id)
-            return format_highlight(found, mention.id,
-                                     self.include_links,
-                                     self._post_limit)
-        return None
+        logger.info("%s is a priority account — answering honestly instead "
+                    "of staying silent", mention.author_id)
+        return _pick(_MISS_PHRASINGS, mention.id)
 
     def _next_highlight(self, seed: str) -> dict | None:
         """A moment this account has not offered before.
@@ -1342,7 +1456,8 @@ class MentionBot:
             # would convince them is a demonstration rather than a
             # thank-you. So it offers a fact instead — one that was written
             # and read before it ever went anywhere near a reply.
-            found = self._next_highlight(mention.id)
+            found = (self._next_highlight(mention.id)
+                     if is_a_pleasantry(question) else None)
             if found:
                 logger.info("%s is not a question — offering a highlight",
                             mention.id)
@@ -1375,17 +1490,26 @@ class MentionBot:
                 question, instruction=reply_style(self._post_limit))
             if not is_a_miss(retry.answer):
                 result = retry
+        # Whether there is a real, cited answer hiding behind the hedging.
+        # Computed before the gates below, because they judge the whole
+        # string: an answer that opens "I couldn't find that exact line" and
+        # then explains what he did say at 2:12:44 reads as a deflection and
+        # was thrown away, leaving the bare miss — on the one question that
+        # had been asked in public three times.
+        rescued = salvage(result.answer)
+
         if getattr(result, "refused", False):
             logger.info("%s refused by the model — staying quiet", mention.id)
             return self._fallback(mention) if priority else None
-        if is_a_deflection(result.answer):
+        if not rescued and is_a_deflection(result.answer):
             # A non-answer with a timestamp in it still passes the citation
             # check, which is how "I don't have enough information" reached
             # a live reply with a link attached.
             logger.info("%s deflected (%r) — staying quiet",
                         mention.id, result.answer[:70])
             return self._fallback(mention) if priority else None
-        if not is_a_miss(result.answer) and not _CITES_A_TIME.search(result.answer):
+        if (not rescued and not is_a_miss(result.answer)
+                and not _CITES_A_TIME.search(result.answer)):
             # A real answer from this index always names a moment — the
             # prompt requires it, and citing is the entire point. An answer
             # with no timestamp that is not the honest "couldn't find it" is
