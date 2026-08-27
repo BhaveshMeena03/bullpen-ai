@@ -350,27 +350,39 @@ def about_answer(question: str, site: str | None = None) -> str | None:
 # accounts that are not already in the thread, and a reply that tags someone
 # uninvolved is the kind of thing the automation rules are written about.
 _ABOUT_PHRASINGS = (
-    "I search every Market Bubble episode. Ask me anything from any of them "
-    "and I'll reply with the answer and the exact timestamp it was said — "
-    "including the live broadcasts, not just the YouTube cuts.",
+    "I'm a semantic search engine over the entire Market Bubble archive.\n\n"
+    "Ask in plain English — you don't need the exact words anyone used. "
+    "Every episode is transcribed and indexed by meaning, so \"why does "
+    "ansem think eth is done\" finds the moment even if nobody said it "
+    "that way.\n\n"
+    "You get the answer and the exact second it was said. Every episode is "
+    "in there, plus the full live broadcasts — about a third of each show "
+    "never reaches the YouTube upload, and that part is searchable here and "
+    "nowhere else.\n\n"
+    "I only answer from what was actually said. If it isn't in the "
+    "archive I'll tell you so rather than guess.",
 
-    "I'm a search engine over the Market Bubble archive. Tag me with a "
-    "question about any episode and I'll tell you what was said and when, "
-    "down to the second. The live broadcasts are in there too.",
+    "Semantic search across every Market Bubble episode.\n\n"
+    "Not keyword matching — the transcripts are indexed by meaning, so you "
+    "can ask the way you'd ask a person and it finds the moment even when "
+    "the words don't line up.\n\n"
+    "Ask me anything from any episode and you get the answer plus the "
+    "timestamp it was said at. That includes the live broadcasts, which run "
+    "about a third longer than the uploads — the Squire founder interview, "
+    "for instance, starts 26 minutes after the ep 10 video ends.\n\n"
+    "Everything is grounded in the transcripts. No guessing.",
 
-    "Ask me about anything from any Market Bubble episode and I'll find the "
-    "moment it was said and give you the timestamp. Every episode is "
-    "indexed, including the parts of the live shows that never reach "
-    "YouTube.",
-
-    "I read every Market Bubble episode so you don't have to scrub through "
-    "four hours of video. Ask a question, get the answer and the exact "
-    "moment it was said.",
+    "I've transcribed and indexed every Market Bubble episode, then made it "
+    "searchable by meaning rather than by keyword.\n\n"
+    "So you can ask \"what did luca netz say about pudgy penguins\" without "
+    "knowing which episode, and get back what he said and the second he "
+    "said it.\n\n"
+    "The live broadcasts are indexed too, which is the part nobody else "
+    "has — roughly a third of every show is cut before it reaches YouTube.\n\n"
+    "I answer only from the transcripts, and say so when something isn't "
+    "in there.",
 )
 
-# Appended to whichever phrasing is chosen. Separate so the four above stay
-# about what the thing does — someone asking "what is this" wants that
-# first, and where it came from second.
 _ABOUT_ORIGIN = "Built for the AnsemHack Clawrena."
 
 

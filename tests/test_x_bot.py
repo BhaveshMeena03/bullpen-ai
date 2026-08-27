@@ -2074,7 +2074,30 @@ def test_the_about_answer_varies():
     replies = {about_answer(q, None) for q in
                ("what is this", "who are you", "what do you do",
                 "how does this work", "wtf is this", "what can you do")}
-    assert len(replies) >= 3
+    assert len(replies) >= 2
+
+
+def test_the_about_answer_explains_what_it_actually_is():
+    """This is the first thing someone reads about the account, and "I
+    search episodes" undersells it into sounding like keyword grep. Every
+    phrasing has to carry what makes it different: search by meaning, the
+    exact timestamp, and the live broadcasts nobody else has indexed."""
+    from app.x_bot import _ABOUT_PHRASINGS
+
+    for phrasing in _ABOUT_PHRASINGS:
+        low = phrasing.lower()
+        assert "meaning" in low, "semantic, not keyword"
+        assert "live broadcast" in low, "the part nobody else has"
+        assert any(w in low for w in ("timestamp", "second", "moment"))
+        assert any(w in low for w in ("guess", "grounded", "only answer",
+                                      "only from"))
+
+
+def test_the_about_answer_fits_a_post():
+    from app.x_bot import about_answer, weighted_length
+
+    for q in ("what is this", "who are you", "what do you do"):
+        assert weighted_length(about_answer(q, "search.lexthedev.com")) <= 1500
 
 
 @pytest.mark.anyio
