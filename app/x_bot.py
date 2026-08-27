@@ -516,6 +516,40 @@ def _is_the_whole_question(found: re.Match, question: str) -> bool:
                 or len(rest.split()) >= 3)
 
 
+# One line each, for a mention that asks a meta question AND a real one.
+# Answering only one of the two was the first attempt and it is worse:
+# whichever loses, somebody asked it and got nothing back.
+_AUTOMATION_LEAD = "Yes, automated — run by Lex."
+_ABOUT_LEAD = "Semantic search over the Market Bubble archive."
+
+
+def split_meta(question: str) -> tuple[str | None, str]:
+    """Separate a meta question from the real one beside it.
+
+    The full description is several paragraphs, which is right when that
+    is all somebody asked and wrong when it would bury the answer they
+    also wanted. So the compound case gets the disclosure in a sentence
+    and then the thing they came for.
+
+    The meta half is removed rather than merely prefixed, because leaving
+    it in the search sent "are you a bot" to the index and the model
+    answered it in its own voice: a reply that opened "Yes, automated —
+    run by Lex" and then said "I'm not a bot, I'm an indexing tool".
+    """
+    text = question or ""
+    for pattern, lead in ((_ASKS_IF_AUTOMATED, _AUTOMATION_LEAD),
+                          (_ASKS_WHAT_THIS_IS, _ABOUT_LEAD)):
+        found = pattern.search(text)
+        if not found:
+            continue
+        rest = text[:found.start()] + " " + text[found.end():]
+        rest = _WHITESPACE.sub(" ", rest).strip(" ,.;:&/-?!")
+        # A conjunction left at the front reads as a fragment.
+        rest = re.sub(r"(?i)^(?:and|also|plus|but|then)\s+", "", rest).strip()
+        return lead, rest
+    return None, text
+
+
 def automation_answer(question: str, site: str | None = None) -> str | None:
     """Yes, and who runs it.
 
@@ -852,6 +886,21 @@ _INTERROGATIVE = re.compile(
       | did|does|do|is|are|was|were|can|could|should|would|will
       | tell\s+me | any\b )\b""")
 _SOCIAL_MAX_WORDS = 14
+
+
+def asks_something(text: str) -> bool:
+    """Did this mention actually ask a question?
+
+    Not "could it be searched" — retrieval will take anything. This is
+    whether a person put a question to the account, because "I couldn't
+    find that in the episodes I've indexed" is only an honest answer to a
+    question. Posted under a description of the tool it reads as the tool
+    failing at the moment it is being recommended, which is exactly where
+    it landed: under "tag @mbubbleSearch with a question about anything
+    said on the show and it answers from the transcripts".
+    """
+    text = (text or "").strip()
+    return bool(text) and ("?" in text or bool(_INTERROGATIVE.search(text)))
 
 
 def reads_as_social(text: str) -> bool:
@@ -1606,9 +1655,28 @@ class MentionBot:
         having understood the question at all. "I could not find that"
         at least answers what was asked.
         """
+        if not asks_something(question_from(mention.text)):
+            return self._instead_of_a_miss(mention)
+
         logger.info("%s is a priority account — answering honestly instead "
                     "of staying silent", mention.author_id)
         return _pick(_MISS_PHRASINGS, mention.id)
+
+    def _instead_of_a_miss(self, mention: Mention) -> str | None:
+        """A fact, when nothing was actually asked.
+
+        There is nothing to admit to missing if no question was put, and
+        "I couldn't find that in the episodes I've indexed" posted under a
+        description of the tool reads as the tool failing at the moment it
+        is being recommended. That is where it landed.
+        """
+        found = self._next_highlight(mention.id)
+        if not found:
+            return None
+        logger.info("%s asked nothing — offering a fact rather than a miss",
+                    mention.id)
+        return format_highlight(found, mention.id, self.include_links,
+                                self._post_limit)
 
     def _social_fallback(self, mention: Mention) -> str | None:
         """A fact, for praise that retrieval could not answer.
@@ -1754,6 +1822,9 @@ class MentionBot:
                         mention.id, question[:60])
             return None
 
+        # Split before the search, so the index never sees the meta half.
+        lead, question = split_meta(question)
+
         # Remembered before the answer, so a retry works even when the first
         # attempt is what went wrong.
         self.state.last_question[str(mention.author_id)] = question
@@ -1807,9 +1878,27 @@ class MentionBot:
                         mention.id, result.answer[:70])
             return (self._fallback(mention) if priority
                     else self._social_fallback(mention))
-        return format_reply(result.answer, result.hits,
-                            include_links=self.include_links,
-                            limit=self._post_limit) or None
+        # Both, when both were asked. The lead costs its own length plus a
+        # blank line, so the answer is fitted to what is left rather than
+        # discovering the overflow after the fact.
+        # A miss is only an honest answer to a question. Checked here
+        # because a plain miss goes straight to format_reply and never
+        # reaches the refusal/deflection fallbacks below it.
+        if is_a_miss(result.answer) and not rescued:
+            if not asks_something(question_from(mention.text)):
+                return self._instead_of_a_miss(mention)
+
+        room = self._post_limit - (len(lead) + 2 if lead else 0)
+        reply = format_reply(result.answer, result.hits,
+                             include_links=self.include_links,
+                             limit=room)
+        if not reply:
+            return None
+        if lead:
+            logger.info("%s asked a meta question alongside a real one — "
+                        "answering both", mention.id)
+            return f"{lead}\n\n{reply}"
+        return reply
 
     async def _answer(self, mention: Mention) -> bool:
         text = await self.compose(mention)

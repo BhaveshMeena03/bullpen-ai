@@ -2853,3 +2853,58 @@ def test_a_real_question_outranks_the_meta_answer():
                      "are you a bot and what did ansem say about eth",
                      "what is marketbubblesearch and who is kimchi"):
         assert not meta(compound), compound
+
+
+def test_the_meta_half_never_reaches_the_index():
+    """It replied "Yes, automated — run by Lex." and then, in the answer
+    below it, "I'm not a bot — I'm an indexing tool": the meta question
+    went to retrieval too and the model answered it in its own voice."""
+    from app.x_bot import split_meta
+
+    lead, rest = split_meta("are you a bot and what did ansem say about eth")
+    assert lead and lead.lower().startswith("yes")
+    assert rest == "what did ansem say about eth"
+    assert "bot" not in rest
+
+    lead, rest = split_meta("what is marketbubblesearch and who is kimchi")
+    assert lead and rest == "who is kimchi"
+
+    # Nothing meta in it, nothing removed.
+    assert split_meta("what did ansem say about eth") == (
+        None, "what did ansem say about eth")
+
+
+@pytest.mark.anyio
+async def test_a_post_that_asks_nothing_gets_a_fact_not_a_miss(tmp_path):
+    """A tweet describing the tool — "tag @mbubbleSearch with a question
+    about anything said on the show" — was answered with "I couldn't find
+    that in the episodes I've indexed", under a post recommending it."""
+    from app.podcast import NOT_FOUND_ANSWER
+
+    index = FakeIndex(answer=NOT_FOUND_ANSWER + ".")
+    promo = ("@mbubbleSearch intern you really need to try this, it answers "
+             "from the transcripts with the timestamp it was said at")
+    client = FakeClient([[mention("0")],
+                         [mention("1", author="948689053", text=promo)]])
+    bot = MentionBot(client, index, state_path=tmp_path / "s.json",
+                     priority_authors=["948689053"],
+                     highlights=[{"text": "Ansem made $1.37m in creator fees.",
+                                  "timestamp": "1:17:15", "title": "Ep 10"}])
+    await bot.tick("2026-08-27")
+    await bot.tick("2026-08-27")
+
+    assert client.posted
+    posted = client.posted[0][1]
+    assert NOT_FOUND_ANSWER.lower() not in posted.lower()
+    assert "creator fees" in posted
+
+
+def test_asking_nothing_is_distinguished_from_asking_something():
+    from app.x_bot import asks_something
+
+    for asked in ("what did chris gilbert say about squire", "kimchi?",
+                  "who is orangie", "did ansem say finance would 100x"):
+        assert asks_something(asked), asked
+    for not_asked in ("this tool is great", "check this out everyone",
+                      "intern you really need to try this"):
+        assert not asks_something(not_asked), not_asked
