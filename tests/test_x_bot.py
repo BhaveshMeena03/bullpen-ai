@@ -2269,3 +2269,189 @@ async def test_a_miss_with_nothing_retrieved_is_not_retried(tmp_path):
     await bot.tick("2026-08-27")
     await bot.tick("2026-08-27")
     assert len(index.asked) == 1, "no point asking twice"
+
+
+def test_a_trimmed_title_does_not_end_on_a_dangling_joiner():
+    """"Market Bubble Ep 10 -…" reads as a typo rather than a cut.
+
+    The real reply that prompted this cut the title mid-subtitle and left
+    the hyphen sitting in front of the ellipsis.
+    """
+    from app.x_bot import _fit
+
+    title = "LIVE W/ LUCA NETZ & GPT-LIVE: Market Bubble Ep 10 - Presented by"
+    assert _fit(title, 52) == "LIVE W/ LUCA NETZ & GPT-LIVE: Market Bubble Ep 10…"
+
+    for text, budget in [("a long enough title ending on a dash - here", 38),
+                         ("some words then an ampersand & more words", 30),
+                         ("a title with a middot · and a tail", 26)]:
+        out = _fit(text, budget)
+        assert out.endswith("…")
+        assert not out[:-1].rstrip().endswith(("-", "&", "·")), out
+        assert "  " not in out
+
+
+def test_fit_still_prefers_a_sentence_boundary():
+    """The dangling-joiner trim must not disturb the common path."""
+    from app.x_bot import _fit
+
+    text = "He said it plainly. Then he moved on to something else entirely."
+    assert _fit(text, 30) == "He said it plainly."
+    assert _fit("short enough", 40) == "short enough"
+
+
+# --- an admitted miss that still says something -----------------------------
+
+# Captured from live runs of the question that failed in public: a quoted
+# tweet of Ansem's that the archive does not contain verbatim.
+_REAL_PARTIAL = (
+    "I couldn't find that in the episodes I've indexed. The excerpts discuss "
+    "how traders building public brands have real influence, and how finance "
+    "content is undervalued. What is there: around 1:20:47 in the August 13 "
+    "episode, someone mentions people retiring from tailing trades publicly.")
+
+_REAL_PARTIAL_BEHIND_A_CAVEAT = (
+    "I couldn't find that in the episodes I've indexed. The excerpts don't "
+    "contain Ansem making a prediction about entertainment finance going "
+    "100x. What I do have is a discussion around 2:13:18 of how the power of "
+    "a personal brand in crypto is enormous and attention is priceless.")
+
+_REAL_EMPTY_MISS = (
+    "I couldn't find that in the episodes I've indexed. If you're looking "
+    "for information about a specific topic, feel free to ask about "
+    "something else from these episodes and I will do my best to help.")
+
+
+def test_the_useful_half_of_an_admitted_miss_survives():
+    """The bug that made the bot look broken in public.
+
+    The model wrote "I couldn't find that" and then gave the closest thing
+    it did find. Only the first sentence went out, while the website showed
+    the whole answer — which is why the same question looked answerable
+    there and not here.
+    """
+    from app.x_bot import salvage
+
+    kept = salvage(_REAL_PARTIAL)
+    assert kept and "1:20:47" in kept
+    assert "couldn't find that in the episodes" not in kept.lower()
+
+
+def test_substance_hiding_behind_a_second_disclaimer_is_still_found():
+    from app.x_bot import salvage
+
+    kept = salvage(_REAL_PARTIAL_BEHIND_A_CAVEAT)
+    assert kept and "2:13:18" in kept
+    assert not kept.lower().startswith("the excerpts don't contain")
+
+
+def test_an_offer_to_ask_something_else_is_not_substance():
+    """Padding passes every length test, so the bar is a cited moment."""
+    from app.x_bot import salvage
+
+    assert salvage(_REAL_EMPTY_MISS) is None
+    assert salvage("I couldn't find that in the episodes I've indexed.") is None
+
+
+def test_a_salvaged_answer_is_posted_instead_of_the_bare_miss():
+    from app.podcast import NOT_FOUND_ANSWER
+
+    reply = format_reply(_REAL_PARTIAL, [FakeHit()], False, 1500)
+    assert "1:20:47" in reply
+    assert reply != NOT_FOUND_ANSWER + "."
+
+
+def test_a_true_miss_is_still_one_honest_sentence():
+    """Salvaging must not turn every miss into a wall of hedging."""
+    reply = format_reply(_REAL_EMPTY_MISS, [FakeHit()], False, 1500)
+    assert reply.lower().startswith(("i couldn't find", "i looked"))
+    assert "feel free to ask" not in reply
+
+
+def test_single_asterisk_emphasis_does_not_reach_a_reply():
+    """"What *is* discussed" went out with the asterisks showing."""
+    from app.x_bot import plain_text
+
+    assert plain_text("What *is* discussed") == "What is discussed"
+    assert plain_text("**bold** and *soft*") == "bold and soft"
+    # Arithmetic is not emphasis.
+    assert plain_text("3 * 4 * 5") == "3 * 4 * 5"
+    assert plain_text("@Lexx_eth snake_case") == "@Lexx_eth snake_case"
+
+
+# --- "try again" ------------------------------------------------------------
+
+@pytest.mark.anyio
+async def test_try_again_re_answers_the_last_question(tmp_path):
+    """It went out mid-thread as an unrelated fact about OnlyFans earnings
+    while someone was asking the bot to have another go."""
+    index = FakeIndex(answer="Around 1:22:17 he calls it a mega trend.")
+    client = FakeClient([
+        [mention("0")],                                  # cold start, skipped
+        [mention("1", text="@mbubbleSearch what did ansem say about eth")],
+        [mention("2", text="@mbubbleSearch try again")],
+    ])
+    bot = MentionBot(client, index, state_path=tmp_path / "s.json")
+    for _ in range(3):
+        await bot.tick("2026-08-27")
+
+    assert index.asked == ["what did ansem say about eth"] * 2, index.asked
+    assert len(client.posted) == 2
+    assert "mega trend" in client.posted[1][1]
+
+
+@pytest.mark.anyio
+async def test_try_again_with_nothing_remembered_stays_quiet(tmp_path):
+    """After a deploy the memory is empty. Silence beats an unrelated fact."""
+    index = FakeIndex()
+    client = FakeClient([[mention("1")],
+                         [mention("2", text="@mbubbleSearch try again")]])
+    bot = MentionBot(client, index, state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-27")                         # cold start, skipped
+    assert await bot.tick("2026-08-27") == 0
+    assert not client.posted
+
+
+@pytest.mark.anyio
+async def test_a_retry_is_remembered_per_author(tmp_path):
+    """One person's retry must not re-ask someone else's question."""
+    index = FakeIndex()
+    client = FakeClient([
+        [mention("0")],                                  # cold start, skipped
+        [mention("1", author="AAA", text="@mbubbleSearch who is kimchi")],
+        [mention("2", author="BBB", text="@mbubbleSearch try again")],
+    ])
+    bot = MentionBot(client, index, state_path=tmp_path / "s.json")
+    for _ in range(3):
+        await bot.tick("2026-08-27")
+    assert index.asked == ["who is kimchi"], "BBB has no history to retry"
+
+
+def test_a_retry_phrase_with_a_question_attached_is_a_new_question():
+    """"try again with ansem" is a question, not a bare retry."""
+    from app.x_bot import asks_to_retry
+
+    assert asks_to_retry("try again")
+    assert asks_to_retry("Retry!")
+    assert not asks_to_retry("try again with ansem")
+    assert not asks_to_retry("what did ansem say again")
+
+
+def test_a_highlight_carries_its_link():
+    """The fact is the proof, and a fact nobody can check is a claim."""
+    from app.x_bot import format_highlight
+
+    seekable = {"text": "Andrew Kang said the fund went 100x.",
+                "timestamp": "1:58:06", "title": "Ep 12",
+                "url": "https://www.youtube.com/watch?v=x&t=7086s"}
+    out = format_highlight(seekable, "seed", "always", 1500)
+    assert "Jump to 1:58:06:" in out and seekable["url"] in out
+
+    broadcast = dict(seekable, url="https://x.com/MarketBubble/status/1")
+    out = format_highlight(broadcast, "seed", "always", 1500)
+    assert "scrub to 1:58:06" in out and "can't jump" in out
+
+    # An entry from before the pool carried links still works.
+    old = {k: v for k, v in seekable.items() if k != "url"}
+    out = format_highlight(old, "seed", "always", 1500)
+    assert "http" not in out and "1:58:06 · Ep 12" in out

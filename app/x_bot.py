@@ -144,7 +144,11 @@ def _fit(text: str, budget: int) -> str:
         if at > budget * 0.55:
             return cut[:at + 1].strip()
     at = cut.rfind(" ")
-    return (cut[:at] if at > 0 else cut).rstrip(",;:") + "…"
+    # Trailing joiners read as a typo once the ellipsis lands after them:
+    # "Market Bubble Ep 10 -…" is the title cut mid-subtitle. Dropping the
+    # dangling character gives "Market Bubble Ep 10…", which reads as a
+    # title that continues rather than one that broke.
+    return (cut[:at] if at > 0 else cut).rstrip(" ,;:-–—·&/([{") + "…"
 
 
 # Markdown and the excerpt format leak into answers, because the prompt was
@@ -152,6 +156,13 @@ def _fit(text: str, budget: int) -> str:
 # shows its asterisks, and "[1:39:32]" — the marker each transcript line
 # carries so the model can cite the line it used — reads as broken markup.
 _BOLD = re.compile(r"\*\*(.+?)\*\*|__(.+?)__")
+# Single-asterisk emphasis, after the double form has been consumed. It
+# reached a live reply as "What *is* discussed", which on X is just two
+# stray asterisks. Underscores are deliberately left alone: they are far
+# more often part of a name than emphasis.
+# No space beside either marker, which real emphasis never has — without
+# that, "3 * 4 * 5" reads as emphasis and the reply loses its arithmetic.
+_ITALIC = re.compile(r"(?<!\*)\*(?!\s)([^*\n]+?)(?<!\s)\*(?!\*)")
 _CODE = re.compile(r"`([^`]*)`")
 # Single moments and ranges alike. The range form leaked into a live
 # reply as "[2:29:34–2:33:04]", because the pattern only knew about one
@@ -202,6 +213,7 @@ def plain_text(answer: str, keep_breaks: bool = False) -> str:
         lambda m: m.group(1) + (f"–{m.group(2)}" if m.group(2) else ""),
         answer or "")
     text = _BOLD.sub(lambda m: m.group(1) or m.group(2), text)
+    text = _ITALIC.sub(r"\1", text)
     text = _CODE.sub(r"\1", text)
     text = _LIST_MARK.sub("", text)
     if not keep_breaks:
@@ -574,6 +586,24 @@ _PLEASANTRY = re.compile(
 _PLEASANTRY_MAX_WORDS = 6
 
 
+# "try again", "again?", "retry", "one more time" — an instruction to redo
+# the last question rather than a new one. Short and bounded, because the
+# cost of a false positive is re-answering something already answered.
+_ASKS_AGAIN = re.compile(
+    r"""(?ix)^\W*(?:
+        (?:please\s+|pls\s+|can\s+you\s+|could\s+you\s+)?
+        (?: try\s+(?:again|once\s+more|harder)
+          | again | retry | re-?run
+          | one\s+more\s+time
+          | search\s+again | look\s+again )
+    )\W*$""")
+
+
+def asks_to_retry(text: str) -> bool:
+    """Is this asking the bot to have another go at the last question?"""
+    return bool(_ASKS_AGAIN.match((text or "").strip()))
+
+
 def looks_like_a_question(text: str) -> bool:
     """Should this mention get an answer?
 
@@ -650,11 +680,35 @@ def load_highlights(path: Path = HIGHLIGHTS) -> list[dict]:
         return []
 
 
-def format_highlight(highlight: dict, seed: str) -> str:
-    """A fact, its moment, and the episode it came from."""
+def format_highlight(highlight: dict, seed: str,
+                     include_links: bool | str = False,
+                     limit: int = POST_LIMIT) -> str:
+    """A fact, its moment, and where to watch it.
+
+    Same link rules as an answer, for the same reason: the fact is the
+    proof, and a fact nobody can check is just a claim. An entry written
+    before the pool carried URLs simply has no link, which is why this
+    reads the field rather than assuming it.
+    """
     lead = _pick(_HIGHLIGHT_LEADS, seed)
     fact = soften(plain_text(strip_urls(highlight.get("text", ""))))
     stamp = highlight.get("timestamp", "")
+    url = highlight.get("url") or ""
+    mode = ("always" if include_links is True
+            else "off" if include_links is False else str(include_links))
+
+    if url and wants_link(mode, url):
+        # With a card, X shows the episode title and thumbnail, so naming
+        # the title again in the text spends characters on something the
+        # reader can already see. The moment is what the card cannot show.
+        if "t=" in url:
+            tail = f"\n\nJump to {stamp}:\n{url}"
+        else:
+            tail = (f"\n\nFull episode — scrub to {stamp} "
+                    f"(X can't jump to a timestamp):\n{url}")
+        budget = limit - len(tail) + len(url) - URL_WEIGHT
+        return f"{lead}\n\n{_fit(fact, max(80, budget))}{tail}".strip()
+
     title = _fit(str(highlight.get("title", "")), 60)
     return f"{lead}\n\n{fact}\n\n{stamp} · {title}".strip()
 
@@ -688,6 +742,61 @@ def is_a_miss(answer: str) -> bool:
     unrelated episode.
     """
     return NOT_FOUND_ANSWER.lower() in (answer or "").lower()
+
+
+_MISS_SENTENCE = re.compile(re.escape(NOT_FOUND_ANSWER) + r"[.!]?", re.I)
+
+# Openers for an answer that admits it has not got the exact thing and then
+# gives the nearest thing it has.
+_NEARLY = (
+    "Not in those words — the closest thing indexed:",
+    "Not that exact line. What is in the episodes:",
+    "Not word for word, but the archive has this:",
+)
+
+
+def salvage(answer: str) -> str | None:
+    """The useful half of an answer that opens by admitting a miss.
+
+    The model very often writes "I couldn't find that in the episodes I've
+    indexed" and then, in the same breath, gives the closest thing it did
+    find. Publishing only the first sentence throws away the half that is
+    worth reading — and it happened in public on a question the archive
+    could partly answer.
+
+    Returns None when what follows is nothing, or is itself a refusal, in
+    which case the honest bare miss is the right reply.
+    """
+    text = (answer or "").strip()
+    found = _MISS_SENTENCE.search(text)
+    if not found:
+        return None
+    rest = (text[:found.start()] + " " + text[found.end():]).strip()
+    rest = _WHITESPACE.sub(" ", rest).strip(" -–—:")
+
+    # The substance often sits behind one more disclaimer — "The excerpts
+    # don't contain X in that specific way. What I do have is…" — so lead
+    # sentences that only restate the miss are dropped until something
+    # says a thing. Only from the front: a caveat the model puts after its
+    # answer is part of the answer.
+    sentences = re.split(r"(?<=[.!?])\s+", rest)
+    while sentences and _DEFLECTION.search(sentences[0]):
+        sentences.pop(0)
+    rest = " ".join(sentences).strip()
+
+    # Long enough to say something. A trailing fragment like "But it may be
+    # elsewhere." is not an answer, and reads worse than admitting the miss.
+    if len(rest) < 100 or is_a_deflection(rest):
+        return None
+
+    # And it has to name a moment. This is the line between "here is the
+    # nearest thing, at 45:36" and "feel free to ask about something else
+    # and I will do my best to help" — which is padding, is what the model
+    # writes when it has nothing, and passes every length test. A citation
+    # is also what makes the reply checkable, which is the whole promise.
+    if not _CITES_A_TIME.search(rest):
+        return None
+    return rest
 
 
 def _seconds(stamp: str) -> int:
@@ -770,10 +879,20 @@ def format_reply(answer: str, hits: list, include_links: bool | str = False,
     """
     answer = soften(plain_text(strip_urls(answer)))
     if is_a_miss(answer):
-        # Just the sentence. The model tends to follow it with an offer to
-        # try another question, which is fine on a web page and reads as
-        # padding in a reply — and gets cut mid-word by the length budget.
-        return _pick(_MISS_PHRASINGS, answer)
+        # An admitted miss is often followed by the nearest thing the
+        # archive does have, and that half answers the question. Someone
+        # quoted a tweet of Ansem's and asked about it; the model said it
+        # could not find that line and then described what he had actually
+        # said on the show — and only the first sentence went out.
+        nearest = salvage(answer)
+        if nearest:
+            answer = f"{_pick(_NEARLY, answer)}\n\n{nearest}"
+        else:
+            # Just the sentence. The model tends to follow a true miss with
+            # an offer to try another question, which is fine on a web page
+            # and reads as padding in a reply — and gets cut mid-word by
+            # the length budget.
+            return _pick(_MISS_PHRASINGS, answer)
     if not hits:
         return _fit(answer, limit - 22)
 
@@ -844,6 +963,11 @@ class BotState:
     # Indexes into the highlight pool that have already been offered, so the
     # account does not post the same fact twice.
     highlights_used: list = field(default_factory=list)
+    # The last real question each author asked, so "try again" can mean what
+    # it plainly means. Without it that reply is not a question and not a
+    # compliment, and the bot answered it with an unrelated fact about
+    # OnlyFans earnings — in a thread where someone was asking it to retry.
+    last_question: dict = field(default_factory=dict)
     spent_usd: float = 0.0
     # Spend is tracked per UTC day as well as cumulatively, because the
     # reply cap does not bound it. Replies are the expensive part but not
@@ -1107,7 +1231,9 @@ class MentionBot:
         if found:
             logger.info("%s is a priority account — offering a fact instead "
                         "of silence", mention.author_id)
-            return format_highlight(found, mention.id)
+            return format_highlight(found, mention.id,
+                                     self.include_links,
+                                     self._post_limit)
         return None
 
     def _next_highlight(self, seed: str) -> dict | None:
@@ -1192,6 +1318,22 @@ class MentionBot:
                         mention.id, wanted)
             return f"I don't have episode {wanted} indexed."
 
+        # "try again" means the last thing they asked, not a new question.
+        # Answered before the not-a-question branch, which would otherwise
+        # hand a retry request an unrelated fact from the highlight pool —
+        # which is exactly what it did, in a live thread, mid-conversation.
+        if asks_to_retry(question):
+            earlier = self.state.last_question.get(str(mention.author_id))
+            if not earlier:
+                # State is ephemeral, so this is a normal outcome after a
+                # deploy rather than an error. Silence beats guessing.
+                logger.info("%s asked to retry, but nothing is remembered "
+                            "for that author — staying quiet", mention.id)
+                return None
+            logger.info("%s asked to retry — re-answering %r",
+                        mention.id, earlier[:60])
+            question = earlier
+
         if (len(question) < self._min_question
                 or not looks_like_a_question(question)):
             # Not a question, so retrieval would have nothing to work with.
@@ -1204,10 +1346,16 @@ class MentionBot:
             if found:
                 logger.info("%s is not a question — offering a highlight",
                             mention.id)
-                return format_highlight(found, mention.id)
+                return format_highlight(found, mention.id,
+                                     self.include_links,
+                                     self._post_limit)
             logger.info("%s is not a question (%r) — staying quiet",
                         mention.id, question[:60])
             return None
+
+        # Remembered before the answer, so a retry works even when the first
+        # attempt is what went wrong.
+        self.state.last_question[str(mention.author_id)] = question
 
         priority = mention.author_id in self._priority
         result = await self._index.search(
@@ -1219,7 +1367,8 @@ class MentionBot:
         # A miss is the reply people screenshot as proof it does not work, so
         # it is worth $0.008 to be sure, and only when retrieval actually
         # found something to work with.
-        if is_a_miss(result.answer) and len(result.hits) >= 3:
+        if (is_a_miss(result.answer) and not salvage(result.answer)
+                and len(result.hits) >= 3):
             logger.info("%s missed on the first pass — asking again",
                         mention.id)
             retry = await self._index.search(

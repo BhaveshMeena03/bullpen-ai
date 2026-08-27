@@ -32,7 +32,8 @@ sys.path.insert(0, str(ROOT))
 from anthropic import AsyncAnthropic  # noqa: E402
 
 from app.config import get_settings  # noqa: E402
-from app.podcast import _timestamp  # noqa: E402
+from app.podcast import _deep_link, _timestamp  # noqa: E402
+from app.x_bot import _seconds  # noqa: E402
 
 EPISODES = ROOT / "data" / "episodes.json"
 OUT = ROOT / "data" / "highlights.json"
@@ -91,19 +92,70 @@ async def highlights_for(client, model, episode: dict, n: int) -> list[dict]:
         said, stamp = said.strip(" -–—"), stamp.strip().strip("[]")
         if len(said) < 40 or not stamp:
             continue
-        out.append({
-            "episode_id": episode["episode_id"],
-            "title": episode["title"],
-            "timestamp": stamp,
-            "text": said,
-        })
+        out.append(_entry(episode, stamp, said))
     return out
+
+
+def _entry(episode: dict, stamp: str, said: str) -> dict:
+    """One pool entry, including where to watch the moment.
+
+    The link is built here rather than at reply time so the pool can be
+    read and checked before any of it is posted — same reason the facts
+    are written ahead. _deep_link is the one the search path uses, so a
+    highlight and an answer citing the same second produce the same URL.
+    """
+    try:
+        seconds = _seconds(stamp)
+    except ValueError:
+        # A malformed timestamp costs the link, not the highlight.
+        return {"episode_id": episode["episode_id"], "title": episode["title"],
+                "timestamp": stamp, "text": said}
+    return {
+        "episode_id": episode["episode_id"],
+        "title": episode["title"],
+        "timestamp": stamp,
+        "text": said,
+        "url": _deep_link(episode["url"], episode.get("platform", ""), seconds),
+    }
+
+
+def relink(pool: list[dict], episodes: list[dict]) -> tuple[list[dict], int]:
+    """Add the watch link to entries built before the pool carried one.
+
+    Rebuilding the pool instead would cost a model call per episode and,
+    worse, would replace facts that were read before they were trusted
+    with new ones that nobody has looked at.
+    """
+    by_id = {e["episode_id"]: e for e in episodes}
+    added = 0
+    for entry in pool:
+        if entry.get("url"):
+            continue
+        episode = by_id.get(entry.get("episode_id"))
+        if not episode:
+            continue
+        built = _entry(episode, entry.get("timestamp", ""), entry.get("text", ""))
+        if built.get("url"):
+            entry["url"] = built["url"]
+            added += 1
+    return pool, added
 
 
 async def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--per-episode", type=int, default=2)
+    ap.add_argument("--relink", action="store_true",
+                    help="only add missing watch links to the existing pool "
+                         "— no model calls, no new facts, nothing to review")
     args = ap.parse_args()
+
+    if args.relink:
+        pool = json.loads(OUT.read_text())
+        pool, added = relink(pool, json.loads(EPISODES.read_text()))
+        OUT.write_text(json.dumps(pool, ensure_ascii=False, indent=2))
+        have = sum(1 for h in pool if h.get("url"))
+        print(f"  linked {added} more · {have}/{len(pool)} entries have a URL")
+        return 0
 
     settings = get_settings()
     client = AsyncAnthropic(api_key=settings.anthropic_api_key)
