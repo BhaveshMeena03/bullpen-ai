@@ -584,8 +584,14 @@ def split_meta(question: str) -> tuple[str | None, str]:
 # in your own comment: the reply lands under that comment, where everyone
 # reading the post can see it. These read as an introduction rather than a
 # question, because that is what you would actually type there.
+# Anchored at the END rather than over the whole message: people put a
+# greeting first. "hey gm aman ☀️ @mbubbleSearch introduce yourself" did
+# not match a whole-message pattern, and then read as a compliment — so
+# the introduction came back as an unrelated fact about Anthropic.
+#
+# Not a bare search either: "did he say hi to banks" would summon.
 _SUMMONS = re.compile(
-    r"""(?ix)^\W*
+    r"""(?ix)(?:^|\W)
     (?: introduce\s+(?:yourself|urself)
       | tell\s+(?:them|him|her|us|everyone|the\s+\w+)\s+
         (?:what\s+(?:you|u)\s+(?:do|are)|about\s+(?:yourself|urself))
@@ -598,7 +604,7 @@ _SUMMONS = re.compile(
 
 def summons(question: str) -> bool:
     """Is this asking the account to introduce itself to a thread?"""
-    return bool(_SUMMONS.match((question or "").strip()))
+    return bool(_SUMMONS.search((question or "").strip()))
 
 
 def automation_answer(question: str, site: str | None = None) -> str | None:

@@ -2955,7 +2955,11 @@ def test_the_account_can_be_summoned_to_introduce_itself():
     for phrase in ("introduce yourself", "tell them what you do",
                    "tell him what you do", "tell everyone what you do",
                    "tell us about yourself", "say hi", "do your thing",
-                   "show them what you can do"):
+                   "show them what you can do",
+                   # A greeting in front is how it is actually typed. This
+                   # exact message got a fact about Anthropic instead.
+                   "hey gm aman \u2600\ufe0f introduce yourself",
+                   "gm everyone tell them what you do"):
         assert summons(phrase), phrase
         reply = automation_answer(phrase, "example.com")
         assert reply and "automated" in reply.lower()
@@ -2965,7 +2969,9 @@ def test_the_account_can_be_summoned_to_introduce_itself():
     # A real question must never be mistaken for a summons.
     for question in ("what did ansem say about solana", "who is kimchi",
                      "tell me about kimchi", "tell them about solana",
-                     "introduce me to the show"):
+                     "introduce me to the show",
+                     # Matching anywhere would summon on this one.
+                     "did he say hi to banks"):
         assert not summons(question), question
 
     # And the direct question still answers the way it did.
