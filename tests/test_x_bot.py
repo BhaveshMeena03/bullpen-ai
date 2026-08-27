@@ -2118,6 +2118,7 @@ def test_the_about_answer_says_where_it_came_from():
 
     got = about_answer("what is this", None)
     assert "AnsemHack Clawrena" in got
+    assert "Market Bubble" in got and "Bullpen" in got
 
 
 @pytest.mark.anyio

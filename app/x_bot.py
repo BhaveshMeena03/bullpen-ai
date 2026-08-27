@@ -383,7 +383,8 @@ _ABOUT_PHRASINGS = (
     "in there.",
 )
 
-_ABOUT_ORIGIN = "Built for the AnsemHack Clawrena."
+_ABOUT_ORIGIN = ("Built for the AnsemHack Clawrena, and for the Market "
+                 "Bubble and Bullpen ecosystem.")
 
 
 def pinned_answer(question: str, contract_address: str | None,
