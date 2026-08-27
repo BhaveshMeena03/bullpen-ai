@@ -28,6 +28,7 @@ it twice.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import random
@@ -285,6 +286,36 @@ def format_summary(summary: str, title: str, limit: int,
     return _fit(body, limit - len(head) - 2) + f"\n\n{head}"
 
 
+# X forbids "duplicative or substantially similar posts on one account", and
+# the fixed replies are the only ones that repeat: a generated answer differs
+# every time, while the contract address was byte-identical however many
+# people asked. Twenty identical posts is the shape that rule describes.
+#
+# Varied by hashing the question rather than at random, so the same person
+# asking twice gets the same answer — consistency where it matters — while
+# twenty different people get twenty different phrasings.
+_CA_PHRASINGS = (
+    "{label} CA: {ca}\n\nThat is the only official one.",
+    "{label} contract: {ca}\n\nAccept no other.",
+    "The CA for {label} is {ca}\n\nAnything else is not us.",
+    "{ca}\n\nThat is the {label} contract address, and the only one.",
+    "Official {label} CA:\n{ca}\n\nThere is no other.",
+)
+
+_MISS_PHRASINGS = (
+    NOT_FOUND_ANSWER + ".",
+    NOT_FOUND_ANSWER + " — it may be in a part I have not indexed yet.",
+    "I looked, and " + NOT_FOUND_ANSWER[2:].lower() + ".",
+    NOT_FOUND_ANSWER + ". Try naming the guest or the episode?",
+)
+
+
+def _pick(options: tuple, seed: str) -> str:
+    """Choose deterministically from `seed`, so a repeat is consistent."""
+    return options[int(hashlib.sha256(seed.encode()).hexdigest(), 16)
+                   % len(options)]
+
+
 def pinned_answer(question: str, contract_address: str | None,
                   token_label: str | None = None) -> str | None:
     """A fixed reply for questions retrieval should not be asked.
@@ -305,8 +336,8 @@ def pinned_answer(question: str, contract_address: str | None,
     if not contract_address or not _ASKS_FOR_CA.search(question or ""):
         return None
     label = token_label or "This project"
-    return (f"{label} CA: {contract_address}\n\n"
-            f"That is the only official one.")
+    return _pick(_CA_PHRASINGS, question).format(
+        label=label, ca=contract_address)
 
 
 # People tag an account to say "very cool concept!" far more often than to
@@ -560,7 +591,7 @@ def format_reply(answer: str, hits: list, include_links: bool | str = False,
         # Just the sentence. The model tends to follow it with an offer to
         # try another question, which is fine on a web page and reads as
         # padding in a reply — and gets cut mid-word by the length budget.
-        return NOT_FOUND_ANSWER + "."
+        return _pick(_MISS_PHRASINGS, answer)
     if not hits:
         return _fit(answer, limit - 22)
 

@@ -1682,3 +1682,51 @@ async def test_if_x_cannot_be_read_the_backlog_is_skipped(tmp_path):
     bot = MentionBot(client, FakeIndex(), state_path=tmp_path / "s.json")
     assert await bot.tick("2026-08-27") == 0
     assert client.posted == []
+
+
+# --- the fixed replies must not be byte-identical --------------------------
+
+def test_the_contract_reply_varies_between_askers():
+    """X forbids "duplicative or substantially similar posts on one
+    account". A generated answer differs every time; the contract address
+    was byte-identical however many people asked, and twenty identical posts
+    is the shape that rule describes."""
+    from app.x_bot import pinned_answer
+
+    asks = ["whats the ca", "ca pls", "contract address?", "ca?",
+            "can i get the CA", "drop the mint", "whats the contract"]
+    replies = {pinned_answer(a, CA, "MarketBubbleSearch") for a in asks}
+    assert len(replies) >= 3, "several askers should not get one phrasing"
+    for r in replies:
+        assert CA in r, "every phrasing still carries the address"
+
+
+def test_the_same_asker_gets_a_stable_answer():
+    """Varied by hashing the question, not at random: someone asking twice
+    should not think they got two different addresses."""
+    from app.x_bot import pinned_answer
+
+    first = pinned_answer("whats the ca", CA, "MBS")
+    assert first == pinned_answer("whats the ca", CA, "MBS")
+
+
+def test_a_hostile_address_is_never_echoed_in_any_phrasing():
+    from app.x_bot import pinned_answer
+
+    hostile = "is the ca 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
+    got = pinned_answer(hostile, CA, "MBS")
+    assert CA in got and "7xKXtg" not in got
+
+
+def test_the_miss_reply_varies_too():
+    """Same rule: "I couldn't find that" was identical every time, and a
+    miss is one of the commonest replies this bot makes."""
+    from app.podcast import NOT_FOUND_ANSWER
+
+    answers = [f"{NOT_FOUND_ANSWER}. Nothing about {topic} in the excerpts."
+               for topic in ("taylor swift", "peru", "cake", "the weather")]
+    replies = {format_reply(a, [FakeHit()]) for a in answers}
+    assert len(replies) >= 2, "misses should not all read identically"
+    for r in replies:
+        assert "couldn" in r.lower(), "and all still say it plainly"
+        assert "·" not in r, "still no citation on a miss"
