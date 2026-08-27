@@ -39,7 +39,12 @@ from app.config import get_settings  # noqa: E402
 from app.podcast import PodcastIndex  # noqa: E402
 from app.summaries import SummaryStore  # noqa: E402
 from app.x_api import OutOfCreditsError, XClient, XCredentials  # noqa: E402
-from app.x_bot import MentionBot, weighted_length  # noqa: E402
+from app.x_bot import (  # noqa: E402
+    MentionBot,
+    question_from,
+    summary_request,
+    weighted_length,
+)
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s  %(levelname)-7s %(message)s",
@@ -130,10 +135,14 @@ async def main() -> int:
                 continue
             for line in text.splitlines():
                 print(f"     | {line}")
-            # As X counts it, against the configured ceiling — not the
-            # hardcoded 280 this printed while composing 900-character
-            # replies that were entirely within budget.
-            print(f"     {weighted_length(text)}/{bot._post_limit} chars")
+            # As X counts it, against the ceiling that actually applies.
+            # Summaries get a larger one, and printing every summary as
+            # "2949/1500" reads as an overflow that is not happening.
+            summary = summary_request(question_from(mention.text)) is not None
+            limit = bot._summary_limit if summary else bot._post_limit
+            over = "  OVER LIMIT" if weighted_length(text) > limit else ""
+            print(f"     {weighted_length(text)}/{limit} chars"
+                  f"{' (summary)' if summary else ''}{over}")
         print(f"\n  X spend this process: ${client.spent_usd:.3f}\n")
         return 0
 
