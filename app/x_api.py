@@ -229,6 +229,41 @@ class XClient:
         self.spent_usd += PRICE_OWNED_READ
         return response.json().get("data") or {}
 
+    async def replied_to(self, limit: int = 100) -> set[str]:
+        """Mention ids this account has already answered.
+
+        Read back from X rather than remembered, because remembering does
+        not survive a restart: Render's disk is ephemeral, so every deploy
+        hands the bot an empty state file. It answered a question, was
+        redeployed, saw the question was still recent, and answered it
+        again — three times on one mention before anyone noticed.
+
+        The account's own timeline is the authoritative record of what has
+        been answered, and it cannot be lost. An owned read, so $0.001 per
+        post, once per cold start.
+        """
+        url = f"{API}/users/{self.bot_user_id}/tweets"
+        params = {"max_results": str(max(5, min(limit, 100))),
+                  "tweet.fields": "referenced_tweets"}
+        async with httpx.AsyncClient(timeout=30) as http:
+            response = await http.get(
+                url, params=params,
+                headers={"Authorization":
+                         self._credentials.header("GET", url, params)})
+        if response.status_code != 200:
+            # Not fatal, but say so: without this the bot is one restart
+            # away from repeating itself in public.
+            logger.warning("could not read own replies (%s) — duplicate "
+                           "protection is degraded this cycle",
+                           response.status_code)
+            return set()
+        posts = response.json().get("data") or []
+        self.spent_usd += len(posts) * PRICE_OWNED_READ
+        return {ref["id"]
+                for post in posts
+                for ref in (post.get("referenced_tweets") or [])
+                if ref.get("type") == "replied_to"}
+
     async def mentions(self, since_id: str | None = None,
                        limit: int = 20) -> list[Mention]:
         """Posts that tagged the bot, newest last.

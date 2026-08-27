@@ -218,6 +218,11 @@ class FakeClient:
         self.spent_usd += len(got) * PRICE_OWNED_READ
         return got
 
+    async def replied_to(self, limit=100):
+        """X's record of what this account has answered. Empty by default;
+        RestartingClient models an account with history."""
+        return set()
+
     async def reply(self, text, to_post_id, allow_link=False):
         # Mirrors the real client: the no-URL guard applies only when links
         # were not deliberately enabled.
@@ -1608,3 +1613,72 @@ def test_polling_is_frequent_but_not_instant():
     assert min(pauses) >= 10, "not so fast it looks automated"
     assert max(pauses) <= 30, "not so slow the question sits unseen"
     assert len(set(round(p, 3) for p in pauses)) > 400, "still jittered"
+
+
+# --- never answer the same mention twice, even across a restart ------------
+
+class RestartingClient(FakeClient):
+    """Knows what it has already posted, the way X does."""
+
+    def __init__(self, batches):
+        super().__init__(batches)
+        self._answered: set[str] = set()
+
+    async def replied_to(self, limit=100):
+        return set(self._answered)
+
+    async def reply(self, text, to_post_id, allow_link=False):
+        self._answered.add(to_post_id)
+        return await super().reply(text, to_post_id, allow_link)
+
+
+@pytest.mark.anyio
+async def test_a_redeploy_does_not_answer_the_same_question_again(tmp_path):
+    """The bug that put three replies under one question.
+
+    The replied-set lives in the state file that a deploy wipes, so
+    "answer anything recent" meant re-answering what had already been
+    answered — once per deploy, and there were three.
+    """
+    fresh = Mention(id="500", text="@bot what did tjr say", author_id="a",
+                    conversation_id="500", created_at=_iso(4))
+
+    first = RestartingClient([[fresh], [fresh]])
+    bot = MentionBot(first, FakeIndex(), state_path=tmp_path / "a.json")
+    assert await bot.tick("2026-08-27") == 1
+
+    # Redeploy: same account, brand new state file.
+    second = RestartingClient([[fresh]])
+    second._answered = set(first._answered)
+    restarted = MentionBot(second, FakeIndex(), state_path=tmp_path / "b.json")
+    assert await restarted.tick("2026-08-27") == 0, "already answered"
+    assert second.posted == []
+
+
+@pytest.mark.anyio
+async def test_a_redeploy_still_answers_a_question_it_has_not_seen(tmp_path):
+    answered = Mention(id="500", text="@bot what did tjr say", author_id="a",
+                       conversation_id="500", created_at=_iso(4))
+    new = Mention(id="600", text="@bot what did ansem say", author_id="b",
+                  conversation_id="600", created_at=_iso(2))
+    client = RestartingClient([[answered, new], [answered, new]])
+    client._answered = {"500"}
+    bot = MentionBot(client, FakeIndex(), state_path=tmp_path / "s.json")
+    assert await bot.tick("2026-08-27") == 1
+    assert [p for p, _ in client.posted] == ["600"]
+
+
+@pytest.mark.anyio
+async def test_if_x_cannot_be_read_the_backlog_is_skipped(tmp_path):
+    """Failing safe: without the record, repeating itself in public is worse
+    than missing a question."""
+    class Broken(FakeClient):
+        async def replied_to(self, limit=100):
+            raise RuntimeError("timeout")
+
+    fresh = Mention(id="500", text="@bot what did tjr say", author_id="a",
+                    conversation_id="500", created_at=_iso(3))
+    client = Broken([[fresh]])
+    bot = MentionBot(client, FakeIndex(), state_path=tmp_path / "s.json")
+    assert await bot.tick("2026-08-27") == 0
+    assert client.posted == []

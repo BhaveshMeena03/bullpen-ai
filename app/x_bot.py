@@ -728,6 +728,28 @@ class MentionBot:
             return 0
 
         if self.state.since_id is None:
+            # Seed from X before deciding anything. The replied-set lives in
+            # the same state file that a deploy wipes, so "answer anything
+            # recent" meant re-answering questions that had already been
+            # answered — three replies to one mention across three deploys.
+            #
+            # The account's own timeline cannot be lost, so it is the record
+            # to trust here rather than local memory.
+            try:
+                already = await self._client.replied_to()
+            except Exception:                                  # noqa: BLE001
+                logger.exception("could not seed from X — skipping the "
+                                 "backlog rather than risk repeating it")
+                already = None
+            if already is None:
+                self.state.since_id = mentions[-1].id
+                self.state.save(self._state_path)
+                return 0
+            if already:
+                self.state.replied = sorted(already)[-500:]
+                logger.info("seeded %d already-answered mention(s) from X",
+                            len(already))
+
             # Cold start. Render's disk is ephemeral, so this happens on
             # every deploy — not only the first ever run.
             #
