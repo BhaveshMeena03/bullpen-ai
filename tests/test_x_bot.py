@@ -2943,3 +2943,30 @@ def test_asking_nothing_is_distinguished_from_asking_something():
     for not_asked in ("this tool is great", "check this out everyone",
                       "intern you really need to try this"):
         assert not asks_something(not_asked), not_asked
+
+
+def test_the_account_can_be_summoned_to_introduce_itself():
+    """For dropping the description into someone else's thread: you tag the
+    bot in your own comment, and the reply lands under it where the thread
+    can see it. The phrases read as an introduction, because that is what
+    you would actually type there."""
+    from app.x_bot import automation_answer, summons
+
+    for phrase in ("introduce yourself", "tell them what you do",
+                   "tell him what you do", "tell everyone what you do",
+                   "tell us about yourself", "say hi", "do your thing",
+                   "show them what you can do"):
+        assert summons(phrase), phrase
+        reply = automation_answer(phrase, "example.com")
+        assert reply and "automated" in reply.lower()
+        # Not "Yes —": nobody asked it a question.
+        assert not reply.startswith("Yes")
+
+    # A real question must never be mistaken for a summons.
+    for question in ("what did ansem say about solana", "who is kimchi",
+                     "tell me about kimchi", "tell them about solana",
+                     "introduce me to the show"):
+        assert not summons(question), question
+
+    # And the direct question still answers the way it did.
+    assert automation_answer("are you a bot", "example.com").startswith("Yes")

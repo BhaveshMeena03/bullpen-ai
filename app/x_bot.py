@@ -579,6 +579,28 @@ def split_meta(question: str) -> tuple[str | None, str]:
     return None, text
 
 
+# Phrases for summoning the description into somebody else's thread. The
+# bot may only reply where it was mentioned, so this works by mentioning it
+# in your own comment: the reply lands under that comment, where everyone
+# reading the post can see it. These read as an introduction rather than a
+# question, because that is what you would actually type there.
+_SUMMONS = re.compile(
+    r"""(?ix)^\W*
+    (?: introduce\s+(?:yourself|urself)
+      | tell\s+(?:them|him|her|us|everyone|the\s+\w+)\s+
+        (?:what\s+(?:you|u)\s+(?:do|are)|about\s+(?:yourself|urself))
+      | (?:say|do)\s+(?:hi|hello|your\s+thing)
+      | show\s+(?:them|him|her|us|everyone)\s+(?:what\s+(?:you|u)\s+
+        (?:do|can\s+do)|yourself)
+      | what\s+(?:do|can)\s+(?:you|u)\s+do\s+here
+    )\W*$""")
+
+
+def summons(question: str) -> bool:
+    """Is this asking the account to introduce itself to a thread?"""
+    return bool(_SUMMONS.match((question or "").strip()))
+
+
 def automation_answer(question: str, site: str | None = None) -> str | None:
     """Yes, and who runs it.
 
@@ -587,11 +609,20 @@ def automation_answer(question: str, site: str | None = None) -> str | None:
     a product blurb reads as dodging it — which is the one impression an
     automated account cannot afford to give.
     """
+    if summons(question):
+        # Asked to introduce itself, so the whole message is the ask. The
+        # opener differs because "Yes —" answers a question nobody asked.
+        return _automation_text(site, "I'm automated, and run by Lex.")
     found = _ASKS_IF_AUTOMATED.search(question or "")
     if not found or not _is_the_whole_question(found, question):
         return None
+    return _automation_text(site)
+
+
+def _automation_text(site: str | None,
+                     lead: str = "Yes — automated, and run by Lex.") -> str:
     body = (
-        "Yes — automated, and run by Lex.\n\n"
+        f"{lead}\n\n"
         "I'm a search engine over the Market Bubble archive: tag me with a "
         "question about anything said on the show and I answer from the "
         "transcripts, with the timestamp it was said at.\n\n"
