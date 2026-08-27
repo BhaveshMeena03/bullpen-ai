@@ -110,9 +110,12 @@ services:
       - key: X_BOT_DAILY_SPEND_CAP_USD
         value: "12.0"
       # Answer only badged accounts. Filters throwaway spam; also ignores
-      # genuine people who do not pay X for a checkmark.
+      # genuine people who do not pay X for a checkmark. On while the reply
+      # quality is still being watched, and announced as such — "open to
+      # everyone soon" is a promise, so it has to be true that it is not
+      # open to everyone yet.
       - key: X_BOT_VERIFIED_ONLY
-        value: "false"
+        value: "true"
       # Premium accounts can post far past 280, and automated accounts get
       # the same allowance as human ones. Confirmed by posting one: a
       # 900-character reply went out fine. 1500 rather than the 25,000 the
