@@ -613,14 +613,26 @@ def test_real_questions_get_through(text):
 
 @pytest.mark.anyio
 async def test_a_compliment_never_reaches_the_model(tmp_path):
-    """It must cost nothing — that is the point of gating before retrieval."""
+    """A compliment gets a fact from the pre-written pool, so it still costs
+    no model call — that is the point of gating before retrieval."""
     client = FakeClient([[mention("1")],
                          [mention("2", text="@bot very cool concept!")]])
     index = FakeIndex()
-    bot = MentionBot(client, index, state_path=tmp_path / "s.json")
+    bot = MentionBot(client, index, highlights=POOL,
+                     state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-26")
+    await bot.tick("2026-08-26")
+    assert index.asked == [], "retrieval must not have been called"
+
+
+@pytest.mark.anyio
+async def test_a_compliment_is_silent_with_no_pool(tmp_path):
+    client = FakeClient([[mention("1")],
+                         [mention("2", text="@bot very cool concept!")]])
+    bot = MentionBot(client, FakeIndex(), highlights=[],
+                     state_path=tmp_path / "s.json")
     await bot.tick("2026-08-26")
     assert await bot.tick("2026-08-26") == 0
-    assert index.asked == [], "retrieval must not have been called"
     assert client.posted == []
 
 
@@ -930,10 +942,16 @@ async def test_a_permanently_broken_mention_is_eventually_stepped_over(tmp_path)
 
 @pytest.mark.anyio
 async def test_a_skipped_mention_still_advances(tmp_path):
-    """Deliberate skips are handled, not failures — the queue must move."""
+    """Deliberate skips are handled, not failures — the queue must move.
+
+    No highlight pool here, so "gm" is genuinely skipped rather than
+    answered with a fact; the point is that the one behind it still gets
+    through and since_id lands past both.
+    """
     client = FakeClient([[mention("1")],
                          [mention("2", text="@bot gm"), mention("3")]])
-    bot = MentionBot(client, FakeIndex(), state_path=tmp_path / "s.json")
+    bot = MentionBot(client, FakeIndex(), highlights=[],
+                     state_path=tmp_path / "s.json")
     await bot.tick("2026-08-26")
     assert await bot.tick("2026-08-26") == 1
     assert bot.state.since_id == "3"
@@ -1800,7 +1818,9 @@ async def test_a_deflection_reaches_no_one(tmp_path):
         answer="I don't have enough information to answer this. The excerpts "
                "don't contain that, around 1:31:26. Could you ask about a "
                "specific moment?")
-    bot = MentionBot(client, deflecting, state_path=tmp_path / "s.json")
+    # No pool, so the only possible reply is the deflection itself.
+    bot = MentionBot(client, deflecting, highlights=[],
+                     state_path=tmp_path / "s.json")
     await bot.tick("2026-08-27")
     assert await bot.tick("2026-08-27") == 0
     assert client.posted == []
@@ -1882,3 +1902,95 @@ async def test_the_same_person_asking_twenty_times_is_still_capped(tmp_path):
                      state_path=tmp_path / "s.json")
     total = sum([await bot.tick("2026-08-27") for _ in range(4)])
     assert total <= 10
+
+
+# --- a compliment gets a fact, not silence ---------------------------------
+
+POOL = [
+    {"text": "Ansem said he made $1.37 million from a creator fee",
+     "timestamp": "1:17:15", "title": "Market Bubble Ep 10"},
+    {"text": "Luca sold Artifact to Nike for $2.5 million",
+     "timestamp": "1:39:44", "title": "Market Bubble Ep 10"},
+    {"text": "Kendrick Perkins turned $250,000 into roughly $2 million",
+     "timestamp": "1:40:59", "title": "Market Bubble Ep 12"},
+]
+
+
+@pytest.mark.anyio
+async def test_a_compliment_gets_a_fact(tmp_path):
+    """Silence in front of someone who just said something nice is a wasted
+    moment — they are looking at the account, and a demonstration convinces
+    where a thank-you does not."""
+    client = FakeClient([[mention("1")],
+                         [mention("2", text="@bot very cool concept!")]])
+    index = FakeIndex()
+    bot = MentionBot(client, index, highlights=POOL,
+                     state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-27")
+    assert await bot.tick("2026-08-27") == 1
+    assert index.asked == [], "no retrieval, no model call"
+
+    reply = client.posted[0][1]
+    assert any(h["text"][:30] in reply for h in POOL), "carries a real fact"
+    assert any(h["timestamp"] in reply for h in POOL), "and its moment"
+
+
+@pytest.mark.anyio
+async def test_the_same_fact_is_never_offered_twice(tmp_path):
+    """Posting the same fact twice is the duplicative-content problem in a
+    different costume."""
+    batches = [[mention("1")]] + [[mention(str(i), text="@bot nice work")]
+                                  for i in range(2, 5)]
+    client = FakeClient(batches)
+    bot = MentionBot(client, FakeIndex(), highlights=POOL,
+                     state_path=tmp_path / "s.json")
+    for _ in range(4):
+        await bot.tick("2026-08-27")
+
+    facts = [next(h["text"] for h in POOL if h["text"][:30] in body)
+             for _, body in client.posted]
+    assert len(facts) == len(set(facts)), f"repeated a fact: {facts}"
+
+
+@pytest.mark.anyio
+async def test_the_pool_reshuffles_once_it_is_spent(tmp_path):
+    """Three facts and five compliments: it must keep answering rather than
+    fall silent once every one has been used."""
+    batches = [[mention("1")]] + [[mention(str(i), text="@bot lfg")]
+                                  for i in range(2, 8)]
+    client = FakeClient(batches)
+    bot = MentionBot(client, FakeIndex(), highlights=POOL,
+                     state_path=tmp_path / "s.json")
+    for _ in range(7):
+        await bot.tick("2026-08-27")
+    assert len(client.posted) >= 5
+
+
+@pytest.mark.anyio
+async def test_no_pool_means_silence_not_a_crash(tmp_path):
+    """An empty or missing pool must fall back to the old behaviour."""
+    client = FakeClient([[mention("1")],
+                         [mention("2", text="@bot very cool")]])
+    bot = MentionBot(client, FakeIndex(), highlights=[],
+                     state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-27")
+    assert await bot.tick("2026-08-27") == 0
+    assert client.posted == []
+
+
+def test_a_highlight_reply_carries_no_link():
+    """No link: a fact nobody asked for should not also cost the URL rate,
+    and there is nothing to click through to mid-sentence."""
+    from app.x_bot import format_highlight
+
+    out = format_highlight(POOL[0], "seed")
+    assert "http" not in out
+    assert "1:17:15" in out
+
+
+def test_highlight_openers_vary():
+    from app.x_bot import format_highlight
+
+    leads = {format_highlight(POOL[0], s).splitlines()[0]
+             for s in ("a", "b", "c", "d", "e", "f", "g")}
+    assert len(leads) >= 3, "twenty compliments should not open identically"

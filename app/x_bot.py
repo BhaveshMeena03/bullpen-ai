@@ -518,6 +518,46 @@ _DEFLECTION = re.compile(
     )""")
 
 
+HIGHLIGHTS = ROOT / "data" / "highlights.json"
+
+# Openers for an unprompted fact, so twenty compliments do not produce
+# twenty posts beginning the same way.
+_HIGHLIGHT_LEADS = (
+    "thanks 🙏 here's one people miss:",
+    "appreciate it — one from the archive:",
+    "🙏 here's a bit worth hearing:",
+    "cheers. this one is worth a listen:",
+    "thank you 🙏 one you might have skipped:",
+)
+
+
+def load_highlights(path: Path = HIGHLIGHTS) -> list[dict]:
+    """Moments the bot can offer when nobody asked a question.
+
+    Written ahead of time by scripts/make_highlights.py and read here,
+    rather than generated per reply: a model call at reply time costs money,
+    adds latency, and can produce a dud in public. A pool that was read
+    before it went anywhere cannot.
+    """
+    if not path.exists():
+        return []
+    try:
+        return json.loads(path.read_text())
+    except json.JSONDecodeError:
+        logger.warning("highlights.json is unreadable — compliments will "
+                       "get silence rather than a bad fact")
+        return []
+
+
+def format_highlight(highlight: dict, seed: str) -> str:
+    """A fact, its moment, and the episode it came from."""
+    lead = _pick(_HIGHLIGHT_LEADS, seed)
+    fact = soften(plain_text(strip_urls(highlight.get("text", ""))))
+    stamp = highlight.get("timestamp", "")
+    title = _fit(str(highlight.get("title", "")), 60)
+    return f"{lead}\n\n{fact}\n\n{stamp} · {title}".strip()
+
+
 def is_a_deflection(answer: str) -> bool:
     """Did the model decline rather than answer?
 
@@ -696,6 +736,9 @@ class BotState:
     # trimmed: honouring an opt-out for a while and then forgetting is worse
     # than never having offered one.
     opted_out: list = field(default_factory=list)
+    # Indexes into the highlight pool that have already been offered, so the
+    # account does not post the same fact twice.
+    highlights_used: list = field(default_factory=list)
     spent_usd: float = 0.0
     # Spend is tracked per UTC day as well as cumulatively, because the
     # reply cap does not bound it. Replies are the expensive part but not
@@ -726,6 +769,7 @@ class BotState:
             "replies_today": self.replies_today,
             "attempts": self.attempts,
             "opted_out": self.opted_out,
+            "highlights_used": self.highlights_used[-200:],
             "spent_usd": round(self.spent_usd, 4),
             "spent_today_usd": round(self.spent_today_usd, 4),
         }))
@@ -748,6 +792,7 @@ class MentionBot:
                  verified_only: bool = False,
                  post_limit: int = POST_LIMIT,
                  summaries=None, summary_limit: int = 4000,
+                 highlights: list | None = None,
                  token_label: str | None = None,
                  state_path: Path = STATE_PATH) -> None:
         self._client = client
@@ -764,6 +809,10 @@ class MentionBot:
         # Fetched once and kept: 32 summaries change only when an
         # episode is added, and a lookup should not cost a round trip.
         self._summary_cache: list | None = None
+        # Injected rather than loaded here, so a caller — a test, or a
+        # future surface with its own pool — can supply its own.
+        self._highlights = (load_highlights() if highlights is None
+                            else highlights)
         self._token_label = token_label
         self._state_path = state_path
         self.state = BotState.load(state_path)
@@ -914,6 +963,26 @@ class MentionBot:
         self.state.replies_today += posted
         return posted
 
+    def _next_highlight(self, seed: str) -> dict | None:
+        """A moment this account has not offered before.
+
+        Repeats are the thing to avoid — posting the same fact twice is the
+        duplicative-content problem in a different costume — so used ones
+        are remembered, and the pool reshuffles only once every one has been
+        spent.
+        """
+        if not self._highlights:
+            return None
+        used = set(self.state.highlights_used)
+        fresh = [h for i, h in enumerate(self._highlights) if i not in used]
+        if not fresh:
+            self.state.highlights_used = []
+            fresh = list(self._highlights)
+        chosen = fresh[int(hashlib.sha256(seed.encode()).hexdigest(), 16)
+                       % len(fresh)]
+        self.state.highlights_used.append(self._highlights.index(chosen))
+        return chosen
+
     async def _summary_for(self, number: int) -> dict | None:
         """The stored summary for an episode number, if there is one.
 
@@ -939,8 +1008,12 @@ class MentionBot:
         on a real question rather than from a test.
         """
         question = question_from(mention.text)
-        if len(question) < self._min_question:
-            logger.info("%s is a tag with no question — skipping", mention.id)
+        # A bare tag with nothing attached gets nothing back. Anything else
+        # falls through: the length check exists to keep retrieval from
+        # running on nothing, not to decide who deserves a reply, and it was
+        # silencing "lfg" and "gm" before the highlight path was reached.
+        if not question:
+            logger.info("%s is a bare tag — skipping", mention.id)
             return None
         # Pinned answers come first, ahead of the question gate: "ca pls" is
         # a request even though it is not shaped like a question, and the
@@ -966,8 +1039,19 @@ class MentionBot:
                         mention.id, wanted)
             return f"I don't have episode {wanted} indexed."
 
-        if not looks_like_a_question(question):
-            # Checked before retrieval so a compliment costs nothing at all.
+        if (len(question) < self._min_question
+                or not looks_like_a_question(question)):
+            # Not a question, so retrieval would have nothing to work with.
+            # But silence in front of someone who just said something nice
+            # is a wasted moment: they are looking at the account, and what
+            # would convince them is a demonstration rather than a
+            # thank-you. So it offers a fact instead — one that was written
+            # and read before it ever went anywhere near a reply.
+            found = self._next_highlight(mention.id)
+            if found:
+                logger.info("%s is not a question — offering a highlight",
+                            mention.id)
+                return format_highlight(found, mention.id)
             logger.info("%s is not a question (%r) — staying quiet",
                         mention.id, question[:60])
             return None
