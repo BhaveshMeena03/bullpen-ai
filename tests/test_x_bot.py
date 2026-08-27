@@ -511,9 +511,11 @@ def test_asking_for_the_contract_address_is_answered_from_a_constant(asked):
 
     got = pinned_answer(asked, CA, "MarketBubbleSearch")
     assert CA in got
-    assert got.startswith("MarketBubbleSearch CA:"), (
-        "a bare address read out of context says nothing about "
-        "which token it belongs to")
+    # The property, not one exact phrasing: several exist so the account is
+    # not posting the same bytes twenty times. What must hold in all of them
+    # is that the address is named as belonging to this project — a bare
+    # address read out of context says nothing about which token it is.
+    assert "MarketBubbleSearch" in got
 
 
 @pytest.mark.parametrize("asked", [
@@ -565,7 +567,7 @@ async def test_a_ca_question_never_reaches_the_model(tmp_path):
     assert await bot.tick("2026-08-26") == 1
     assert index.asked == [], "retrieval must not have been called"
     reply = client.posted[0][1]
-    assert reply.startswith("MarketBubbleSearch CA:") and CA in reply
+    assert CA in reply and "MarketBubbleSearch" in reply
     assert len(reply) <= 280
 
 
