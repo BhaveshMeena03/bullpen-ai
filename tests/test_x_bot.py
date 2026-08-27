@@ -234,8 +234,11 @@ class FakeClient:
 
 class FakeIndex:
     def __init__(self, answer="Around 3:52:34 he said it.", hits=None,
-                 refused=False):
+                 refused=False, then=None):
         self._answer, self._hits, self._refused = answer, hits, refused
+        # A second answer for the retry path, so a model that gives up once
+        # and succeeds on a second ask can be modelled.
+        self._then = then
         self.asked: list[str] = []
 
     async def search(self, query, top_k=None, instruction=None):
@@ -244,6 +247,8 @@ class FakeIndex:
         # ones.
         self.instructed = instruction
         self.asked.append(query)
+        if self._then is not None and len(self.asked) > 1:
+            self._answer = self._then
 
         class R:
             answer = self._answer
@@ -2213,3 +2218,54 @@ def test_a_youtube_link_does_not_tell_you_to_scrub():
                          [Hit()], include_links=True, limit=1500)
     assert "scrub" not in reply.lower()
     assert "Jump to 7:02" in reply
+
+
+# --- a model that gives up once should be asked again ----------------------
+
+@pytest.mark.anyio
+async def test_a_miss_is_retried_once_before_it_is_posted(tmp_path):
+    """The same question produced a flat "I couldn't find that" one minute
+    and a good cited answer the next, from the same passages. A miss is the
+    reply people screenshot as proof it does not work, so it is worth
+    $0.008 to be sure."""
+    from app.podcast import NOT_FOUND_ANSWER
+
+    hits = [FakeHit(), FakeHit(), FakeHit()]
+    index = FakeIndex(answer=NOT_FOUND_ANSWER + ".", hits=hits,
+                      then="Around 1:22:17 the hosts call it a mega trend.")
+    client = FakeClient([[mention("1")], [mention("2")]])
+    bot = MentionBot(client, index, state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-27")
+    assert await bot.tick("2026-08-27") == 1
+    assert len(index.asked) == 2, "asked a second time"
+    assert "mega trend" in client.posted[0][1]
+
+
+@pytest.mark.anyio
+async def test_a_genuine_miss_is_not_retried_forever(tmp_path):
+    """Two asks, then it posts the honest answer. Anything else would pay
+    twice on every question the archive genuinely does not cover."""
+    from app.podcast import NOT_FOUND_ANSWER
+
+    index = FakeIndex(answer=NOT_FOUND_ANSWER + ".",
+                      hits=[FakeHit(), FakeHit(), FakeHit()])
+    client = FakeClient([[mention("1")], [mention("2")]])
+    bot = MentionBot(client, index, state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-27")
+    await bot.tick("2026-08-27")
+    assert len(index.asked) == 2
+    assert NOT_FOUND_ANSWER.lower() in client.posted[0][1].lower()
+
+
+@pytest.mark.anyio
+async def test_a_miss_with_nothing_retrieved_is_not_retried(tmp_path):
+    """If retrieval found nothing, asking again cannot help — it would just
+    cost another model call on a question with no answer here."""
+    from app.podcast import NOT_FOUND_ANSWER
+
+    index = FakeIndex(answer=NOT_FOUND_ANSWER + ".", hits=[])
+    client = FakeClient([[mention("1")], [mention("2")]])
+    bot = MentionBot(client, index, state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-27")
+    await bot.tick("2026-08-27")
+    assert len(index.asked) == 1, "no point asking twice"

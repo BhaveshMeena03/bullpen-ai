@@ -221,9 +221,17 @@ async def lifespan(app: FastAPI):
     app.state.x_bot_task = None
     if _s.x_bot_enabled:
         app.state.x_bot_task = asyncio.create_task(_run_x_bot(app, _s))
+        # Says whether it can actually work, not just that it started.
+        # Both of today's silent outages — a state file it could not write
+        # and a highlight pool that was never copied into the image — would
+        # have been one glance at these lines instead of an afternoon.
+        from app.x_bot import STATE_PATH, load_highlights
         logger.info("X mention bot started (cap %d/day, links %s)",
-                    _s.x_bot_daily_reply_cap,
-                    "ON" if _s.x_bot_include_links else "off")
+                    _s.x_bot_daily_reply_cap, _s.x_bot_include_links)
+        logger.info("  state file : %s", STATE_PATH)
+        logger.info("  highlights : %d loaded", len(load_highlights()))
+        logger.info("  priority   : %d account(s)",
+                    len(_s.priority_author_ids))
     try:
         yield
     finally:

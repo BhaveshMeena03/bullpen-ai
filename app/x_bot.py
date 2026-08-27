@@ -1212,6 +1212,20 @@ class MentionBot:
         priority = mention.author_id in self._priority
         result = await self._index.search(
             question, instruction=reply_style(self._post_limit))
+
+        # Ask once more before giving up. The same question has produced a
+        # flat "I couldn't find that" one minute and a good cited answer the
+        # next, from the same passages — the model simply gives up sometimes.
+        # A miss is the reply people screenshot as proof it does not work, so
+        # it is worth $0.008 to be sure, and only when retrieval actually
+        # found something to work with.
+        if is_a_miss(result.answer) and len(result.hits) >= 3:
+            logger.info("%s missed on the first pass — asking again",
+                        mention.id)
+            retry = await self._index.search(
+                question, instruction=reply_style(self._post_limit))
+            if not is_a_miss(retry.answer):
+                result = retry
         if getattr(result, "refused", False):
             logger.info("%s refused by the model — staying quiet", mention.id)
             return self._fallback(mention) if priority else None
