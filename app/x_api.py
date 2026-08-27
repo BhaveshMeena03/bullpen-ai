@@ -340,6 +340,40 @@ class XClient:
             for m in reversed(found)
         ]
 
+    async def post(self, text: str,
+                   allow_link: bool = False) -> str | None:
+        """Post from the account without answering anybody.
+
+        Separate from reply() because the two are not billed or restricted
+        alike: a reply is permitted by the author having mentioned the bot
+        and has been observed at $0.015 whether or not it carries a URL,
+        while a standalone post is subject to the published rate and may
+        well be charged $0.200 for one. Callers are expected to have said
+        what it might cost before getting here.
+        """
+        if not allow_link:
+            assert_linkless(text)
+        if self._dry_run:
+            logger.info("[dry run] would post: %s", text)
+            return None
+        url = f"{API}/tweets"
+        async with httpx.AsyncClient(timeout=30) as http:
+            response = await http.post(
+                url, json={"text": text},
+                headers={"Authorization":
+                         self._credentials.header("POST", url),
+                         "content-type": "application/json"},
+            )
+        if response.status_code == 403:
+            logger.warning("X refused the post (403): %s",
+                           response.text[:200])
+            return None
+        _raise_if_out_of_credits(response)
+        response.raise_for_status()
+        # The published rate for this one, not the observed reply rate.
+        self.spent_usd += (PRICE_POST_WITH_URL if allow_link else PRICE_POST)
+        return (response.json().get("data") or {}).get("id")
+
     async def reply(self, text: str, to_post_id: str,
                     allow_link: bool = False) -> str | None:
         """Reply to the post that tagged the bot. Returns the new post id.
