@@ -33,6 +33,7 @@ import json
 import logging
 import random
 import re
+import tempfile
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -44,7 +45,32 @@ from app.x_api import _URL_SHAPED, Mention, XClient, strip_urls
 logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parent.parent
-STATE_PATH = ROOT / "data" / "x_bot_state.json"
+def _state_path() -> Path:
+    """Where the bot remembers what it has answered.
+
+    Beside the data files when that is writable, which it is locally and
+    makes the file easy to inspect. In the container it is not: the image
+    ships at /srv with no writable data directory, so every save raised
+    PermissionError — and because the save runs in a finally, it took the
+    whole poll cycle down with it, every twenty seconds, silently. The bot
+    looked alive, healthz was green, and it had stopped answering.
+
+    Falling back to the temp directory rather than failing: losing this file
+    is already an expected condition, since the disk is ephemeral and every
+    deploy clears it. The cold start is built for exactly that.
+    """
+    preferred = ROOT / "data"
+    try:
+        preferred.mkdir(parents=True, exist_ok=True)
+        probe = preferred / ".write-test"
+        probe.touch()
+        probe.unlink()
+        return preferred / "x_bot_state.json"
+    except OSError:
+        return Path(tempfile.gettempdir()) / "x_bot_state.json"
+
+
+STATE_PATH = _state_path()
 
 # X counts the leading @handle of a reply toward the limit in some clients,
 # so aim well under 280 rather than discovering the edge in production.
@@ -831,6 +857,20 @@ class BotState:
             return cls()
 
     def save(self, path: Path = STATE_PATH) -> None:
+        """Persist what has been answered. Never fatal.
+
+        This runs in a finally block, so an exception here does not fail a
+        save — it fails the entire poll cycle, including replies that had
+        already been posted. That is how a read-only data directory turned
+        into a bot that answered nothing while reporting healthy.
+        """
+        try:
+            self._save(path)
+        except OSError as exc:
+            logger.warning("could not persist state (%s) — continuing from "
+                           "memory; a restart will re-seed from X", exc)
+
+    def _save(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps({

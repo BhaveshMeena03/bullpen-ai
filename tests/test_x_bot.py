@@ -2134,3 +2134,54 @@ async def test_the_about_answer_posts_even_with_links_off(tmp_path):
     await bot.tick("2026-08-27")
     assert await bot.tick("2026-08-27") == 1
     assert "search.lexthedev.com" in client.posted[0][1]
+
+
+# --- the state file must never take the bot down ---------------------------
+
+def test_a_read_only_state_location_does_not_raise(tmp_path):
+    """The failure that stopped the bot in production while healthz stayed
+    green: the container ships at /srv with no writable data directory, so
+    every save raised PermissionError — and because save runs in a finally,
+    it failed the whole poll cycle rather than just the write.
+    """
+    import os
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    os.chmod(locked, 0o500)                       # readable, not writable
+    try:
+        BotState(since_id="1").save(locked / "sub" / "state.json")
+    finally:
+        os.chmod(locked, 0o700)
+
+
+@pytest.mark.anyio
+async def test_the_bot_keeps_answering_when_it_cannot_persist(tmp_path):
+    """Losing the file is already an expected condition — the disk is
+    ephemeral and every deploy clears it — so it must degrade to working
+    from memory, not stop."""
+    import os
+    locked = tmp_path / "ro"
+    locked.mkdir()
+    os.chmod(locked, 0o500)
+    try:
+        client = FakeClient([[mention("1")], [mention("2")]])
+        bot = MentionBot(client, FakeIndex(),
+                         state_path=locked / "nope" / "state.json")
+        await bot.tick("2026-08-27")
+        assert await bot.tick("2026-08-27") == 1
+        assert len(client.posted) == 1
+    finally:
+        os.chmod(locked, 0o700)
+
+
+def test_the_state_path_falls_back_when_data_is_not_writable(monkeypatch,
+                                                             tmp_path):
+    import tempfile
+    from pathlib import Path as _Path
+
+    import app.x_bot as xb
+    unwritable = tmp_path / "nope"
+    monkeypatch.setattr(xb, "ROOT", unwritable / "no" / "such" / "place")
+    monkeypatch.setattr(xb.Path, "mkdir",
+                        lambda *a, **k: (_ for _ in ()).throw(OSError("ro")))
+    assert xb._state_path().parent == _Path(tempfile.gettempdir())
