@@ -1091,9 +1091,9 @@ def load_highlights(path: Path = HIGHLIGHTS) -> list[dict]:
 # A joke introduced as "one from the archive" reads as a fact and lands
 # wrong. Separate openers, so the reader knows which they are getting.
 _FUNNY_LEADS = (
-    "thanks 🙏 one that still makes me laugh:",
-    "appreciate it — this one is worth it for the line alone:",
-    "cheers. a good one:",
+    "thanks 🙏 a line from the broadcast:",
+    "appreciate it — one from the show that still makes me laugh:",
+    "cheers. straight from the transcript:",
 )
 
 

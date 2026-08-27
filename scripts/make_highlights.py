@@ -104,10 +104,13 @@ funny part is that someone is being mocked, skip it.
 
 3. It has to be funny without the video. No "you had to see his face".
 
-3a. Nothing about crime committed against someone, illness, medication, \
-addiction, or money someone lost. A robbery is not a joke because it has \
-an absurd detail in it, and a line about somebody's antidepressants is not \
-a joke at all. Both of those were returned the first time this prompt ran.
+3a. Nothing about crime committed against someone, illness, addiction, or \
+money someone lost. A robbery does not become a joke because it has an \
+absurd detail in it, and the reply announces these as jokes — so the \
+account would be the one calling it that.
+
+3b. A joke someone makes at their own expense is fine, and is most of what \
+qualifies here. A joke at somebody else's is not.
 
 4. Quote numbers exactly as they were said. Never compute one.
 
