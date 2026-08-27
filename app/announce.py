@@ -47,6 +47,19 @@ logger = logging.getLogger(__name__)
 
 POST_URL = "https://api.x.com/2/tweets"
 
+# Costs $0.200, not the $0.015 the mention bot pays.
+#
+# X publishes a surcharge for "a post whose text contains a URL", and this
+# posts a root tweet carrying the site link. The mention bot escapes it —
+# measured, repeatedly — because a mention-gated reply is a different write
+# path from a root post, and the surcharge was aimed at link-blasting root
+# posts, which is precisely what this is.
+#
+# Fine at the volume: one or two announcements a week is under $2 a month.
+# Recorded because the two paths look identical in the code and are not, and
+# because working that out from a bill later is much harder than reading it
+# here.
+
 # X counts every link as 23 characters however long it really is, so the
 # budget is computed against that rather than len(url).
 TCO_LEN = 23

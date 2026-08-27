@@ -51,6 +51,17 @@ PRICE_OWNED_READ = 0.001
 # ceiling arrive early, and the ceiling arriving early is the safe error.
 PRICE_USER_READ = 0.010
 PRICE_POST = 0.015
+# X publishes three write tiers: $0.015 plain, $0.200 with a URL, $0.010
+# "summoned". Every reply this bot makes carries a URL in the text field and
+# is triggered by a mention, so on paper it should hit one of the other two.
+# Measured, it is charged the plain $0.015 — neither the premium nor the
+# discount. Kept here because the tier is real and documented, but no longer
+# used to estimate, because estimating at 13x the actual made the daily
+# ceiling stop the bot at a twelfth of the spend it was set to allow.
+#
+# Undercounting would normally be the dangerous direction. It is not here:
+# the account carries a billing-cycle cap set at X's end, which stops
+# everything regardless of what this file believes.
 PRICE_POST_WITH_URL = 0.200
 
 # Anything a link detector might plausibly catch. Deliberately broader than
@@ -354,5 +365,7 @@ class XClient:
             return None
         _raise_if_out_of_credits(response)
         response.raise_for_status()
-        self.spent_usd += PRICE_POST_WITH_URL if allow_link else PRICE_POST
+        # The observed rate, not the published one for a URL — see the
+        # note beside PRICE_POST_WITH_URL.
+        self.spent_usd += PRICE_POST
         return (response.json().get("data") or {}).get("id")

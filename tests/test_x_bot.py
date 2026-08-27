@@ -716,7 +716,9 @@ class SpendingClient(FakeClient):
         return await super().mentions(since_id, limit)
 
     async def reply(self, text, to_post_id, allow_link=False):
-        self.spent_usd += 0.200          # a reply carrying a link
+        # The rate actually charged, not the published URL premium: X bills
+        # these at the plain rate even with a link in the text.
+        self.spent_usd += 0.015
         return await super().reply(text, to_post_id, allow_link)
 
 
@@ -755,7 +757,8 @@ async def test_the_ceiling_resets_the_next_day(tmp_path):
     """A cap is a rate, not a lifetime budget."""
     client = SpendingClient([[mention("0")], [mention("1")],
                              [mention("2")], [mention("3")]])
-    bot = MentionBot(client, FakeIndex(), daily_spend_cap_usd=0.05,
+    # Below the cost of a single reply, so one is enough to close the day.
+    bot = MentionBot(client, FakeIndex(), daily_spend_cap_usd=0.01,
                      state_path=tmp_path / "s.json")
     await bot.tick("2026-08-26")                     # cold start
     assert await bot.tick("2026-08-26") == 1         # one reply, over the cap
@@ -1732,3 +1735,21 @@ def test_the_miss_reply_varies_too():
     for r in replies:
         assert "couldn" in r.lower(), "and all still say it plainly"
         assert "·" not in r, "still no citation on a miss"
+
+
+def test_a_reply_is_costed_at_what_x_actually_charges():
+    """X publishes $0.015 plain, $0.200 with a URL, $0.010 summoned. Every
+    reply here carries a URL in the text field and is triggered by a
+    mention, so on paper it should hit one of the other two — measured, it
+    is charged the plain rate.
+
+    Estimating at the premium made the daily ceiling stop the bot at a
+    twelfth of the spend it was set to allow: $5 became 24 replies rather
+    than 300.
+    """
+    from app.x_api import PRICE_POST, XClient, XCredentials
+
+    client = XClient(XCredentials("k", "s", "t", "ts"), bot_user_id="1",
+                     dry_run=True)
+    assert PRICE_POST == 0.015
+    assert client.spent_usd == 0.0
