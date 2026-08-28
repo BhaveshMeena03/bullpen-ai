@@ -14,6 +14,9 @@ COPY app ./app
 # Only this file: episodes.json is 7MB and nothing at runtime reads it,
 # since retrieval goes to Pinecone.
 COPY data/highlights.json ./data/highlights.json
+# The exact-token index. Without it every lookup returns nothing and
+# search silently loses the names and numbers it was built for.
+COPY data/term_index.json ./data/term_index.json
 COPY widget ./widget
 COPY demo ./demo
 

@@ -13,5 +13,6 @@ data/
 # keeps serving and the deploy is "done" as far as anyone watching the URL
 # can tell. tests/test_docker_build_context.py checks the two files agree.
 !data/highlights.json
+!data/term_index.json
 redteam_report.md
 PITCH_PREP.md

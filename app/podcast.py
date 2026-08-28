@@ -28,6 +28,7 @@ from .schemas import (
     PodcastSearchResponse,
     TranscriptSegment,
 )
+from .terms import TermIndex
 
 logger = logging.getLogger(__name__)
 
@@ -222,6 +223,9 @@ class PodcastIndex:
         self._voyage = voyageai.AsyncClient(api_key=settings.voyage_api_key)
         self._anthropic = AsyncAnthropic(api_key=settings.anthropic_api_key)
         self._index = None
+        # Loaded once. Absent or unreadable means every lookup returns
+        # nothing and search behaves exactly as it did before.
+        self._terms = TermIndex()
 
     @property
     def index(self):
@@ -307,6 +311,74 @@ class PodcastIndex:
         return len(vectors)
 
     # -- search -------------------------------------------------------------
+    async def _add_exact_matches(
+        self, query: str, hits: list[PodcastHit]
+    ) -> list[PodcastHit]:
+        """Add passages containing a rare token from the query.
+
+        Returns `hits` unchanged on any failure. A missing index, an
+        unreachable fetch, or a malformed record must degrade to exactly
+        the behaviour that existed before this — retrieval quality is the
+        product, and an addition that can subtract is not worth having.
+        """
+        ids = self._terms.lookup(query)
+        if not ids:
+            return hits
+
+        present = {
+            hashlib.sha256(
+                f"{h.episode_id}:{h.start_seconds}".encode()
+            ).hexdigest()[:32]
+            for h in hits
+        }
+        wanted = [i for i in ids if i not in present]
+        if not wanted:
+            return hits
+
+        def _fetch():
+            return self.index.fetch(ids=wanted, namespace=NAMESPACE)
+
+        try:
+            fetched = await asyncio.wait_for(
+                asyncio.to_thread(_fetch),
+                timeout=self._settings.pinecone_read_timeout_seconds,
+            )
+        except Exception as exc:                              # noqa: BLE001
+            logger.warning("exact-match fetch failed (%s) — continuing with "
+                           "the vector results alone", exc)
+            return hits
+
+        records = getattr(fetched, "vectors", None) or {}
+        added = 0
+        for record in records.values():
+            md = getattr(record, "metadata", None) or {}
+            if not md.get("text"):
+                continue
+            start = float(md.get("start_seconds", 0))
+            hits.append(
+                PodcastHit(
+                    episode_id=md.get("episode_id", ""),
+                    title=md.get("title", ""),
+                    start_seconds=start,
+                    timestamp=_timestamp(start),
+                    deep_link=_deep_link(
+                        md.get("url", ""), md.get("platform", "youtube"), start
+                    ),
+                    text=md.get("text", ""),
+                    text_ts=md.get("text_ts") or md.get("text", ""),
+                    published_at=md.get("published_at"),
+                    # Below every vector hit, so that if the reranker is off
+                    # or fails these sit at the back rather than displacing
+                    # a result the embedding actually chose.
+                    score=0.0,
+                )
+            )
+            added += 1
+        if added:
+            logger.info("exact-token match added %d passage(s) for %r",
+                        added, query[:60])
+        return hits
+
     async def _retrieve(self, query: str, top_k: int) -> list[PodcastHit]:
         # Cached, retry-on-rate-limit query embedding — repeat queries are
         # free and a rate-limited one backs off instead of hard-failing.
@@ -364,6 +436,18 @@ class PodcastIndex:
                     score=match.score,
                 )
             )
+
+        # Exact-token candidates, added to the pool the reranker scores.
+        #
+        # Strictly additive by design. This never reorders, never drops, and
+        # never overrides the vector search — it can only put one more
+        # passage in front of the reranker, which is far better at judging
+        # relevance than any keyword rule. A rare name or number is one word
+        # in four hundred and barely moves an embedding, so the passage that
+        # literally contains it can rank below passages merely about the same
+        # subject: "who made 54 million on the drop" missed a line reading
+        # "54 million dollars on the drop".
+        hits = await self._add_exact_matches(query, hits)
 
         # Rerank by actual relevance (falls back to vector order on failure).
         if self._settings.rerank_model and len(hits) > top_k:
