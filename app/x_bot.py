@@ -1184,10 +1184,20 @@ _FUNNY_LEADS = (
     "cheers. straight from the transcript:",
 )
 
+# The same joke, asked for rather than offered. Every lead above opens by
+# thanking the reader, which is right after a compliment and wrong after
+# "tell me a joke" — answering a request with "appreciate it" reads as a
+# reply to something nobody said.
+_JOKE_LEADS = (
+    "one from the show:",
+    "here's one from the broadcast:",
+    "straight from the transcript:",
+)
+
 
 def format_highlight(highlight: dict, seed: str,
                      include_links: bool | str = False,
-                     limit: int = POST_LIMIT) -> str:
+                     limit: int = POST_LIMIT, asked: bool = False) -> str:
     """A fact, its moment, and where to watch it.
 
     Same link rules as an answer, for the same reason: the fact is the
@@ -1195,7 +1205,9 @@ def format_highlight(highlight: dict, seed: str,
     before the pool carried URLs simply has no link, which is why this
     reads the field rather than assuming it.
     """
-    lead = _pick(_FUNNY_LEADS if highlight.get("kind") == "funny"
+    funny = highlight.get("kind") == "funny"
+    lead = _pick(_JOKE_LEADS if funny and asked
+                 else _FUNNY_LEADS if funny
                  else _HIGHLIGHT_LEADS, seed)
     fact = soften(plain_text(strip_urls(highlight.get("text", ""))))
     stamp = highlight.get("timestamp", "")
@@ -1971,7 +1983,7 @@ class MentionBot:
             if found:
                 logger.info("%s asked for a joke", mention.id)
                 return format_highlight(found, mention.id, self.include_links,
-                                        self._post_limit)
+                                        self._post_limit, asked=True)
             logger.info("%s asked for a joke and the pool has none",
                         mention.id)
             return ("I don't have a good one to hand — the funny moments I "

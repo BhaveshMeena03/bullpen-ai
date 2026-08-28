@@ -2080,6 +2080,40 @@ def test_a_highlight_reply_carries_no_link():
     assert "1:17:15" in out
 
 
+def test_a_requested_joke_does_not_thank_anyone():
+    """Every opener for an offered joke starts by thanking the reader,
+    because it is a reply to a compliment. Answering "tell me a joke" with
+    "appreciate it" thanks somebody for something they did not say — it
+    went out in public reading as a reply to a message nobody sent."""
+    from app.x_bot import format_highlight
+
+    joke = dict(POOL[0], kind="funny")
+    for seed in ("a", "b", "c", "d", "e", "f", "g"):
+        lead = format_highlight(joke, seed, asked=True).splitlines()[0].lower()
+        assert not any(word in lead for word in
+                       ("thank", "appreciate", "cheers", "🙏")), lead
+
+
+def test_an_offered_joke_still_thanks_them():
+    """The compliment path is unchanged: there, the thanks is the point."""
+    from app.x_bot import format_highlight
+
+    joke = dict(POOL[0], kind="funny")
+    leads = [format_highlight(joke, s).splitlines()[0].lower()
+             for s in ("a", "b", "c", "d", "e", "f", "g")]
+    assert any(any(w in lead for w in ("thank", "appreciate", "cheers"))
+               for lead in leads)
+
+
+def test_requested_joke_openers_vary():
+    from app.x_bot import format_highlight
+
+    joke = dict(POOL[0], kind="funny")
+    leads = {format_highlight(joke, s, asked=True).splitlines()[0]
+             for s in ("a", "b", "c", "d", "e", "f", "g")}
+    assert len(leads) >= 2
+
+
 def test_highlight_openers_vary():
     from app.x_bot import format_highlight
 

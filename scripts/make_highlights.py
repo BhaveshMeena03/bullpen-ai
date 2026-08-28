@@ -96,11 +96,12 @@ So:
 1. Name the person. If the transcript does not make clear who is speaking, \
 skip that moment. An unattributed joke reads as a rumour.
 
-2. Nothing at anyone's expense. No jokes about how somebody looks, their \
-weight, their intelligence, their relationships, or anything they would be \
-embarrassed to see quoted back at them by a stranger. The hosts roast each \
-other constantly and that is their business, not this account's. If the \
-funny part is that someone is being mocked, skip it.
+2. The hosts and guests joking with each other IS the show, and quoting \
+one of them is fine — if Ansem or Banks or a guest made the joke, it can be \
+repeated. What is not fine is a joke aimed at somebody who is not there to \
+take it: a person outside the conversation, mocked for how they look, their \
+weight, their intelligence, or their relationships. The test is whether the \
+person being joked about was in the room and part of it.
 
 3. It has to be funny without the video. No "you had to see his face".
 
@@ -109,8 +110,9 @@ money someone lost. A robbery does not become a joke because it has an \
 absurd detail in it, and the reply announces these as jokes — so the \
 account would be the one calling it that.
 
-3b. A joke someone makes at their own expense is fine, and is most of what \
-qualifies here. A joke at somebody else's is not.
+3b. A joke someone makes at their own expense is always fine. So is one \
+host ribbing another, or a guest, since they are all in the conversation \
+and trading it back. A joke at the expense of someone outside it is not.
 
 4. Quote numbers exactly as they were said. Never compute one.
 
