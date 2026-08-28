@@ -43,6 +43,58 @@ _UNSURE = re.compile(
       | (?:likely|possibly|presumably)\s+(?:said|stated|claimed)
       | \bunidentified\b""")
 
+# Subjects this account does not post, whatever the model decided.
+#
+# These entries go out unprompted, under the show's name, with nobody
+# reading them first — so the prompt cannot be the only thing standing
+# between a transcript and a public post. Loosening one prompt rule (the
+# hosts roasting each other is fair game, which it is) immediately
+# surfaced a suicide joke, a stabbing bit, a slur, an antidepressant
+# gag, and one host calling another a liar by name. Every one of them
+# passed the rule it was tested against.
+#
+# So the prompt asks, and this decides. A funny moment wrongly dropped
+# costs nothing; there are others. The reverse is not recoverable.
+_UNPOSTABLE = re.compile(
+    r"""(?ix)
+      # self-harm, in any of the joking registers people use for it
+      \b(?: kill\s+(?:my|him|her|them)self | suicide | suicidal
+          | jump(?:ing)?\s+off | hang\s+(?:my|him|her)self
+          | end\s+(?:it\s+all|my\s+life) | self[-\s]?harm | kms )\b
+      # violence against a person
+    | \b(?: stab | stabbing | stabbed | shoot(?:ing)? | shot\s+(?:him|her|them)
+          | murder | kill(?:ing)?\s+(?:him|her|them|you|people)
+          | rape | raped | assault(?:ed|ing)? | strangle | beat\s+(?:him|her|them)\s+up )\b
+      # slurs and demeaning terms, including ones used self-deprecatingly
+    | \b(?: retard(?:ed|s)? | tranny | fag(?:got)?s? | n[i1]gg[ae]r?s?
+          | midget | spastic | cripple )\b
+      # medication, mental health, addiction — rule 3a, made literal
+    | \b(?: lexapro | lexa\s*pro | prozac | zoloft | xanax | adderall | ozempic
+          | antidepressant | ssri | rehab | overdose | od(?:'?d|ed)
+          | addict(?:ed|ion)? | withdrawal | relapse
+          | depress(?:ed|ion) | bipolar | psychiatric )\b
+      # illness
+    | \b(?: cancer | tumou?r | chemo(?:therapy)? | terminal\s+illness
+          | stroke | seizure )\b
+      # crime committed against someone
+    | \b(?: robbed | robbery | mugged | kidnap(?:ped|ping)? | burglar(?:y|ized)
+          | held\s+at\s+gunpoint | swatted )\b
+      # a named person accused of dishonesty: a joke to the room, a
+      # defamation-shaped sentence once this account republishes it alone
+    | \b(?: lied | lying | liar | fraud(?:ster)? | scammer | scammed
+          | rug(?:ged|ging|ger)? | stole | stealing | thief )\b
+    """)
+
+
+def safe_to_post(text: str) -> bool:
+    """Would this be all right going out on its own, with no one checking?
+
+    Applies to facts as much as jokes: both get posted unprompted, and a
+    fact about somebody's illness is not improved by being true.
+    """
+    return not _UNPOSTABLE.search(text or "")
+
+
 EPISODES = ROOT / "data" / "episodes.json"
 OUT = ROOT / "data" / "highlights.json"
 
@@ -105,10 +157,18 @@ person being joked about was in the room and part of it.
 
 3. It has to be funny without the video. No "you had to see his face".
 
-3a. Nothing about crime committed against someone, illness, addiction, or \
-money someone lost. A robbery does not become a joke because it has an \
-absurd detail in it, and the reply announces these as jokes — so the \
-account would be the one calling it that.
+3a. Some subjects are out regardless of who said them or how plainly it \
+was a joke, because the reply announces these as jokes and the account \
+becomes the one calling it that. Skip anything touching: self-harm or \
+suicide, however jokingly it was phrased; violence against a person; \
+slurs, including ones aimed at oneself; medication, mental health, \
+addiction or illness; a crime committed against someone; money someone \
+lost. A robbery does not become a joke because it has an absurd detail in \
+it, and "I'm going to kill myself" is not a market observation.
+
+3c. Do not repeat one person accusing another of lying, scamming or \
+stealing, even in fun. Between people who know each other it is banter; \
+quoted alone by this account it is an allegation about a named person.
 
 3b. A joke someone makes at their own expense is always fine. So is one \
 host ribbing another, or a guest, since they are all in the conversation \
@@ -164,6 +224,11 @@ async def highlights_for(client, model, episode: dict, n: int,
         # transcript)" — which is the admission that it broke rule 1, left
         # inside the thing that would have been posted.
         if _UNSURE.search(said):
+            continue
+        # The subject filter runs last of the cheap checks and first in
+        # authority: whatever the prompt allowed, this decides.
+        if not safe_to_post(said):
+            print(f"     dropped (not ours to post): {said[:60]}")
             continue
         if not cites_its_moment(episode, stamp, said):
             print(f"     dropped (timestamp does not match): {said[:60]}")
