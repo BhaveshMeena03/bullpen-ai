@@ -1641,6 +1641,7 @@ class MentionBot:
                  post_limit: int = POST_LIMIT,
                  summaries=None, summary_limit: int = 4000,
                  highlights: list | None = None,
+                 questions: object | None = None,
                  priority_authors: set | None = None,
                  site: str | None = None,
                  token_label: str | None = None,
@@ -1664,6 +1665,9 @@ class MentionBot:
         # future surface with its own pool — can supply its own.
         self._highlights = (load_highlights() if highlights is None
                             else highlights)
+        # Optional on purpose. Tests construct this bot constantly and none
+        # of them should reach Pinecone; a missing log must cost nothing.
+        self._questions = questions
         # Accounts that must never be met with silence — the hosts, the
         # show, the people who could actually put this in front of an
         # audience. A stranger getting no reply costs nothing. One of
@@ -2192,6 +2196,21 @@ class MentionBot:
         posted = await self._client.reply(
             text, mention.id, allow_link=bool(_URL_SHAPED.search(text)))
         logger.info("replied to %s -> %s", mention.id, posted or "dry run")
+
+        # After posting, never before: the log is for reading later and is
+        # not worth one second of latency in front of somebody waiting for
+        # a reply. It records misses too — a question the archive could not
+        # answer is the most useful row in the table, because it names an
+        # episode worth indexing or a way of asking that retrieval does not
+        # recognise, and neither is visible from the code.
+        if self._questions is not None:
+            await self._questions.record(
+                question_from(mention.text),
+                source="x",
+                asker=getattr(mention, "author", None),
+                answered=not is_a_miss(text),
+                reference=mention.id,
+            )
         return True
 
     @staticmethod

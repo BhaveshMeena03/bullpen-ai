@@ -47,6 +47,7 @@ from app.x_bot import (  # noqa: E402
     looks_like_a_question,
     pinned_answer,
     question_from,
+    weighted_length,
 )
 
 # A spread that has caught something before: one answerable from YouTube, one
@@ -90,7 +91,7 @@ async def preview(index: PodcastIndex, post: str, settings) -> None:
                                      settings.x_bot_include_links,
                                      REPLY_BUDGET)
             print("     | " + reply.replace("\n", "\n     | "))
-            print(f"     {len(reply)}/280 chars · highlight pool "
+            print(f"     {weighted_length(reply)}/280 chars · highlight pool "
                   f"({len(pool)} entries) · no model call · $0")
             return
         print("     (praise, but the highlight pool is empty)")
@@ -111,8 +112,13 @@ async def preview(index: PodcastIndex, post: str, settings) -> None:
 
     for line in reply.splitlines():
         print(f"     | {line}")
-    over = " OVER LIMIT" if len(reply) > 280 else ""
-    print(f"     {len(reply)}/280 chars · {source}{over}")
+    # As X counts it, not as Python does: every URL is 23 characters
+    # whatever its length. Counting raw put a fine 268-character reply at
+    # "295/280 OVER LIMIT" — a preview that talks you out of a reply that
+    # would have posted correctly is worse than no preview.
+    shown = weighted_length(reply)
+    over = " OVER LIMIT" if shown > 280 else ""
+    print(f"     {shown}/280 chars · {source}{over}")
 
     try:
         assert_linkless(reply)

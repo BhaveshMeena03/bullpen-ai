@@ -37,6 +37,7 @@ sys.path.insert(0, str(ROOT))
 
 from app.config import get_settings  # noqa: E402
 from app.podcast import PodcastIndex  # noqa: E402
+from app.questions import QuestionLog  # noqa: E402
 from app.summaries import SummaryStore  # noqa: E402
 from app.x_api import OutOfCreditsError, XClient, XCredentials  # noqa: E402
 from app.x_bot import (  # noqa: E402
@@ -86,6 +87,7 @@ def build(dry_run: bool, cap: int | None, links: bool | None):
         post_limit=settings.x_bot_post_limit,
         summary_limit=settings.x_bot_summary_limit,
         summaries=SummaryStore(),
+        questions=QuestionLog(),
         priority_authors=settings.priority_author_ids,
         site=settings.x_bot_site,
     )
