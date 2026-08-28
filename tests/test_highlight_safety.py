@@ -109,3 +109,40 @@ def test_the_pool_that_is_live_right_now_passes():
 
 def test_empty_input_is_not_treated_as_safe_by_accident():
     assert safe_to_post("")  # nothing to refuse; the caller drops it earlier
+
+
+def test_every_live_entry_can_open_at_its_moment():
+    """These are offered unprompted, so nobody is waiting for them and
+    nobody will scrub four hours to check one. A highlight that cannot
+    jump is a claim with a citation you cannot reach — which is the one
+    thing this account is supposed not to do.
+
+    X ignores every timestamp parameter it has (verified in a browser:
+    currentTime stays 0 on a four and a half hour video), so this also
+    means the pool holds no X broadcasts.
+    """
+    import json
+
+    pool = json.loads((ROOT / "data" / "highlights.json").read_text())
+    assert pool, "the pool is empty"
+    unreachable = [h.get("text", "")[:60] for h in pool
+                   if "t=" not in (h.get("url") or "")]
+    assert not unreachable, f"cannot jump to the moment: {unreachable}"
+
+
+def test_every_live_entry_names_who_spoke():
+    """An unattributed claim reads as a rumour, and one reached the pool
+    announcing itself: "An anonymous guest claims to have bought Bitcoin
+    around $1.50". The account's whole promise is who said it and when.
+    """
+    import json
+    import re
+
+    unnamed = re.compile(r"""(?ix) ^ (?: someone | a\s+guest | one\s+host
+                                       | an?\s+host | the\s+host
+                                       | the\s+guest | the\s+speaker
+                                       | an?\s+speaker | an\s+anonymous
+                                       | an?\s+unnamed | a\s+co-?host )\b""")
+    pool = json.loads((ROOT / "data" / "highlights.json").read_text())
+    bad = [h["text"][:60] for h in pool if unnamed.match(h.get("text", ""))]
+    assert not bad, f"no named speaker: {bad}"

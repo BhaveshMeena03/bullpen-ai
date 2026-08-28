@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -83,6 +84,22 @@ _UNPOSTABLE = re.compile(
       # defamation-shaped sentence once this account republishes it alone
     | \b(?: lied | lying | liar | fraud(?:ster)? | scammer | scammed
           | rug(?:ged|ging|ger)? | stole | stealing | thief )\b
+      # how somebody looks. The original prompt banned this outright and
+      # the rewrite kept it only for people outside the conversation —
+      # which let through a co-host told he was "looking pretty busted
+      # today". Being in the room makes it fair between them; it does not
+      # make it this account's to repeat.
+    | \b(?: busted | haggard | washed | looking\s+rough | ugly
+          | fat | overweight | balding )\b
+      # money somebody lost. Also in the original and also dropped. A loss
+      # is not funnier for being large, and the reply calls it a joke.
+    | \b(?: swindled | lost\s+(?:a\s+)?(?:huge|most|his|her|their|\$|
+                                        fortune|fund|money|everything)
+          | wrote\s+(?:it\s+)?off | blew\s+(?:his|her|their)
+          | wiped\s+out | went\s+to\s+zero )
+      # markup the model leaves in when it censors a quote itself: this
+      # would post the word "[expletive]" to the timeline.
+    | \[ (?:expletive|redacted|inaudible|laughs?) \]
     """)
 
 
@@ -157,18 +174,9 @@ person being joked about was in the room and part of it.
 
 3. It has to be funny without the video. No "you had to see his face".
 
-3a. Some subjects are out regardless of who said them or how plainly it \
-was a joke, because the reply announces these as jokes and the account \
-becomes the one calling it that. Skip anything touching: self-harm or \
-suicide, however jokingly it was phrased; violence against a person; \
-slurs, including ones aimed at oneself; medication, mental health, \
-addiction or illness; a crime committed against someone; money someone \
-lost. A robbery does not become a joke because it has an absurd detail in \
-it, and "I'm going to kill myself" is not a market observation.
-
-3c. Do not repeat one person accusing another of lying, scamming or \
-stealing, even in fun. Between people who know each other it is banter; \
-quoted alone by this account it is an allegation about a named person.
+3a. Prefer moments that are funny on their own terms — a story, a claim, \
+an admission, a bit that goes somewhere stupid. Something dark said for \
+shock will be filtered out later anyway, so it is a wasted pick.
 
 3b. A joke someone makes at their own expense is always fine. So is one \
 host ribbing another, or a guest, since they are all in the conversation \
@@ -193,17 +201,45 @@ async def highlights_for(client, model, episode: dict, n: int,
     # what stands out, without paying to send four hours of speech.
     sampled = "\n".join(lines[::3][:1400])
 
+    # Thinking off, and a budget with room to spare.
+    #
+    # Thinking is billed against max_tokens, so a long transcript and a
+    # prompt full of rules can spend the entire budget reasoning and return
+    # stop_reason=max_tokens with a single thinking block and no text. From
+    # the outside that is indistinguishable from "no moment in this episode
+    # qualifies", and three consecutive prompt rewrites were spent chasing
+    # a refusal that was actually a truncation. Raising 1024 to 4000 only
+    # moved the ceiling; the next run hit that too.
+    #
+    # This is extraction, not reasoning: pick lines out of a transcript and
+    # write them in a fixed format. With thinking disabled the same call
+    # answers in about 200 tokens instead of exhausting 4000.
     response = await client.messages.create(
-        model=model, max_tokens=1024,
+        model=model, max_tokens=4000,
+        thinking={"type": "disabled"},
         messages=[{"role": "user", "content":
                    f"{(prompt or PROMPT).format(n=n)}\n\n"
                    f"<transcript>\n{sampled}\n</transcript>"}],
     )
     text = "".join(b.text for b in response.content if b.type == "text")
+    # Say so out loud. A silent empty answer reads as a clean "nothing
+    # here" and is the one failure this script cannot afford to look calm.
+    if not text.strip():
+        print(f"     !! no text returned (stop_reason={response.stop_reason},"
+              f" {response.usage.output_tokens} output tokens) — this is a"
+              f" truncated call, not an episode without highlights")
+    if os.environ.get("HIGHLIGHT_DEBUG"):
+        print(f"  [stop_reason={response.stop_reason} "
+              f"blocks={[b.type for b in response.content]} "
+              f"out_tokens={response.usage.output_tokens}]")
+        for ln in text.splitlines():
+            print(f"    | {ln}")
 
     out = []
     for line in text.splitlines():
         if "|" not in line:
+            if line.strip() and os.environ.get("HIGHLIGHT_DEBUG"):
+                print(f"     [no pipe] {line[:70]}")
             continue
         said, _, stamp = line.rpartition("|")
         said, stamp = said.strip(" -–—"), stamp.strip().strip("[]")
@@ -212,11 +248,26 @@ async def highlights_for(client, model, episode: dict, n: int,
         # "<sentence>…</sentence>" to the timeline.
         said = re.sub(r"</?[a-z_]+>", "", said).strip()
         if len(said) < 40 or not stamp:
+            if os.environ.get("HIGHLIGHT_DEBUG"):
+                print(f"     [too short / no stamp] {said[:60]!r} {stamp!r}")
             continue
         # Rule 1 of the prompt is to name the person. Only genuinely
         # anonymous attributions are rejected — a one-letter name is a
         # nickname on this show, not a missing source: Banks calls Ansem Z.
-        if re.match(r"^(?:someone|a guest|one host|a host)\b", said, re.I):
+        # Every way the model opens a sentence when it does not know who
+        # spoke. The first four were the original list; the rest each
+        # reached a pool — "An anonymous guest claims to have bought
+        # Bitcoin around $1.50" was one entry away from being posted as a
+        # fact by an account whose entire promise is that it can tell you
+        # who said a thing and when.
+        if re.match(r"""(?ix) ^ (?: someone | a\s+guest | one\s+host
+                                 | an?\s+host | the\s+host | the\s+guest
+                                 | the\s+speaker | an?\s+speaker
+                                 | an\s+anonymous | an?\s+unnamed
+                                 | the\s+(?:finance|financial)\s+advisor
+                                 | a\s+co-?host | bro )\b""", said):
+            if os.environ.get("HIGHLIGHT_DEBUG"):
+                print(f"     [unnamed] {said[:60]}")
             continue
         # And the model hedging about who spoke, anywhere in the sentence.
         # One of these reached the pool complete with its own parenthetical:
@@ -224,6 +275,8 @@ async def highlights_for(client, model, episode: dict, n: int,
         # transcript)" — which is the admission that it broke rule 1, left
         # inside the thing that would have been posted.
         if _UNSURE.search(said):
+            if os.environ.get("HIGHLIGHT_DEBUG"):
+                print(f"     [hedged attribution] {said[:60]}")
             continue
         # The subject filter runs last of the cheap checks and first in
         # authority: whatever the prompt allowed, this decides.
@@ -334,6 +387,15 @@ async def main() -> int:
     ap.add_argument("--kind", choices=("fact", "funny"), default="fact",
                     help="what to look for. 'funny' appends to the pool "
                          "rather than replacing it")
+    ap.add_argument("--seekable-only", action="store_true",
+                    help="only use episodes whose link can open at the "
+                         "moment itself. X ignores every timestamp "
+                         "parameter — verified in a browser, currentTime "
+                         "stays 0 on a four and a half hour video — so a "
+                         "citation there can only say 'scrub to 1:47:12'. "
+                         "Fine for a fact somebody asked about. Useless for "
+                         "a joke, where the punchline is the whole payload "
+                         "and nobody scrubs four hours to reach it.")
     ap.add_argument("--verify", action="store_true",
                     help="check the existing pool against the transcripts "
                          "and drop entries whose timestamp does not match")
@@ -371,6 +433,11 @@ async def main() -> int:
     settings = get_settings()
     client = AsyncAnthropic(api_key=settings.anthropic_api_key)
     episodes = json.loads(EPISODES.read_text())
+    if args.seekable_only:
+        before = len(episodes)
+        episodes = [e for e in episodes if e.get("platform") == "youtube"]
+        print(f"  {len(episodes)} of {before} episodes can link to the exact "
+              f"second; the rest are X broadcasts and are skipped")
     if args.only:
         wanted = set(args.only)
         episodes = [e for e in episodes if e["episode_id"] in wanted]

@@ -11,12 +11,12 @@ A non-zero **fabricated quotes** column is a release blocker: it means the tool 
 ### Market search
 
 - `what did the helius guy say about solana`
-  - judge: The answer cites specific timestamps (e.g., '[2:15:02]', '[1:23:33]', '[47:17]', '[51:50]', '[1:28:29]') that do not appear in the provided source material, making these claims unverifiable against th
+  - judge: The answer cites a timestamp "2:14:58" for the thesis statement, but the source material shows this quote appears at 51:42, not 2:14:58.
+- `how did that guy turn 500 dollars into 40 million`
+  - judge: The answer claims Kimchi 'hit Trump for $40 million,' but the sources do not support this specific claim about hitting Trump—the source says he 'hit Trump for $40 million' in a confusing context that 
 - `what did they say about robots being a huge market`
-  - judge: The answer cites a timestamp of 1:56:54, but the sources show the $60 trillion and 20x cost reduction discussion occurs at 1:56:20, and the $200 billion/$40-60 trillion comparison is at 1:56:20, not 1
+  - judge: The answer cites specific timestamps (1:56:54 and 1:57:44) that do not exist in the provided source material, which only includes excerpts with timestamps like 1:56:20, 1:29:21, 1:20:56, 1:39:37, 2:00
 - `which stocks are the robot play`
-  - judge: The answer claims SpaceX 'opened at $135 a share' and 'ran up to around $225' as established facts, but the sources show the speaker was describing a hypothetical or remembered discussion about an IPO
+  - judge: The answer claims SpaceX 'opened at $150' and 'spiked to $225 in the first few days of trading,' but the sources state it was 'priced at 135 a share' for the IPO, 'was on hyper liquid at like 175' and
 - `mizkif giving his chat money to trade`
-  - judge: The answer attributes statements to 'Ansem' when the sources show these statements were made by someone else (likely a different person on the stream), not Ansem.
-- `selling a crypto company to kraken`
-  - judge: The answer states the guest's name is 'Z' and that he goes by that name, but the sources do not identify him as 'Z'—they identify him as 'Mayne' in the episode titles and refer to him as the speaker/g
+  - judge: The answer states the host 'didn't initially allow leverage' and cites timestamp 15:37, but the sources show at 15:11 he says he didn't allow leverage and explains his reasoning—there is no mention of
