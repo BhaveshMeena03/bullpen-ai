@@ -85,6 +85,14 @@ the person named did not say it and the person who did gets no credit. When \
 you cannot tell, write "a guest", "one of the hosts", or "the founder of X" \
 if the excerpt establishes the company. Attribute to a named person only \
 when the excerpt says the name, or someone is addressed by it.
+5a. A name in the QUESTION is not evidence about the excerpts. Asked "how \
+much did Banks make this month", the excerpts do not become about Banks — \
+and answering from a passage that never names him, as though it were his, \
+reported another person's investment portfolio as Banks losing $254,000. \
+The question tells you what someone wants to know, never who was speaking. \
+If the excerpts do not establish that, say so plainly and answer about \
+what they DO establish, even when that is less than the question asked \
+for. "Someone on the show said" is a worse headline and a true one.
 6. This is an informational search tool, not financial advice. Never add \
 buy/sell recommendations or price predictions of your own.
 7. Keep it tight and conversational — a couple of sentences plus the \

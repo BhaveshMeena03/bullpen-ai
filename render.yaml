@@ -10,6 +10,9 @@ services:
     plan: starter
     healthCheckPath: /healthz
     autoDeploy: true
+    # Pinned, so that experimental work can live on a branch without any
+    # question about whether pushing it reaches production.
+    branch: main
     envVars:
       - key: ANTHROPIC_API_KEY
         sync: false
