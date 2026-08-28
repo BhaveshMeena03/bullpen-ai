@@ -1427,10 +1427,15 @@ def cited_hit(answer: str, hits: list):
     """
     if not hits:
         return None, None
-    found = _CITES_A_TIME.search(answer or "")
-    if not found:
+    # Every moment the answer names, not only the first. A good answer
+    # often cites several, and they are not always from one episode:
+    # "around 14:32 ... and again around 43:08" came back citing two
+    # different shows. Taking only the first meant an answer whose opening
+    # citation happened to be unsupported lost its link entirely, even
+    # when a later one was sitting in the passages.
+    stamps = _CITES_A_TIME.findall(answer or "")
+    if not stamps:
         return hits[0], None
-    stamp = found.group(0)
 
     # Only passages that carry per-line timestamps can answer the question
     # "is this moment in here". text_ts is empty on vectors written before
@@ -1440,13 +1445,14 @@ def cited_hit(answer: str, hits: list):
     checkable = [h for h in hits
                  if (getattr(h, "text_ts", "") or "").strip()]
     if not checkable:
-        return hits[0], stamp
+        return hits[0], stamps[0]
 
-    for hit in checkable:
-        if _covers(hit, stamp):
-            return hit, stamp
+    for stamp in stamps:
+        for hit in checkable:
+            if _covers(hit, stamp):
+                return hit, stamp
     # Every passage that could be checked was checked, and none of them
-    # contain this moment.
+    # contain any moment this answer names.
     return hits[0], None
 
 
@@ -1503,7 +1509,23 @@ def format_reply(answer: str, hits: list, include_links: bool | str = False,
         # Prefer the moment the answer actually names over the passage
         # start, and move the link to match it — but only when a passage
         # actually contained that moment.
-        moment = supported or top.timestamp
+        # Three cases, and only the middle one changed.
+        #
+        # The answer named no moment: the passage's own start time is a
+        # useful place to begin, and the answer is not contradicted by it.
+        #
+        # The answer named moments and none of them are in the passages:
+        # name nothing. Falling back to the passage start printed "Jump to
+        # 30:38" under an answer citing 14:32 and 43:08 — a timestamp the
+        # answer never made and the reader has no way to place.
+        #
+        # The answer named a moment a passage vouches for: use that.
+        if supported:
+            moment = supported
+        elif _CITES_A_TIME.search(answer or ""):
+            moment = None
+        else:
+            moment = top.timestamp
         link = (_relink(top.deep_link, _seconds(moment))
                 if supported and seekable else top.deep_link)
         # Fitted first, because whether the tail should carry a timestamp
@@ -1514,7 +1536,13 @@ def format_reply(answer: str, hits: list, include_links: bool | str = False,
         # jump, and the answer has already named the moment, so a second
         # line repeating it said the same thing twice and left a dangling
         # dash where the card swallowed the URL.
-        if seekable:
+        if not moment:
+            # No moment the passages could vouch for. The link still goes
+            # to the right episode; naming a second would mean inventing
+            # one, and this account's whole claim is that its citations
+            # can be checked.
+            lead = "Episode:" if seekable else "Full episode:"
+        elif seekable:
             lead = f"Jump to {moment}:"
         else:
             # X has no timestamp parameter for video, so this link opens at

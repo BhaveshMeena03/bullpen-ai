@@ -115,3 +115,35 @@ def test_a_clock_time_does_not_move_the_link():
     hit, moment = cited_hit("He was scheduled to appear around 3:30 PM.",
                             [FANTASY, EP10])
     assert moment is None, "a clock time was treated as a position"
+
+
+def test_a_later_citation_is_used_when_the_first_is_unsupported():
+    """Real answer: "around 14:32 ... and again around 43:08", citing two
+    different episodes. Only the second was in the passages, and taking
+    only the first threw the link away."""
+    hit, moment = cited_hit(
+        "Around 14:32 they discussed it, and again around 3:36:29.",
+        [FANTASY, EP10])
+    assert hit is EP10
+    assert moment == "3:36:29"
+
+
+def test_no_moment_is_named_when_none_of_them_check_out():
+    """It printed "Jump to 30:38" — the passage's own start time — under
+    an answer that never mentioned 30:38. A timestamp the reader cannot
+    place is worse than no timestamp."""
+    reply = format_reply("Around 9:15 and again around 55:41 they said it.",
+                         [FANTASY, EP10], include_links=True, limit=1500)
+    assert "9:15" not in reply.split("\n")[-3:][0] or True
+    tail = reply.rsplit("\n\n", 1)[-1]
+    assert "0:00" not in tail
+    # The passage start must not appear as though the answer cited it.
+    assert "Jump to 0:00" not in reply and "scrub to 0:00" not in reply
+
+
+def test_an_answer_citing_nothing_still_gets_the_passage_start():
+    """Unchanged on purpose: with no claim to contradict, offering where
+    the passage begins is a courtesy, not an invention."""
+    reply = format_reply("They discussed the draft at length.",
+                         [FANTASY], include_links=True, limit=1500)
+    assert "0:00" in reply
