@@ -22,7 +22,6 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import pytest  # noqa: E402
-
 from make_highlights import safe_to_post  # noqa: E402
 
 # Verbatim from the run that prompted the filter.

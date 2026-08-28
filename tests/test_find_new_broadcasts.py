@@ -14,14 +14,14 @@ ever re-checks it.
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from scripts.find_new_broadcasts import new_broadcasts  # noqa: E402
 
-NOW = datetime(2026, 8, 28, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
 LONG_AGO = (NOW - timedelta(days=2)).isoformat().replace("+00:00", "Z")
 
 FULL_SHOW = 4 * 3_600_000
