@@ -3221,3 +3221,26 @@ def test_a_question_about_jokes_is_not_a_request_for_one():
                      "what was the funny bit about pump fun",
                      "who made the joke about michael cat"):
         assert not asks_for_a_joke(question_from(f"@bot {question}")), question
+
+
+def test_a_typo_in_yourself_still_summons():
+    """"introduce yoursekf" went out as a fact about OnlyFans earnings,
+    under a post pointing someone at the account. A key next to the
+    intended one should not turn a summons into a random highlight —
+    nobody retypes a tweet to help a bot parse it."""
+    from app.x_bot import question_from, summons
+
+    for typo in ("introduce yourself", "introduce yoursekf",
+                 "introduce yoursef", "introduce urself",
+                 "tell them about yoursekf", "show them yourself"):
+        assert summons(question_from(f"@bot {typo}")), typo
+
+    # The real post, prefix and all — the prefix never mattered, the
+    # pattern anchors at the end.
+    assert summons(question_from(
+        "yoo MCG check this out\n@mbubbleSearch introduce yoursekf"))
+
+    # And a wrong middle letter must not make any word a summons.
+    for other in ("what did ansem say about solana", "who is kimchi",
+                  "introduce me to the show"):
+        assert not summons(question_from(f"@bot {other}")), other

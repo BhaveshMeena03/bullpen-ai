@@ -628,12 +628,16 @@ def split_meta(question: str) -> tuple[str | None, str]:
 # Not a bare search either: "did he say hi to banks" would summon.
 _SUMMONS = re.compile(
     r"""(?ix)(?:^|\W)
-    (?: introduce\s+(?:yourself|urself)
+    # "yoursekf" happened, under a post pointing someone at the account.
+    # A key next to the intended one turns a summons into a random fact,
+    # and nobody retypes a tweet to help a bot parse it. The shape allows
+    # one wrong or missing letter in the middle of the word.
+    (?: introduce\s+(?:your|ur)se[a-z]?f
       | tell\s+(?:them|him|her|us|everyone|the\s+\w+)\s+
-        (?:what\s+(?:you|u)\s+(?:do|are)|about\s+(?:yourself|urself))
+        (?:what\s+(?:you|u)\s+(?:do|are)|about\s+(?:your|ur)se[a-z]?f)
       | (?:say|do)\s+(?:hi|hello|your\s+thing)
       | show\s+(?:them|him|her|us|everyone)\s+(?:what\s+(?:you|u)\s+
-        (?:do|can\s+do)|yourself)
+        (?:do|can\s+do)|(?:your|ur)se[a-z]?f)
       | what\s+(?:do|can)\s+(?:you|u)\s+do\s+here
     )\W*$""")
 
