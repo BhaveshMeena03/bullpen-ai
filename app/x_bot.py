@@ -455,11 +455,19 @@ _MISS_PHRASINGS = (
 # shape of the question instead of the person — "what did andre say" came
 # back with Andrew Tate while Andre from Grass sat in the archive, and
 # "what did andre from grass say" finds him immediately.
+# One or more names, then a verb, then nothing. Two names is the same
+# problem doubled and worse: "what did mayne say" answers from Mayne's own
+# episode, while "what did mayne n ansem talk about" drags retrieval toward
+# the Ansem-heavy episodes and misses — under a post with 15,000 views.
+_NAME = r"[\w'.-]+(?:\s+[\w'.-]+)?"
+_JOIN = r"(?:\s*(?:,|and|n|&|\+)\s*" + _NAME + r")*"
 _JUST_A_NAME = re.compile(
-    r"""(?ix)^\W*
-    (?: what\ (?:did|does|has)\s+ [\w'.-]+ (?:\s+[\w'.-]+)?
-        \s+ (?:say|said|think|mention)
-      | (?:who|what)\ (?:is|was)\s+ [\w'.-]+ )
+    rf"""(?ix)^\W*
+    (?: what\ (?:did|does|do|has|have)\s+ {_NAME} {_JOIN}
+        \s+ (?: say|said|think|thinks|mention|mentioned
+               | talk\s+about|talked\s+about|discuss|discussed
+               | speak\s+about|spoke\s+about )
+      | (?:who|what)\ (?:is|was)\s+ {_NAME} )
     \W*$""")
 
 # Built on the same sentence every other miss uses, so the reply is still
@@ -602,6 +610,23 @@ _SUMMONS = re.compile(
     )\W*$""")
 
 
+# Asking for a joke outright. Without this it goes to retrieval, which
+# searches the transcripts for the words "tell me a joke" and finds
+# nothing — the pool of funny moments is sitting right there unused.
+_ASKS_FOR_A_JOKE = re.compile(
+    r"""(?ix)\b(?: tell\s+(?:me|us)\s+(?:a\s+)?(?:joke|something\ funny)
+                 | (?:got|have)\s+(?:any|a)\s+jokes?
+                 | say\s+something\s+funny
+                 | make\s+(?:me|us)\s+laugh
+                 | something\s+funny\s+from\s+the\s+(?:show|broadcast)
+    )\b""")
+
+
+def asks_for_a_joke(question: str) -> bool:
+    """Is this asking for one of the funny moments rather than a fact?"""
+    return bool(_ASKS_FOR_A_JOKE.search(question or ""))
+
+
 def summons(question: str) -> bool:
     """Is this asking the account to introduce itself to a thread?
 
@@ -624,7 +649,7 @@ def automation_answer(question: str, site: str | None = None) -> str | None:
     if summons(question):
         # Asked to introduce itself, so the whole message is the ask. The
         # opener differs because "Yes —" answers a question nobody asked.
-        return _automation_text(site, "I'm automated, and run by Lex.")
+        return _automation_text(site, lead=None)
     found = _ASKS_IF_AUTOMATED.search(question or "")
     if not found or not _is_the_whole_question(found, question):
         return None
@@ -632,15 +657,28 @@ def automation_answer(question: str, site: str | None = None) -> str | None:
 
 
 def _automation_text(site: str | None,
-                     lead: str = "Yes — automated, and run by Lex.") -> str:
+                     lead: str | None = "Yes — automated, and run by Lex."
+                     ) -> str:
+    """The description, with or without the disclosure in front of it.
+
+    X approved the Automated Account label on 2026-08-28, so every reply
+    now carries "Automated by @Lexx_eth" above the text. Asked to
+    introduce itself, opening with "I'm automated" repeats what the label
+    already says and spends the first line on it.
+
+    Asked directly whether it is a bot, it still answers yes and first.
+    A label is not an answer to a question, and an account that dodges
+    that one has given away the only thing it has.
+    """
     body = (
-        f"{lead}\n\n"
         "I'm a search engine over the Market Bubble archive: tag me with a "
         "question about anything said on the show and I answer from the "
         "transcripts, with the timestamp it was said at.\n\n"
         "I only answer from what is actually in the episodes. If it is not "
         "in there, I say so."
     )
+    if lead:
+        body = f"{lead}\n\n{body}"
     return f"{body}\n\n{site}" if site else body
 
 
@@ -1780,7 +1818,7 @@ class MentionBot:
         return format_highlight(found, mention.id, self.include_links,
                                 self._post_limit)
 
-    def _next_highlight(self, seed: str) -> dict | None:
+    def _next_highlight(self, seed: str, kind: str | None = None) -> dict | None:
         """A moment this account has not offered before.
 
         Repeats are the thing to avoid — posting the same fact twice is the
@@ -1788,13 +1826,16 @@ class MentionBot:
         are remembered, and the pool reshuffles only once every one has been
         spent.
         """
-        if not self._highlights:
+        pool = ([h for h in self._highlights if h.get("kind") == kind]
+                if kind else self._highlights)
+        if not pool:
             return None
         used = set(self.state.highlights_used)
-        fresh = [h for i, h in enumerate(self._highlights) if i not in used]
+        fresh = [h for h in pool
+                 if self._highlights.index(h) not in used]
         if not fresh:
             self.state.highlights_used = []
-            fresh = list(self._highlights)
+            fresh = list(pool)
         chosen = fresh[int(hashlib.sha256(seed.encode()).hexdigest(), 16)
                        % len(fresh)]
         self.state.highlights_used.append(self._highlights.index(chosen))
@@ -1841,6 +1882,18 @@ class MentionBot:
                                self._token_label)
         if pinned:
             return pinned
+
+        if asks_for_a_joke(question):
+            found = self._next_highlight(mention.id, kind="funny")
+            if found:
+                logger.info("%s asked for a joke", mention.id)
+                return format_highlight(found, mention.id, self.include_links,
+                                        self._post_limit)
+            logger.info("%s asked for a joke and the pool has none",
+                        mention.id)
+            return ("I don't have a good one to hand — the funny moments I "
+                    "keep are the ones nobody is the butt of, and there are "
+                    "not many. Ask me about the show instead.")
 
         automated = automation_answer(question, self._site)
         if automated:

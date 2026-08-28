@@ -2962,9 +2962,13 @@ def test_the_account_can_be_summoned_to_introduce_itself():
                    "gm everyone tell them what you do"):
         assert summons(phrase), phrase
         reply = automation_answer(phrase, "example.com")
-        assert reply and "automated" in reply.lower()
-        # Not "Yes —": nobody asked it a question.
+        assert reply and "search engine" in reply.lower()
+        # No disclosure line in front. X approved the Automated Account
+        # label on 2026-08-28, so every reply already carries "Automated by
+        # @Lexx_eth" above the text — opening with "I'm automated" repeats
+        # the label and spends the first line on it.
         assert not reply.startswith("Yes")
+        assert not reply.lower().startswith("i'm automated")
 
     # A real question must never be mistaken for a summons.
     for question in ("what did ansem say about solana", "who is kimchi",
@@ -2974,8 +2978,11 @@ def test_the_account_can_be_summoned_to_introduce_itself():
                      "did he say hi to banks"):
         assert not summons(question), question
 
-    # And the direct question still answers the way it did.
-    assert automation_answer("are you a bot", "example.com").startswith("Yes")
+    # Asked directly, it still says yes and first. A label is not an answer
+    # to a question, and an account that dodges that one has given away the
+    # only thing it has.
+    direct = automation_answer("are you a bot", "example.com")
+    assert direct.startswith("Yes — automated")
 
 
 def test_a_summons_in_a_quote_tweet_still_counts():
@@ -3035,3 +3042,27 @@ async def test_a_deflection_on_a_real_question_is_still_silence(tmp_path):
     await bot.tick("2026-08-27")
     await bot.tick("2026-08-27")
     assert not client.posted
+
+
+def test_two_names_with_no_topic_get_the_nudge():
+    """"what did mayne n ansem talk about" missed under a post with 15,000
+    views, while "what did mayne say" answers from Mayne's own episode.
+
+    Two names is the bare-name problem doubled: the second name drags
+    retrieval toward a different set of episodes and neither anchors it.
+    """
+    from app.x_bot import asks_only_about_a_name
+
+    for bare in ("what did mayne n ansem talk about",
+                 "what did mayne and ansem talk about",
+                 "what did banks and ansem discuss",
+                 "what have they talked about",
+                 "what did andre say"):
+        assert asks_only_about_a_name(bare), bare
+
+    # A topic anchors it, so these must still be searched normally.
+    for anchored in ("what did ansem say about solana",
+                     "what did mayne and ansem say about kraken",
+                     "what did they say about pump fun fees",
+                     "what did andre from grass say"):
+        assert not asks_only_about_a_name(anchored), anchored
