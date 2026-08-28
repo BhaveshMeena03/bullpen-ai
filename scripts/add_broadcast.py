@@ -14,6 +14,7 @@ What it does:
     transcribe   locally, on this machine, with MLX Whisper
     ingest       appends to the index — does NOT clear and rebuild
     summarize    so the episode appears when browsing, not only in search
+    verify       drops summary timestamps that point at the wrong moment
     terms        rebuilds the exact-token index, so names in the new
                  episode are findable by name and not only by meaning
     highlights   refreshes the pool the bot draws unprompted answers from
@@ -67,7 +68,7 @@ async def main() -> int:
     before = {e["episode_id"] for e in load(EPISODES)}
 
     # 1 — transcribe ---------------------------------------------------------
-    step(1, 6, "transcribing (local, no API — this is the slow part)")
+    step(1, 7, "transcribing (local, no API — this is the slow part)")
     cmd = [sys.executable, "scripts/transcribe_x_broadcast.py", args.url,
            "--model", args.model]
     if args.date:
@@ -85,14 +86,14 @@ async def main() -> int:
         return 0
 
     # 2 — ingest -------------------------------------------------------------
-    step(2, 6, f"indexing {len(fresh)} episode(s) — appending, not rebuilding")
+    step(2, 7, f"indexing {len(fresh)} episode(s) — appending, not rebuilding")
     index = PodcastIndex()
     parsed = [Episode(**e) for e in fresh]
     windows = await index.ingest(parsed)
     print(f"  {windows} searchable passages added")
 
     # 3 — summarize ----------------------------------------------------------
-    step(3, 6, "summarising, so it shows up when browsing")
+    step(3, 7, "summarising, so it shows up when browsing")
     summaries = SummaryStore()
     for episode in parsed:
         try:
@@ -103,15 +104,28 @@ async def main() -> int:
             # part that mattered.
             print(f"  summary failed ({exc}) — searchable anyway, rerun later")
 
-    # 4 — the exact-token index ----------------------------------------------
+    # 4 — check the summary's timestamps -------------------------------------
+    # Three of the fourteen topic lines in the first broadcast added after
+    # this pipeline existed pointed at the wrong moment — a real transcript
+    # marker attached to the wrong topic. They were caught only because
+    # somebody was about to quote the summary at the show's host. This runs
+    # every time now, because the summary is most of what "summarize the
+    # latest episode" returns and nobody reads it before it goes out.
+    step(4, 7, "checking the summary's timestamps against the transcript")
+    for episode in parsed:
+        subprocess.run([sys.executable, "scripts/verify_summaries.py",
+                        "--episode-id", episode.episode_id, "--apply"],
+                       cwd=ROOT)
+
+    # 5 — the exact-token index ----------------------------------------------
     # Rebuilt here rather than remembered later: a stale index simply has no
     # entry for the new episode, so a question about it silently loses the
     # exact-name matching and nobody finds out.
-    step(4, 6, "rebuilding the exact-token index")
+    step(5, 7, "rebuilding the exact-token index")
     subprocess.run([sys.executable, "scripts/build_term_index.py"], cwd=ROOT)
 
     # 5 — highlights ---------------------------------------------------------
-    step(5, 6, "refreshing the pool the bot answers from unprompted")
+    step(6, 7, "refreshing the pool the bot answers from unprompted")
     if args.skip_highlights:
         print("  skipped")
     else:
@@ -124,7 +138,7 @@ async def main() -> int:
                        cwd=ROOT)
 
     # 6 — prove it -----------------------------------------------------------
-    step(6, 6, "asking the live index about it")
+    step(7, 7, "asking the live index about it")
     for episode in parsed:
         # Named guests are what people actually search for, and the title is
         # where they are named.
