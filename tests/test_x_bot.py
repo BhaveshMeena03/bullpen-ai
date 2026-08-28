@@ -3278,3 +3278,92 @@ def test_a_typo_in_yourself_still_summons():
     for other in ("what did ansem say about solana", "who is kimchi",
                   "introduce me to the show"):
         assert not summons(question_from(f"@bot {other}")), other
+
+
+def test_a_question_after_a_preamble_still_counts_as_one():
+    """Real post, three lines:
+
+        Yoo Z take a look at this
+        @mbubbleSearch
+        what did Ansem say about memefi
+
+    The interrogative check is anchored to the start of the text and
+    allows two filler words, so six words of preamble hid the question.
+    The account decided nobody had asked anything and answered with an
+    unrelated fact about Bitcoin in 2013 — under a real question, in
+    public, to Ansem.
+    """
+    from app.x_bot import asks_something
+
+    assert asks_something(
+        "Yoo Z take a look at this what did Ansem say about memefi")
+    assert asks_something("check this out how much did banks make")
+    assert asks_something(
+        "yoo threadguy check this out what did threadguy say at the draft")
+
+
+def test_a_statement_containing_an_interrogative_word_is_not_a_question():
+    """The anchor existed for a reason and the reason still holds."""
+    from app.x_bot import asks_something
+
+    assert not asks_something("that is what I mean")
+    assert not asks_something("this is what the show is about")
+    assert not asks_something("you are so freaking cool")
+    assert not asks_something("gm king")
+
+
+def test_the_question_is_what_follows_the_tag():
+    """People address someone else and then turn to the account:
+
+        Yoo Z take a look at this
+        @mbubbleSearch
+        what did Ansem say about memefi
+
+    The first line is talking to Ansem. Flattening the post made the
+    question read as greeting-then-question, and the check for whether
+    anybody had asked anything found the greeting and said no.
+    """
+    from app.x_bot import question_from
+
+    assert question_from(
+        "Yoo Z take a look at this\n@mbubbleSearch\n"
+        "what did Ansem say about memefi") == "what did Ansem say about memefi"
+    assert question_from(
+        "@thebrianjung yoo take a look at this\n"
+        "@mbubbleSearch what did Jesse say about base"
+    ) == "what did Jesse say about base"
+
+
+def test_a_trailing_tag_keeps_the_whole_post():
+    """Nothing follows it, so there is nothing to prefer."""
+    from app.x_bot import question_from
+
+    assert question_from("what did ansem say about eth @mbubbleSearch") == \
+        "what did ansem say about eth"
+
+
+def test_praise_after_the_tag_is_still_praise():
+    """The compliment path must not become collateral. Praise routes on
+    the same extracted text, so a change to extraction can silently send
+    it to retrieval instead of the highlight pool."""
+    from app.x_bot import question_from, reads_as_social
+
+    for post in ("@mbubbleSearch you are so freaking cool",
+                 "yoo @mbubbleSearch this is genius",
+                 "take a look at this @mbubbleSearch insane tech",
+                 "@Lexx_eth @mbubbleSearch crazy search engine technology"):
+        asked = question_from(post)
+        assert reads_as_social(asked), post
+        assert not asks_something_is_a_question(asked), post
+
+
+def asks_something_is_a_question(text: str) -> bool:
+    from app.x_bot import asks_something
+    return asks_something(text)
+
+
+def test_praise_still_reaches_the_pleasantry_branch():
+    from app.x_bot import is_a_pleasantry, question_from
+
+    assert is_a_pleasantry(question_from("@mbubbleSearch gm king"))
+    assert is_a_pleasantry(question_from("yoo @mbubbleSearch this is genius"))

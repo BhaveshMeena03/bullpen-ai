@@ -129,14 +129,36 @@ _CITES_A_TIME = re.compile(
 _WHITESPACE = re.compile(r"\s+")
 
 
-def question_from(text: str) -> str:
+def question_from(text: str, handle: str = "mbubbleSearch") -> str:
     """The question inside a post that tagged the bot.
 
-    Strips every handle, not just the bot's: a post reading "@marketbubble
-    @searchbot what did ansem say about eth" is asking about Ansem, and
-    leaving the handles in sends them to the embedder as if they were
-    search terms.
+    What follows the tag, when anything does. People address someone else
+    and then turn to the account:
+
+        Yoo Z take a look at this
+        @mbubbleSearch
+        what did Ansem say about memefi
+
+    "Yoo Z take a look at this" is talking to Ansem. Flattening the whole
+    post into one string made the question read as six words of greeting
+    followed by a question, and the check for whether anybody had asked
+    anything — anchored to the start — found a greeting and concluded
+    nobody had. The reply was an unrelated fact about Bitcoin in 2013,
+    posted under a real question.
+
+    Only when there is something after the tag. A post that ends with it
+    ("what did ansem say about eth @mbubbleSearch") keeps the whole text,
+    and so does a reply that opens with a row of handles, which is where
+    X puts them.
     """
+    after = re.split(rf"@{re.escape(handle)}\b", text, maxsplit=1,
+                     flags=re.I)
+    if len(after) == 2:
+        tail = _WHITESPACE.sub(" ", _HANDLE.sub(" ", after[1])).strip()
+        # A trailing handle leaves nothing, and a bare "?" is not a
+        # question anybody meant to ask.
+        if len(tail) >= 6:
+            return tail
     return _WHITESPACE.sub(" ", _HANDLE.sub(" ", text)).strip()
 
 
@@ -1046,6 +1068,23 @@ _INTERROGATIVE = re.compile(
     (?: what|why|how|who|whom|whose|when|where|which
       | did|does|do|is|are|was|were|can|could|should|would|will
       | tell\s+me | any\b )\b""")
+# A question shape, wherever it sits in the post. The pattern above is
+# anchored to the start so that "that's what I mean" is not read as a
+# question, which is right — but it also missed a real one: "Yoo Z take a
+# look at this / @mbubbleSearch / what did Ansem say about memefi" put
+# six words in front of the question, so the account decided nobody had
+# asked anything and offered an unrelated fact instead of answering.
+#
+# An interrogative followed straight away by an auxiliary is not ambiguous
+# anywhere in a sentence. "what did", "who said", "how much is" are
+# questions; "that's what I mean" and "no idea how" are not, because
+# nothing follows the interrogative that could open one.
+_QUESTION_SHAPE = re.compile(
+    r"""(?ix) \b(?: what|why|how|who|whom|whose|when|where|which )\s+
+        (?: did|does|do|is|are|was|were|has|have|had|can|could|should
+          | would|will|much|many|long|come|about )\b
+      | \b(?: tell\s+me\s+(?:about|what|why|how)
+            | what\'?s | who\'?s | how\'?s )\b""")
 _SOCIAL_MAX_WORDS = 14
 
 
@@ -1061,7 +1100,10 @@ def asks_something(text: str) -> bool:
     said on the show and it answers from the transcripts".
     """
     text = (text or "").strip()
-    return bool(text) and ("?" in text or bool(_INTERROGATIVE.search(text)))
+    return bool(text) and (
+        "?" in text
+        or bool(_INTERROGATIVE.search(text))
+        or bool(_QUESTION_SHAPE.search(text)))
 
 
 def reads_as_social(text: str) -> bool:
