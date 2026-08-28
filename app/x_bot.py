@@ -613,18 +613,30 @@ _SUMMONS = re.compile(
 # Asking for a joke outright. Without this it goes to retrieval, which
 # searches the transcripts for the words "tell me a joke" and finds
 # nothing — the pool of funny moments is sitting right there unused.
+# "me" and "us" are optional. "tell a joke" fell through to the compliment
+# path and answered with a fact about pair trading, because the pattern
+# insisted on "tell ME a joke".
 _ASKS_FOR_A_JOKE = re.compile(
-    r"""(?ix)\b(?: tell\s+(?:me|us)\s+(?:a\s+)?(?:joke|something\ funny)
-                 | (?:got|have)\s+(?:any|a)\s+jokes?
+    r"""(?ix)\b(?: (?:tell|give|drop|hit)\s+(?:me|us\b)?\s*
+                   (?:a\s+|the\s+)?(?:joke|jokes|something\s+funny)
+                 | (?:got|have|know)\s+(?:any|a|some)?\s*jokes?
                  | say\s+something\s+funny
                  | make\s+(?:me|us)\s+laugh
                  | something\s+funny\s+from\s+the\s+(?:show|broadcast)
+                 | be\s+funny
     )\b""")
+
+
+# The whole message being the word. Matched separately from the phrases
+# above because a bare "joke" anywhere would also fire on "what did ansem
+# say about jokes", which is a real question about the archive.
+_JUST_JOKE = re.compile(r"(?ix)^\W*(?:a\s+)?(?:joke|jokes|funny)\W*$")
 
 
 def asks_for_a_joke(question: str) -> bool:
     """Is this asking for one of the funny moments rather than a fact?"""
-    return bool(_ASKS_FOR_A_JOKE.search(question or ""))
+    text = (question or "").strip()
+    return bool(_ASKS_FOR_A_JOKE.search(text) or _JUST_JOKE.match(text))
 
 
 def summons(question: str) -> bool:

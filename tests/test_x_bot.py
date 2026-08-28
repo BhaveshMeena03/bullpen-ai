@@ -3194,3 +3194,30 @@ async def test_the_thread_count_resets_with_the_day(tmp_path):
     assert len(client.posted) == 1
     await bot.tick("2026-08-29")          # a new day
     assert len(client.posted) == 2
+
+
+def test_every_way_someone_asks_for_a_joke():
+    """"tell a joke" fell through to the compliment path and answered with
+    a fact about pair trading Hype against ETH, because the pattern
+    insisted on "tell ME a joke"."""
+    from app.x_bot import asks_for_a_joke, question_from
+
+    for ask in ("tell a joke", "tell me a joke", "tell us a joke",
+                "give me a joke", "drop a joke", "got any jokes",
+                "know any jokes", "say something funny", "make me laugh",
+                "be funny", "tell jokes",
+                # The bare word, which is what people actually type.
+                "joke", "jokes", "a joke", "funny", "joke?"):
+        assert asks_for_a_joke(question_from(f"@bot {ask}")), ask
+
+
+def test_a_question_about_jokes_is_not_a_request_for_one():
+    """A bare "joke" anywhere would fire on a real question about the
+    archive, so the bare form only counts as the whole message."""
+    from app.x_bot import asks_for_a_joke, question_from
+
+    for question in ("what did ansem say about jokes",
+                     "did they joke about eth",
+                     "what was the funny bit about pump fun",
+                     "who made the joke about michael cat"):
+        assert not asks_for_a_joke(question_from(f"@bot {question}")), question
