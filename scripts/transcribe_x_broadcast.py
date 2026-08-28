@@ -120,21 +120,43 @@ def download_audio(url: str, dest: Path) -> Path:
     mono regardless, so nothing about the transcript is worse for it.
     """
     print("  downloading audio (smallest rendition; video is discarded)…")
-    subprocess.run(
-        [_bin("yt-dlp"), "--socket-timeout", "30", "--no-warnings",
-         # A five-hour broadcast arrives as ~9,600 HLS fragments, and yt-dlp
-         # fetches them one at a time by default. Each is a separate HTTPS
-         # request of roughly 150KB, so the download is bounded by round-trip
-         # latency and not by bandwidth at all: measured 120 KB/s on a link
-         # that does 14.9 MB/s, which is under 1% of it. Fetching sixteen at
-         # once turns hours into minutes and costs nothing but sockets.
-         "--concurrent-fragments", "16",
-         "-f", "worstaudio/worstvideo+bestaudio/worst",
-         "--extract-audio", "--audio-format", "mp3",
-         "--postprocessor-args", "ffmpeg:-ac 1 -ar 16000 -b:a 32k",
-         "-o", str(dest.with_suffix(".%(ext)s")), url],
-        check=True, timeout=7200,
-    )
+    # Sixteen fragments at once, then one at a time if that fails.
+    #
+    # A five-hour broadcast arrives as ~9,600 HLS fragments, and yt-dlp
+    # fetches them one at a time by default. Each is a separate HTTPS
+    # request of roughly 150KB, so the download is bounded by round-trip
+    # latency and not by bandwidth at all: measured 120 KB/s on a link that
+    # does 14.9 MB/s, under 1% of it. Sixteen at once turns hours into
+    # minutes and costs nothing but sockets.
+    #
+    # On some streams they race each other, though: "No such file or
+    # directory: ...mp4.part-Frag68", reproducibly, on two of thirty-three
+    # episodes re-downloaded in one sitting. Serial is slow and always
+    # worked, so it is the retry rather than the default — and a broadcast
+    # that fails to download here has failed the whole pipeline, twenty
+    # minutes before anybody finds out.
+    for fragments in ("16", "1"):
+        # Leftover fragment state makes the retry resume a download that no
+        # longer exists, and fail differently the second time.
+        for stale in dest.parent.glob(f"{dest.name}.*"):
+            if stale.suffix != ".mp3":
+                stale.unlink(missing_ok=True)
+        try:
+            subprocess.run(
+                [_bin("yt-dlp"), "--socket-timeout", "30", "--no-warnings",
+                 "--concurrent-fragments", fragments,
+                 "-f", "worstaudio/worstvideo+bestaudio/worst",
+                 "--extract-audio", "--audio-format", "mp3",
+                 "--postprocessor-args", "ffmpeg:-ac 1 -ar 16000 -b:a 32k",
+                 "-o", str(dest.with_suffix(".%(ext)s")), url],
+                check=True, timeout=7200,
+            )
+            break
+        except subprocess.CalledProcessError:
+            if fragments == "16":
+                print("  fragments raced — retrying one at a time (slower)")
+                continue
+            raise
     got = dest.with_suffix(".mp3")
     if not got.exists():
         raise SystemExit(f"audio download produced no file for {url}")
