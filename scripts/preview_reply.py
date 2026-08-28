@@ -40,7 +40,11 @@ from app.podcast import PodcastIndex  # noqa: E402
 from app.x_api import LinkInReplyError, assert_linkless  # noqa: E402
 from app.x_bot import (  # noqa: E402
     REPLY_BUDGET,
+    format_highlight,
     format_reply,
+    is_a_pleasantry,
+    load_highlights,
+    looks_like_a_question,
     pinned_answer,
     question_from,
 )
@@ -56,6 +60,9 @@ SUITE = [
     "@mbubbleSearch what's the CA",
     "@mbubbleSearch what did taylor swift say about bitcoin",
     "@mbubbleSearch",
+    # Praise, which never reaches retrieval at all — see below.
+    "@mbubbleSearch you are so freaking cool",
+    "@mbubbleSearch gm king",
 ]
 
 
@@ -64,6 +71,29 @@ async def preview(index: PodcastIndex, post: str, settings) -> None:
     print(f"\n  ── {post}")
     if len(question) < 6:
         print("     (a tag with no question — the bot stays quiet)")
+        return
+
+    # Praise is answered from the highlight pool and never touches
+    # retrieval. This script did not model that branch, so previewing "you
+    # are so freaking cool" printed a retrieval answer — a reply the live
+    # bot would never send. A preview tool that is wrong about a whole
+    # class of reply is worse than not having one, because the output
+    # looks exactly as authoritative as the correct cases beside it.
+    if not looks_like_a_question(question) and is_a_pleasantry(question):
+        pool = load_highlights()
+        if pool:
+            import hashlib
+            seed = str(abs(hash(post)))
+            chosen = pool[int(hashlib.sha256(seed.encode()).hexdigest(), 16)
+                          % len(pool)]
+            reply = format_highlight(chosen, seed,
+                                     settings.x_bot_include_links,
+                                     REPLY_BUDGET)
+            print("     | " + reply.replace("\n", "\n     | "))
+            print(f"     {len(reply)}/280 chars · highlight pool "
+                  f"({len(pool)} entries) · no model call · $0")
+            return
+        print("     (praise, but the highlight pool is empty)")
         return
 
     pinned = pinned_answer(question, settings.x_bot_contract_address,
