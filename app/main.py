@@ -159,6 +159,7 @@ async def _run_x_bot(app: FastAPI, settings) -> None:
         ),
         app.state.podcast,
         daily_reply_cap=settings.x_bot_daily_reply_cap,
+        per_thread_cap=settings.x_bot_per_thread_cap,
         include_links=settings.x_bot_include_links,
         contract_address=settings.x_bot_contract_address,
         token_label=settings.x_bot_token_label,

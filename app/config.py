@@ -236,6 +236,9 @@ class Settings(BaseSettings):
     # roughly $2.30 a day. The cap is a spend guard: it bounds what a bug, or
     # a raid, can cost before anyone notices.
     x_bot_daily_reply_cap: int = 100
+    # Replies this account will put into one conversation in a day.
+    # Two automated accounts otherwise answer each other forever.
+    x_bot_per_thread_cap: int = 3
     # Replies carry no URL. X charges $0.200 for a post containing one against
     # $0.015 without — 13x, or the difference between $36 and $313 a month at
     # fifty mentions a day. The citation (timestamp + episode) is the useful

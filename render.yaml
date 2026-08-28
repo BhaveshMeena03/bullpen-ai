@@ -93,6 +93,12 @@ services:
       # reading it. Revisit when volume matters more than appearance.
       - key: X_BOT_INCLUDE_LINKS
         value: "always"
+      # Two automated accounts in one thread answer each other forever.
+      # @clawpumptech is a bot too: its reply mentioned this account, that
+      # reply mentioned it back, and nine messages later both were still
+      # paying per message in somebody else's thread.
+      - key: X_BOT_PER_THREAD_CAP
+        value: "3"
       - key: X_BOT_DAILY_REPLY_CAP
         value: "300"
       # The ceiling the reply cap is not: a mention read costs $0.001

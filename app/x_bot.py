@@ -1504,6 +1504,11 @@ class BotState:
     # Indexes into the highlight pool that have already been offered, so the
     # account does not post the same fact twice.
     highlights_used: list = field(default_factory=list)
+    # How many replies this account has put into each conversation today.
+    # Two automated accounts in one thread reply to each other forever:
+    # @clawpumptech is a bot too, its reply mentions this one, that reply
+    # mentions it back, and neither ever stops. Both were paying for it.
+    conversation_replies: dict = field(default_factory=dict)
     # The last real question each author asked, so "try again" can mean what
     # it plainly means. Without it that reply is not a question and not a
     # compliment, and the bot answered it with an unrelated fact about
@@ -1551,6 +1556,7 @@ class BotState:
             "replied": self.replied[-500:],
             "day": self.day,
             "replies_today": self.replies_today,
+            "conversation_replies": self.conversation_replies,
             "attempts": self.attempts,
             "opted_out": self.opted_out,
             "highlights_used": self.highlights_used[-200:],
@@ -1564,6 +1570,7 @@ class BotState:
             self.day = today
             self.replies_today = 0
             self.spent_today_usd = 0.0
+            self.conversation_replies = {}
 
 
 class MentionBot:
@@ -1573,6 +1580,7 @@ class MentionBot:
                  include_links: bool = False, min_question_chars: int = 6,
                  contract_address: str | None = None,
                  daily_spend_cap_usd: float = 5.0,
+                 per_thread_cap: int = 3,
                  verified_only: bool = False,
                  post_limit: int = POST_LIMIT,
                  summaries=None, summary_limit: int = 4000,
@@ -1588,6 +1596,7 @@ class MentionBot:
         self._min_question = min_question_chars
         self._contract_address = contract_address
         self._spend_cap = daily_spend_cap_usd
+        self.per_thread = per_thread_cap
         self._verified_only = verified_only
         self._post_limit = post_limit
         self._summaries = summaries
@@ -1728,6 +1737,17 @@ class MentionBot:
                             mention.id)
                 handled = mention.id
                 continue
+            # A thread this account has already spoken in several times is
+            # either a loop or an argument, and neither is improved by
+            # another reply. Counted per conversation rather than per
+            # author, because the other side of a loop is a different
+            # account saying the same thing back.
+            thread = str(mention.conversation_id or mention.id)
+            if self.state.conversation_replies.get(thread, 0) >= self.per_thread:
+                logger.info("%s is in a thread already answered %d times — "
+                            "leaving it there", mention.id, self.per_thread)
+                handled = mention.id
+                continue
             if (self.state.replies_today + posted >= self.cap
                     and mention.author_id not in self._priority):
                 # A priority account is answered even on a day the cap has
@@ -1740,6 +1760,8 @@ class MentionBot:
                     posted += 1
                     replied.add(mention.id)
                     self.state.replied.append(mention.id)
+                    self.state.conversation_replies[thread] = (
+                        self.state.conversation_replies.get(thread, 0) + 1)
                 handled = mention.id
                 self.state.attempts.pop(mention.id, None)
             except Exception:                              # noqa: BLE001

@@ -307,8 +307,9 @@ class FakeIndex:
 
 
 def mention(mid, text="@bot what did ansem say", author="someone",
-            verified=False):
-    return Mention(id=mid, text=text, author_id=author, conversation_id=mid,
+            verified=False, conversation=None):
+    return Mention(id=mid, text=text, author_id=author,
+                   conversation_id=conversation or mid,
                    author_verified=verified,
                    author_verified_type="blue" if verified else "none")
 
@@ -3137,3 +3138,59 @@ async def test_a_failed_duplicate_check_still_answers(tmp_path):
     await bot.tick("2026-08-27")
     await bot.tick("2026-08-27")
     assert client.posted
+
+
+@pytest.mark.anyio
+async def test_two_bots_cannot_talk_to_each_other_forever(tmp_path):
+    """@clawpumptech is automated too. Its reply mentioned this account,
+    that reply mentioned it back, and neither stopped — nine replies deep
+    in somebody else's thread, both sides paying per message.
+
+    Counted per conversation, not per author: the other half of a loop is
+    a different account saying the same thing back.
+    """
+    index = FakeIndex()
+    batches = [[mention("0")]]
+    for i in range(1, 9):
+        batches.append([mention(str(i), conversation="thread-1",
+                                text="@bot what did ansem say about solana")])
+    client = FakeClient(batches)
+    bot = MentionBot(client, index, state_path=tmp_path / "s.json",
+                     per_thread_cap=3)
+    for _ in range(len(batches)):
+        await bot.tick("2026-08-28")
+
+    assert len(client.posted) == 3, (
+        f"a loop must stop at the cap, got {len(client.posted)}")
+
+
+@pytest.mark.anyio
+async def test_the_cap_is_per_thread_not_global(tmp_path):
+    """Capping a thread must not quieten the account everywhere else."""
+    index = FakeIndex()
+    batches = [[mention("0")]]
+    for i in range(1, 6):
+        batches.append([mention(str(i), conversation=f"thread-{i}",
+                                text="@bot what did ansem say about solana")])
+    client = FakeClient(batches)
+    bot = MentionBot(client, index, state_path=tmp_path / "s.json",
+                     per_thread_cap=3)
+    for _ in range(len(batches)):
+        await bot.tick("2026-08-28")
+    assert len(client.posted) == 5, "separate threads are unaffected"
+
+
+@pytest.mark.anyio
+async def test_the_thread_count_resets_with_the_day(tmp_path):
+    index = FakeIndex()
+    client = FakeClient([
+        [mention("0")],
+        [mention("1", conversation="t", text="@bot what did ansem say")],
+        [mention("2", conversation="t", text="@bot what did ansem say")]])
+    bot = MentionBot(client, index, state_path=tmp_path / "s.json",
+                     per_thread_cap=1)
+    await bot.tick("2026-08-28")
+    await bot.tick("2026-08-28")
+    assert len(client.posted) == 1
+    await bot.tick("2026-08-29")          # a new day
+    assert len(client.posted) == 2
