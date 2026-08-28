@@ -3108,22 +3108,23 @@ async def test_a_second_instance_does_not_answer_the_same_mention(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_the_duplicate_check_stops_once_a_deploy_cannot_overlap(
+async def test_the_duplicate_check_runs_however_old_this_instance_is(
         tmp_path):
-    """After the overlap window there is one process, and the extra read is
-    pure cost on every reply."""
+    """Gating it on uptime only protected the new container. The old one
+    has been up for hours, skipped the check, and posted over the new
+    one's reply — which is what happened while shipping the gated version.
+    """
     import time as _time
 
     index = FakeIndex()
     client = FakeClient([[mention("0")], [mention("1")]])
     bot = MentionBot(client, index, state_path=tmp_path / "s.json")
-    bot._started_at = _time.time() - (MentionBot.DEPLOY_OVERLAP + 60)
-    before = client.replied_to_calls
+    bot._started_at = _time.time() - 86_400          # up for a day
+    client.already_replied = {"1"}
+    client.answered_after = 1
     await bot.tick("2026-08-27")
     await bot.tick("2026-08-27")
-    assert client.posted, "a normal reply still goes out"
-    # One call at cold start is expected; none from the duplicate guard.
-    assert client.replied_to_calls - before <= 1
+    assert not client.posted, "an old instance must check too"
 
 
 @pytest.mark.anyio
