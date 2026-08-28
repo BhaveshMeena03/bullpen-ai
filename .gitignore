@@ -26,3 +26,4 @@ data/.usage.json
 # Machine-local, and committing it would make one deploy re-answer another's
 # backlog.
 data/x_bot_state.json
+.broadcast-check.log
