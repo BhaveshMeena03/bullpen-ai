@@ -1,0 +1,141 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Market Bubble Search — how it works</title>
+<!--
+  The explainer behind the product demo. Every number on this page is read
+  from the real system, not rounded for effect:
+
+    32 transcripts, 24 uploads + 8 live X broadcasts   data/episodes.json
+    86 hours, 65,381 lines                             same
+    2,538 passages, 17,717 exact terms                 data/term_index.json
+    voyage-3.5 / 1024 dims, rerank-2.5-lite            app/config.py
+    12 candidates narrowed to 6, claude-haiku-4-5      same
+
+  Driven by scripts/make_tech_demo.mjs, which reveals one stage at a time
+  and records frames. Kept as a page rather than a video editor timeline so
+  the numbers can be corrected in one place when the archive grows.
+-->
+<style>
+  :root{
+    --bg:#070b09; --panel:#0d1512; --line:#1d2b25;
+    --ink:#e8fff4; --dim:#8fa89d; --accent:#34d399;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:400 17px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    -webkit-font-smoothing:antialiased;
+    display:flex; align-items:center; justify-content:center;
+    min-height:100vh; padding:16px 52px;
+  }
+  .wrap{width:100%; max-width:1080px}
+  h1{font-size:33px; line-height:1.1; margin:0 0 5px; letter-spacing:-.5px}
+  h1 span{color:var(--accent)}
+  .sub{color:var(--dim); font-size:17px; margin:0 0 20px}
+  .steps{display:flex; flex-direction:column; gap:8px}
+  .step{
+    display:grid; grid-template-columns:42px 1fr auto; gap:18px;
+    align-items:center; padding:11px 20px;
+    background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    opacity:0; transform:translateY(10px);
+    transition:opacity .35s ease, transform .35s ease, border-color .35s ease;
+  }
+  .step.on{opacity:1; transform:none}
+  .step.lit{border-color:rgba(52,211,153,.55)}
+  .n{
+    width:42px; height:42px; border-radius:10px; display:grid;
+    place-items:center; font-weight:700; font-size:17px;
+    background:rgba(52,211,153,.12); color:var(--accent);
+    border:1px solid rgba(52,211,153,.3);
+  }
+  .t{font-weight:650; font-size:18px; margin:0 0 2px}
+  .d{color:var(--dim); font-size:15px; margin:0}
+  .d b{color:var(--ink); font-weight:600}
+  .tag{
+    color:var(--accent); font-size:14px; font-weight:600;
+    white-space:nowrap; opacity:.9;
+  }
+  .rule{
+    margin-top:12px; padding:13px 20px; border-radius:12px;
+    background:rgba(52,211,153,.07); border:1px solid rgba(52,211,153,.3);
+    opacity:0; transform:translateY(10px);
+    transition:opacity .4s ease, transform .4s ease;
+  }
+  .rule.on{opacity:1; transform:none}
+  .rule p{margin:0; font-size:17px}
+  .rule .small{color:var(--dim); font-size:14px; margin-top:5px}
+</style>
+
+<div class="wrap">
+  <h1>How <span>Market Bubble Search</span> works</h1>
+  <p class="sub">Every episode, indexed by meaning — and answered only from
+    what was actually said.</p>
+
+  <div class="steps">
+    <div class="step" id="s1">
+      <div class="n">1</div>
+      <div>
+        <p class="t">Transcribe every broadcast</p>
+        <p class="d"><b>32</b> shows — 24 YouTube uploads and
+          <b>8 live X broadcasts</b>. 86 hours, 65,381 lines.</p>
+      </div>
+      <div class="tag">Whisper, run locally</div>
+    </div>
+
+    <div class="step" id="s2">
+      <div class="n">2</div>
+      <div>
+        <p class="t">Cut into overlapping passages</p>
+        <p class="d"><b>2,538</b> windows. They overlap, so an answer that
+          straddles a boundary is still findable.</p>
+      </div>
+      <div class="tag">every line keeps its timestamp</div>
+    </div>
+
+    <div class="step" id="s3">
+      <div class="n">3</div>
+      <div>
+        <p class="t">Index by meaning, not keywords</p>
+        <p class="d">Each passage becomes a <b>1,024-dimension</b> vector, so
+          "why is eth done" finds it even if nobody said those words.</p>
+      </div>
+      <div class="tag">voyage-3.5 → Pinecone</div>
+    </div>
+
+    <div class="step" id="s4">
+      <div class="n">4</div>
+      <div>
+        <p class="t">Index the rare words exactly</p>
+        <p class="d"><b>17,717</b> names and numbers matched literally.
+          "54 million" barely moves a vector, but it is the question.</p>
+      </div>
+      <div class="tag">the half meaning-search misses</div>
+    </div>
+
+    <div class="step" id="s5">
+      <div class="n">5</div>
+      <div>
+        <p class="t">Narrow to what actually answers it</p>
+        <p class="d">Both routes feed <b>12 candidates</b> into a reranker,
+          which keeps the <b>6</b> that genuinely bear on the question.</p>
+      </div>
+      <div class="tag">rerank-2.5-lite</div>
+    </div>
+
+    <div class="step" id="s6">
+      <div class="n">6</div>
+      <div>
+        <p class="t">Answer from those six passages only</p>
+        <p class="d">Claude writes the answer and cites the timestamp of the
+          line it used — the second you can click.</p>
+      </div>
+      <div class="tag">claude-haiku-4-5</div>
+    </div>
+  </div>
+
+  <div class="rule" id="rule">
+    <p><b>If it wasn't said on the show, it says so.</b></p>
+    <p class="small">No outside knowledge. An answer with no citation is
+      never posted — the timestamp is the part you can check.</p>
+  </div>
+</div>
