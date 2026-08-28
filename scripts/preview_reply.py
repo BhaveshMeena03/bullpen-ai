@@ -39,7 +39,6 @@ from app.config import get_settings  # noqa: E402
 from app.podcast import PodcastIndex  # noqa: E402
 from app.x_api import LinkInReplyError, assert_linkless  # noqa: E402
 from app.x_bot import (  # noqa: E402
-    REPLY_BUDGET,
     format_highlight,
     format_reply,
     is_a_pleasantry,
@@ -89,9 +88,10 @@ async def preview(index: PodcastIndex, post: str, settings) -> None:
                           % len(pool)]
             reply = format_highlight(chosen, seed,
                                      settings.x_bot_include_links,
-                                     REPLY_BUDGET)
+                                     settings.x_bot_post_limit)
             print("     | " + reply.replace("\n", "\n     | "))
-            print(f"     {weighted_length(reply)}/280 chars · highlight pool "
+            print(f"     {weighted_length(reply)}/"
+                  f"{settings.x_bot_post_limit} chars · highlight pool "
                   f"({len(pool)} entries) · no model call · $0")
             return
         print("     (praise, but the highlight pool is empty)")
@@ -106,8 +106,15 @@ async def preview(index: PodcastIndex, post: str, settings) -> None:
         if getattr(result, "refused", False):
             print("     (refused by the model — the bot stays quiet)")
             return
+        # The configured limit, not the module default. Omitting this fell
+        # back to POST_LIMIT (280) and previewed every answer trimmed to a
+        # third of what production actually posts — the live account has
+        # replied at 362, 659, 786 and 857 characters, and this printed
+        # them cut off at 280 with an ellipsis. A preview that shortens
+        # the thing being previewed is not a preview.
         reply = format_reply(result.answer, result.hits,
-                             include_links=settings.x_bot_include_links)
+                             include_links=settings.x_bot_include_links,
+                             limit=settings.x_bot_post_limit)
         source = f"{len(result.hits)} hits · {result.model}"
 
     for line in reply.splitlines():
@@ -117,8 +124,8 @@ async def preview(index: PodcastIndex, post: str, settings) -> None:
     # "295/280 OVER LIMIT" — a preview that talks you out of a reply that
     # would have posted correctly is worse than no preview.
     shown = weighted_length(reply)
-    over = " OVER LIMIT" if shown > 280 else ""
-    print(f"     {shown}/280 chars · {source}{over}")
+    over = " OVER LIMIT" if shown > settings.x_bot_post_limit else ""
+    print(f"     {shown}/{settings.x_bot_post_limit} chars · {source}{over}")
 
     try:
         assert_linkless(reply)
@@ -140,7 +147,7 @@ async def main() -> int:
         ap.error("give a post, or --suite")
 
     settings = get_settings()
-    print(f"  reply budget {REPLY_BUDGET} chars · links "
+    print(f"  reply limit {settings.x_bot_post_limit} chars · links "
           f"{'ON' if settings.x_bot_include_links else 'off'}")
     index = PodcastIndex()
     for post in posts:

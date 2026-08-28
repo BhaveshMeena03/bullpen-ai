@@ -118,7 +118,14 @@ def _before(mention_id: str) -> str:
 
 _HANDLE = re.compile(r"@\w{1,15}")
 # A spoken-timestamp citation in the answer text: 16:16, 1:39:15, 4:01:47.
-_CITES_A_TIME = re.compile(r"\b\d{1,2}:\d{2}(?::\d{2})?\b")
+# A position in the recording, not a time of day. The lookahead exists
+# because an answer once said Brian Armstrong "was scheduled to appear
+# around 3:30 PM" and this matched the 3:30 — so the reply offered to jump
+# to three minutes thirty into an unrelated episode, presenting a clock
+# time as a citation. The show is discussed as well as transcribed, and
+# the two kinds of time look identical until the am/pm.
+_CITES_A_TIME = re.compile(
+    r"\b\d{1,2}:\d{2}(?::\d{2})?\b(?!\s*(?:[ap]\.?m\.?|AM|PM)\b)")
 _WHITESPACE = re.compile(r"\s+")
 
 
@@ -1376,6 +1383,73 @@ def wants_link(mode: str, deep_link: str) -> bool:
     return False
 
 
+_STAMPED_LINE = re.compile(r"\[(\d{1,2}:\d{2}(?::\d{2})?)\]")
+
+
+def _covers(hit, stamp: str) -> bool:
+    """Does this passage actually contain the moment the answer names?
+
+    Exactly first — every line of a passage carries its own timestamp, so
+    a cited line is either in there or it is not. Then by range, because
+    the model sometimes rounds a citation to a second between two lines.
+    """
+    lines = _STAMPED_LINE.findall(getattr(hit, "text_ts", "") or "")
+    if stamp in lines:
+        return True
+    if not lines:
+        return False
+    try:
+        want = _seconds(stamp)
+        first, last = _seconds(lines[0]), _seconds(lines[-1])
+    except ValueError:
+        return False
+    return first <= want <= last
+
+
+def cited_hit(answer: str, hits: list):
+    """The passage the answer actually quotes, not merely the best ranked.
+
+    The link used to come from hits[0] while the timestamp came from the
+    answer, and the two were assumed to agree. They do not have to. Asked
+    about Solana reclaiming $100, the model correctly quoted Ep 10 at
+    3:36:29 — "I'm expecting Solana to go to 150 during Q3" — and the
+    reply linked the August 27 fantasy football draft, because that was
+    the top-ranked passage. Three hours into an unrelated show, under a
+    sentence that was true.
+
+    A citation nobody can follow is the failure this tool exists to avoid,
+    and welding a real timestamp to the wrong episode is worse than no
+    link: it looks checkable and is not.
+
+    Returns (hit, cited_moment_or_None). A moment found in no passage at
+    all is reported as None so the caller can decline to build a link
+    around something the retrieval never supplied.
+    """
+    if not hits:
+        return None, None
+    found = _CITES_A_TIME.search(answer or "")
+    if not found:
+        return hits[0], None
+    stamp = found.group(0)
+
+    # Only passages that carry per-line timestamps can answer the question
+    # "is this moment in here". text_ts is empty on vectors written before
+    # it existed, and absence of evidence is not evidence of a bad
+    # citation — with nothing to check against, behave as before rather
+    # than dropping a link that was probably right.
+    checkable = [h for h in hits
+                 if (getattr(h, "text_ts", "") or "").strip()]
+    if not checkable:
+        return hits[0], stamp
+
+    for hit in checkable:
+        if _covers(hit, stamp):
+            return hit, stamp
+    # Every passage that could be checked was checked, and none of them
+    # contain this moment.
+    return hits[0], None
+
+
 def format_reply(answer: str, hits: list, include_links: bool | str = False,
                  limit: int = POST_LIMIT) -> str:
     """One reply: the answer, then where it was said.
@@ -1414,17 +1488,24 @@ def format_reply(answer: str, hits: list, include_links: bool | str = False,
     if not hits:
         return _fit(answer, limit - 22)
 
-    top = hits[0]
+    # The passage the answer quotes, which is not always the best-ranked
+    # one. See cited_hit: taking the link from hits[0] while taking the
+    # timestamp from the answer published a real moment under the wrong
+    # episode's URL.
+    top, supported = cited_hit(answer, hits)
+    if _CITES_A_TIME.search(answer or "") and supported is None:
+        logger.info("answer cites a moment none of the passages contain — "
+                    "linking to the passage start instead")
     mode = ("always" if include_links is True
             else "off" if include_links is False else str(include_links))
     if wants_link(mode, top.deep_link):
         seekable = "t=" in (top.deep_link or "")
         # Prefer the moment the answer actually names over the passage
-        # start, and move the link to match it.
-        cited = _CITES_A_TIME.search(answer)
-        moment = cited.group(0) if cited else top.timestamp
-        link = (_relink(top.deep_link, _seconds(moment)) if cited and seekable
-                else top.deep_link)
+        # start, and move the link to match it — but only when a passage
+        # actually contained that moment.
+        moment = supported or top.timestamp
+        link = (_relink(top.deep_link, _seconds(moment))
+                if supported and seekable else top.deep_link)
         # Fitted first, because whether the tail should carry a timestamp
         # depends on whether the trimmed answer already has one — and the
         # tail's own length depends on that answer. Two passes, cheaply.
