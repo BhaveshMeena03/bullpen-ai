@@ -1,7 +1,8 @@
 #!/bin/bash
-# Ask once a day whether Market Bubble posted a show nobody indexed.
+# Ask, the morning after the show, whether Market Bubble posted one
+# nobody indexed.
 #
-# Install (loads a LaunchAgent that runs at 11:00 every day):
+# Install (loads a LaunchAgent that runs Friday and Saturday at 11:00):
 #
 #   scripts/daily_broadcast_check.sh --install
 #
@@ -14,9 +15,17 @@
 # name, so the part that needs a person still gets one. This only removes
 # the part that was easy to forget: noticing.
 #
-# 11:00 rather than overnight because the show runs late and the finder
-# ignores anything posted in the last six hours — a stream that ended at
-# 2am is ready by mid-morning, not at 6am.
+# Friday and Saturday at 11:00, from the show's own posting record: all
+# nine live broadcasts went up on a Thursday, between 20:31 and 20:39 UTC
+# — Friday 02:01-02:09 IST — and ran three to four hours, ending around
+# 06:00 IST. By 11:00 Friday the stream is long over and X has had time
+# to swap the live feed for the full recording, which is what the six
+# hour settle window in find_new_broadcasts waits for.
+#
+# Saturday is the retry, for the week the laptop is shut on Friday. A
+# daily schedule was the first version and it was mostly waste: six of
+# every seven runs could only ever say "nothing new", and each one still
+# costs a tenth of a dollar in X reads.
 
 set -euo pipefail
 
@@ -45,7 +54,12 @@ case "${1:-}" in
     <string>$ROOT/scripts/daily_broadcast_check.sh</string>
   </array>
   <key>StartCalendarInterval</key>
-  <dict><key>Hour</key><integer>11</integer><key>Minute</key><integer>0</integer></dict>
+  <array>
+    <dict><key>Weekday</key><integer>5</integer>
+          <key>Hour</key><integer>11</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>6</integer>
+          <key>Hour</key><integer>11</integer><key>Minute</key><integer>0</integer></dict>
+  </array>
   <key>StandardOutPath</key><string>$ROOT/.broadcast-check.log</string>
   <key>StandardErrorPath</key><string>$ROOT/.broadcast-check.log</string>
 </dict>
@@ -53,7 +67,7 @@ case "${1:-}" in
 PLISTEOF
     launchctl unload "$PLIST" 2>/dev/null || true
     launchctl load "$PLIST"
-    echo "  installed — runs at 11:00 daily"
+    echo "  installed — runs Friday and Saturday at 11:00"
     echo "  log: $ROOT/.broadcast-check.log"
     exit 0
     ;;
