@@ -289,7 +289,15 @@ _ASKS_FOR_LATEST = re.compile(
         \b(?:latest|newest|most\s+recent|last|previous|this\s+week's)\b
         [^.?!]{{0,12}} \b(?:episode|ep|show|broadcast|stream)?\b
       | \bwhat(?:'?s|\s+is|\s+was)\s+(?:the\s+)?
-        (?:latest|newest|most\s+recent)\s+(?:episode|ep|show|broadcast)\b )""")
+        (?:latest|newest|most\s+recent)\s+(?:episode|ep|show|broadcast)\b
+      # The other word order, which is how people actually type it:
+      # "latest summary", "latest episode summary", "give me the newest
+      # recap". The pattern above only caught the verb-first form.
+      | \b(?:latest|newest|most\s+recent|last)\s+
+        (?:episode\s+|ep\s+|show\s+|broadcast\s+)?
+        (?:summary|recap|rundown)\b
+      | \b(?:summary|recap|rundown)\s+(?:of|for)\s+(?:the\s+)?
+        (?:latest|newest|most\s+recent|last)\b )""")
 
 
 def asks_for_the_latest(question: str) -> bool:

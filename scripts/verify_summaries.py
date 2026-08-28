@@ -102,6 +102,8 @@ async def main() -> int:
                     help="rewrite the stored summaries; without it, reports")
     ap.add_argument("--episode", type=int,
                     help="only this episode number")
+    ap.add_argument("--episode-id", help="only this episode id — for a "
+                    "broadcast whose title carries no number")
     ap.add_argument("--concurrency", type=int, default=6)
     args = ap.parse_args()
 
@@ -115,6 +117,9 @@ async def main() -> int:
     if args.episode is not None:
         summaries = [s for s in summaries
                      if episode_number(s.get("title", "")) == args.episode]
+    if args.episode_id:
+        summaries = [s for s in summaries
+                     if s.get("episode_id") == args.episode_id]
 
     checked = dropped = 0
     rewritten: list[tuple[dict, str]] = []
