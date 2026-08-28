@@ -115,7 +115,13 @@ async def main() -> int:
     if args.skip_highlights:
         print("  skipped")
     else:
-        subprocess.run([sys.executable, "scripts/make_highlights.py"], cwd=ROOT)
+        # Only the new episodes, appended. A bare rebuild re-derives the
+        # whole pool and discards every curated decision in it.
+        only = []
+        for episode in parsed:
+            only += ["--only", episode.episode_id]
+        subprocess.run([sys.executable, "scripts/make_highlights.py", *only],
+                       cwd=ROOT)
 
     # 6 — prove it -----------------------------------------------------------
     step(6, 6, "asking the live index about it")

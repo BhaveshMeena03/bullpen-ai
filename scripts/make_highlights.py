@@ -258,6 +258,12 @@ def relink(pool: list[dict], episodes: list[dict]) -> tuple[list[dict], int]:
 async def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--per-episode", type=int, default=2)
+    ap.add_argument("--only", action="append", default=[], metavar="EPISODE_ID",
+                    help="generate for these episodes only and APPEND to the "
+                         "pool. Without it the pool is rebuilt from scratch, "
+                         "which throws away every hand-curated decision — "
+                         "adding one broadcast that way took the pool from "
+                         "15 entries to 6 and lost the reviewed jokes.")
     ap.add_argument("--kind", choices=("fact", "funny"), default="fact",
                     help="what to look for. 'funny' appends to the pool "
                          "rather than replacing it")
@@ -298,6 +304,12 @@ async def main() -> int:
     settings = get_settings()
     client = AsyncAnthropic(api_key=settings.anthropic_api_key)
     episodes = json.loads(EPISODES.read_text())
+    if args.only:
+        wanted = set(args.only)
+        episodes = [e for e in episodes if e["episode_id"] in wanted]
+        if not episodes:
+            print(f"  none of {sorted(wanted)} are in {EPISODES.name}")
+            return 1
 
     pool: list[dict] = []
     for i, episode in enumerate(episodes, 1):
@@ -313,10 +325,15 @@ async def main() -> int:
         print(f"  [{i}/{len(episodes)}] {len(found)} from "
               f"{episode['title'][:44]}")
 
-    if args.kind == "funny" and OUT.exists():
-        # Appended, so a run for jokes does not throw away the facts that
-        # were already read and approved.
-        pool = json.loads(OUT.read_text()) + pool
+    if (args.kind == "funny" or args.only) and OUT.exists():
+        # Appended, never replacing. A run for jokes must not throw away the
+        # facts already approved, and a run for one new broadcast must not
+        # throw away the other thirty-two — which is exactly what happened
+        # the first time an episode was added after these guards existed.
+        existing = json.loads(OUT.read_text())
+        fresh = {(h["episode_id"], h["timestamp"]) for h in existing}
+        pool = existing + [h for h in pool
+                           if (h["episode_id"], h["timestamp"]) not in fresh]
     OUT.write_text(json.dumps(pool, ensure_ascii=False, indent=2))
     print(f"\n  {len(pool)} highlights -> {OUT.relative_to(ROOT)}")
     print("  Read them before enabling: these get posted unprompted, so a "

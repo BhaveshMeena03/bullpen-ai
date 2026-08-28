@@ -105,9 +105,25 @@ class SummaryStore:
         )
         if response.stop_reason == "refusal":
             raise RuntimeError(f"model refused to summarize {episode.episode_id}")
-        return "".join(b.text for b in response.content if b.type == "text")
+        summary = "".join(b.text for b in response.content if b.type == "text")
+        # An empty summary stores cleanly and fails silently: the episode
+        # looks summarised, and "summarize the latest episode" comes back as
+        # a bare link with no text above it. That happened on the first
+        # broadcast added after this pipeline existed.
+        if len(summary.strip()) < 200:
+            raise RuntimeError(
+                f"summary for {episode.episode_id} came back with "
+                f"{len(summary.strip())} characters — refusing to store it")
+        return summary
 
     async def store(self, episode: Episode, summary: str) -> None:
+        if len(summary.strip()) < 200:
+            # Belt and braces: verify_summaries rewrites through this path
+            # too, and dropping every topic line from a thin summary could
+            # otherwise leave an empty one behind.
+            raise ValueError(
+                f"refusing to store a {len(summary.strip())}-character "
+                f"summary for {episode.episode_id}")
         metadata = {
             "episode_id": episode.episode_id,
             "title": episode.title,

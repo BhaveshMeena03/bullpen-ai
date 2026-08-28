@@ -277,6 +277,26 @@ _ASKS_FOR_CA = re.compile(
 # episode 1, three thousand characters answering a question about a moment.
 _NUMBER = r"(?<![:.\d])(\d{1,2})(?!\s*[:.\d])"
 _ASKS = r"summar(?:ise|ize|y)|recap|rundown|what\s+happened"
+# "the latest episode", with no number in it. Without this the request
+# falls through to ordinary search, and the model answers from whatever
+# passages came back — which produced "I've indexed episodes through early
+# August, so the most recent one I have is from August 13th" twenty minutes
+# after a broadcast from the 27th was indexed. It cannot know what is newest
+# from six excerpts, so it must not be the one deciding.
+_ASKS_FOR_LATEST = re.compile(
+    rf"""(?ix)
+    (?: \b(?:{_ASKS})\b [^.?!]{{0,30}}
+        \b(?:latest|newest|most\s+recent|last|previous|this\s+week's)\b
+        [^.?!]{{0,12}} \b(?:episode|ep|show|broadcast|stream)?\b
+      | \bwhat(?:'?s|\s+is|\s+was)\s+(?:the\s+)?
+        (?:latest|newest|most\s+recent)\s+(?:episode|ep|show|broadcast)\b )""")
+
+
+def asks_for_the_latest(question: str) -> bool:
+    """Is this asking about the newest episode rather than a numbered one?"""
+    return bool(_ASKS_FOR_LATEST.search(question or ""))
+
+
 _ASKS_FOR_SUMMARY = re.compile(
     rf"""(?ix)
       (?: \b(?:{_ASKS})\b [^0-9]{{0,40}} (?:ep(?:isode)?\s*)? \#?\s* {_NUMBER}
@@ -1876,6 +1896,22 @@ class MentionBot:
         self.state.highlights_used.append(self._highlights.index(chosen))
         return chosen
 
+    async def _latest_summary(self) -> dict | None:
+        """The newest episode by air date.
+
+        Read from the stored summaries rather than inferred, because the
+        model cannot tell what is newest from the passages it happens to
+        be given and will confidently say so anyway.
+        """
+        if self._summaries is None:
+            return None
+        if self._summary_cache is None:
+            self._summary_cache = await self._summaries.list_all()
+        dated = [s for s in self._summary_cache if s.get("published_at")]
+        if not dated:
+            return None
+        return max(dated, key=lambda s: s["published_at"])
+
     async def _summary_for(self, number: int) -> dict | None:
         """The stored summary for an episode number, if there is one.
 
@@ -1941,6 +1977,18 @@ class MentionBot:
             logger.info("%s asked what this is — answering from the fixed "
                         "description", mention.id)
             return about
+
+        if asks_for_the_latest(question):
+            found = await self._latest_summary()
+            if found:
+                logger.info("%s asked for the latest episode — %s",
+                            mention.id, found.get("title", "?")[:50])
+                mode = ("always" if self.include_links is True
+                        else "off" if self.include_links is False
+                        else str(self.include_links))
+                return format_summary(
+                    found["summary"], found["title"], self._summary_limit,
+                    url=found.get("url") if mode != "off" else None)
 
         wanted = summary_request(question)
         if wanted is not None:
