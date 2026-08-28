@@ -1608,6 +1608,7 @@ class MentionBot:
         self._token_label = token_label
         self._state_path = state_path
         self.state = BotState.load(state_path)
+        self._started_at = time.time()
 
     async def tick(self, today: str) -> int:
         """Answer whatever is new. Returns how many replies were posted.
@@ -2047,10 +2048,33 @@ class MentionBot:
             return f"{lead}\n\n{reply}"
         return reply
 
+    # How long after start-up a second bot might still be running. Render
+    # keeps the old container alive until the new one reports healthy, so a
+    # deploy briefly has two of these polling the same mentions. That is how
+    # one question got two replies a second apart, both correct, in a thread
+    # about somebody else's credibility.
+    DEPLOY_OVERLAP = 10 * 60
+
     async def _answer(self, mention: Mention) -> bool:
         text = await self.compose(mention)
         if not text:
             return False
+
+        # Composing takes seconds, and in that time the other container may
+        # have answered. X is the only record both instances can see, so ask
+        # it — but only while an overlap is possible. After that this is one
+        # process talking to itself and the read is pure cost.
+        if time.time() - self._started_at < self.DEPLOY_OVERLAP:
+            try:
+                answered = await self._client.replied_to(limit=10)
+            except Exception:                                  # noqa: BLE001
+                # Never let the duplicate guard cost a real answer: failing
+                # to check is a reason to post, not to stay silent.
+                answered = set()
+            if mention.id in answered:
+                logger.info("%s was answered while this instance composed — "
+                            "not posting it twice", mention.id)
+                return True
         # Any URL still in the text at this point is one this code put
         # there — a deep link, or the site in the "what is this" answer.
         # Transcript URLs were stripped much earlier, which is what the

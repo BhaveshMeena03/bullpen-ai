@@ -239,6 +239,7 @@ class FakeClient:
         self._batches = list(batches)
         self.posted: list[tuple[str, str]] = []
         self.spent_usd = 0.0
+        self.replied_to_calls = 0
 
     async def mentions(self, since_id=None, limit=20):
         got = self._batches.pop(0) if self._batches else []
@@ -252,8 +253,15 @@ class FakeClient:
 
     async def replied_to(self, limit=100):
         """X's record of what this account has answered. Empty by default;
-        RestartingClient models an account with history."""
-        return set()
+        RestartingClient models an account with history.
+
+        `already_replied` models the other container during a deploy, and
+        `replied_to_raises` the case where X will not say.
+        """
+        self.replied_to_calls = getattr(self, "replied_to_calls", 0) + 1
+        if getattr(self, "replied_to_raises", False):
+            raise RuntimeError("X did not answer")
+        return set(getattr(self, "already_replied", ()) or ())
 
     async def reply(self, text, to_post_id, allow_link=False):
         # Mirrors the real client: the no-URL guard applies only when links
@@ -3066,3 +3074,52 @@ def test_two_names_with_no_topic_get_the_nudge():
                      "what did they say about pump fun fees",
                      "what did andre from grass say"):
         assert not asks_only_about_a_name(anchored), anchored
+
+
+@pytest.mark.anyio
+async def test_a_second_instance_does_not_answer_the_same_mention(tmp_path):
+    """Render keeps the old container alive until the new one is healthy,
+    so a deploy briefly has two bots polling the same mentions. One
+    question got two replies a second apart, in a thread about somebody
+    else's credibility — and because the fix had just shipped, the two
+    replies disagreed about who said the thing.
+    """
+    index = FakeIndex()
+    client = FakeClient([[mention("0")], [mention("1")]])
+    # The other instance already answered it while this one composed.
+    client.already_replied = {"1"}
+    bot = MentionBot(client, index, state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-27")
+    await bot.tick("2026-08-27")
+    assert not client.posted, "must not post over another instance's reply"
+
+
+@pytest.mark.anyio
+async def test_the_duplicate_check_stops_once_a_deploy_cannot_overlap(
+        tmp_path):
+    """After the overlap window there is one process, and the extra read is
+    pure cost on every reply."""
+    import time as _time
+
+    index = FakeIndex()
+    client = FakeClient([[mention("0")], [mention("1")]])
+    bot = MentionBot(client, index, state_path=tmp_path / "s.json")
+    bot._started_at = _time.time() - (MentionBot.DEPLOY_OVERLAP + 60)
+    before = client.replied_to_calls
+    await bot.tick("2026-08-27")
+    await bot.tick("2026-08-27")
+    assert client.posted, "a normal reply still goes out"
+    # One call at cold start is expected; none from the duplicate guard.
+    assert client.replied_to_calls - before <= 1
+
+
+@pytest.mark.anyio
+async def test_a_failed_duplicate_check_still_answers(tmp_path):
+    """Failing to check is a reason to post, not to stay silent."""
+    index = FakeIndex()
+    client = FakeClient([[mention("0")], [mention("1")]])
+    client.replied_to_raises = True
+    bot = MentionBot(client, index, state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-27")
+    await bot.tick("2026-08-27")
+    assert client.posted
