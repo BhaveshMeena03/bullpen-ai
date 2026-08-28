@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import re
 import subprocess
 import sys
 import time
@@ -43,16 +44,67 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+import httpx  # noqa: E402
+
+from app.config import get_settings  # noqa: E402
 from app.episode_store import load  # noqa: E402
 from app.podcast import PodcastIndex  # noqa: E402
 from app.schemas import Episode  # noqa: E402
 from app.summaries import SummaryStore  # noqa: E402
+from app.x_api import API, XCredentials  # noqa: E402
 
 EPISODES = ROOT / "data" / "episodes.json"
 
 
 def step(n: int, of: int, what: str) -> None:
     print(f"\n{'─' * 62}\n  {n}/{of}  {what}\n{'─' * 62}")
+
+
+async def still_running(url: str) -> tuple[bool, str]:
+    """Is this post still a live stream rather than a finished recording?
+
+    The broadcast post exists from the first minute of a four hour show,
+    so a URL pasted the moment it appears downloads only what has aired.
+    Twenty minutes of local transcription then produces a partial episode
+    that enters the index looking exactly like a whole one, and nothing
+    downstream ever re-checks it.
+
+    One read against the post answers it. Any failure here returns "fine"
+    — a check that cannot run must not stand between somebody and their
+    own archive.
+    """
+    found = re.search(r"/status/(\d+)", url) or re.search(r"(\d{15,})", url)
+    if not found:
+        return False, ""
+    try:
+        settings = get_settings()
+        cred = XCredentials(settings.x_api_key, settings.x_api_secret,
+                            settings.x_access_token, settings.x_access_secret)
+        endpoint = f"{API}/tweets"
+        params = {"ids": found.group(1),
+                  "tweet.fields": "created_at,attachments",
+                  "expansions": "attachments.media_keys",
+                  "media.fields": "type,duration_ms"}
+        async with httpx.AsyncClient(timeout=20) as http:
+            response = await http.get(
+                endpoint, params=params,
+                headers={"Authorization": cred.header("GET", endpoint, params)})
+        if response.status_code != 200:
+            return False, ""
+        media = (response.json().get("includes", {}).get("media") or [])
+        longest = max((m.get("duration_ms") or 0 for m in media), default=0)
+    except Exception:                                           # noqa: BLE001
+        return False, ""
+
+    if not longest:
+        return False, ""
+    hours = longest / 3_600_000
+    if hours < 2:
+        return True, (f"X reports this video as {hours * 60:.0f} minutes "
+                      f"long. Every full show has run three to four hours, "
+                      f"so this is either still streaming or one of the "
+                      f"shorter cut-downs.")
+    return False, ""
 
 
 async def main() -> int:
@@ -62,7 +114,19 @@ async def main() -> int:
     ap.add_argument("--model", default="turbo", choices=["turbo", "large-v3"])
     ap.add_argument("--skip-highlights", action="store_true",
                     help="leave the unprompted-answer pool as it is")
+    ap.add_argument("--force", action="store_true",
+                    help="index it even if it looks like it is still live")
     args = ap.parse_args()
+
+    partial, why = await still_running(args.url)
+    if partial and not args.force:
+        print(f"\n  Not starting.\n\n  {why}\n")
+        print("  Transcribing now would spend twenty minutes and store a "
+              "partial\n  episode that reads like a complete one. Wait until "
+              "the stream has\n  ended, or pass --force if you know better.\n")
+        return 1
+    if partial:
+        print(f"\n  --force: {why}\n")
 
     began = time.time()
     before = {e["episode_id"] for e in load(EPISODES)}
