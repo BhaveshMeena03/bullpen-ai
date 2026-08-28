@@ -261,7 +261,16 @@ class FakeClient:
         self.replied_to_calls = getattr(self, "replied_to_calls", 0) + 1
         if getattr(self, "replied_to_raises", False):
             raise RuntimeError("X did not answer")
-        return set(getattr(self, "already_replied", ()) or ())
+        # `answered_after` appears only from the Nth call on, which models
+        # the other container replying WHILE this one composes. Returning it
+        # from the first call instead would be caught by the cold start and
+        # never reach the guard — a test that passes for the wrong reason.
+        after = getattr(self, "answered_after", None)
+        if after is not None and self.replied_to_calls > after:
+            return set(getattr(self, "already_replied", ()) or ())
+        if after is None:
+            return set(getattr(self, "already_replied", ()) or ())
+        return set()
 
     async def reply(self, text, to_post_id, allow_link=False):
         # Mirrors the real client: the no-URL guard applies only when links
@@ -3086,11 +3095,15 @@ async def test_a_second_instance_does_not_answer_the_same_mention(tmp_path):
     """
     index = FakeIndex()
     client = FakeClient([[mention("0")], [mention("1")]])
-    # The other instance already answered it while this one composed.
+    # Empty at cold start, so the mention is genuinely picked up and
+    # composed. It only appears as answered on the later call the guard
+    # makes, which is the race this exists for.
     client.already_replied = {"1"}
+    client.answered_after = 1
     bot = MentionBot(client, index, state_path=tmp_path / "s.json")
     await bot.tick("2026-08-27")
     await bot.tick("2026-08-27")
+    assert index.asked, "the mention must actually reach compose"
     assert not client.posted, "must not post over another instance's reply"
 
 
