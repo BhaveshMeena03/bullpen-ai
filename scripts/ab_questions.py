@@ -11,12 +11,26 @@ Six kinds, each measuring something different:
               paragraph about the wrong one. Mined from the transcripts,
               not invented -- every one was read before it was written.
 
-  ABSENT      the answer is NOT in the archive. Verified by searching
-              every transcript -- as a substring, and for every
-              spelling the captions actually produce. The first version
-              of this list checked "mt gox" and "friend.tech" on a word
-              boundary; the transcripts say "Mount Gox" and "Frentech",
-              so three correct answers were scored as inventions. Refusing
+  ABSENT      the answer is NOT in the archive. Refusing is correct;
+              answering is the failure this whole comparison watches for.
+
+              Building this list by searching for terms is unreliable and
+              was wrong three times. "mt gox" and "friend.tech" missed
+              because the captions say "Mount Gox" and "Frentech".
+              "olympus dao" missed because they say "om fork" -- OHM,
+              mangled -- while describing OlympusDAO mechanics exactly.
+              "interest rate cuts" missed because the hosts discuss rates
+              for a minute without once using the phrase, saying instead
+              "they're probably gonna cut going into later this year
+              instead of hiking".
+
+              Absence of the words is not absence of the subject, and on
+              auto-generated captions the words are the least reliable
+              thing there is. Anything added here has to be a topic the
+              show could not have covered, not merely one whose name does
+              not appear. Every miss above scored a correct answer as an
+              invention, and each time it flattered whichever change was
+              being argued for. Refusing
               is the correct behaviour, and a setting that starts
               answering these is hallucinating, which is the whole worry
               about widening the pool. This is the category that matters.
@@ -73,12 +87,12 @@ ABSENT = [
     "what did they say about the bybit hack",
     "what did ansem say about lazarus group",
     "what did they say about ftx repayments",
-    "what did they say about olympus dao",
+    "what did they say about the iron finance collapse",
     "what did banks say about buying a football club",
     "what did ansem say about his tax bill",
     "what did they say about tether being investigated",
     "what did they say about dogecoin's founder",
-    "what did they say about interest rate cuts in december",
+    "what did they say about the nexo lawsuit",
     "what did they say about the wormhole hack",
     "what did they say about do kwon",
     "what did banks say about shiba inu",
