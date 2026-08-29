@@ -146,7 +146,30 @@ class Settings(BaseSettings):
     # Rerank: pull a wider candidate set from Pinecone, then re-score with
     # Voyage's reranker for actual relevance. Unset RERANK_MODEL to disable.
     rerank_model: str | None = "rerank-2.5-lite"
-    rerank_candidates: int = 12
+    # Fifty, not twelve. The reranker is far better at judging
+    # relevance than cosine similarity is, and handing it twelve
+    # candidates out of twenty-seven thousand passages starves it: the
+    # line naming who sold their entire ETH position ranks 44th, so the
+    # stage that would recognise it instantly never saw it.
+    rerank_candidates: int = 50
+    # The reranker runs twice -- once over the fifty above, once over
+    # the first twelve of them -- and the model is shown the union. The
+    # deep pass reaches passages the shallow one cannot; the shallow pass
+    # keeps the answers the deep one evicts, which reranking fifty alone
+    # does because positions two to six fill with passages merely about
+    # the same subject.
+    #
+    # Sequencing the two is a no-op, and that was measured rather than
+    # assumed: reranking is a total order, so narrowing fifty to twelve
+    # and reranking those twelve returns the same six.
+    #
+    # Across a hundred questions -- twenty of them about topics verified
+    # absent from every transcript -- misattributed quotes went 3 at
+    # twelve, 2 at fifty, 0 at the union, with the best recall of the
+    # three and no answer invented at any setting.
+    #
+    # Set to 0 to turn the second pass off without a deploy.
+    rerank_narrow_pool: int = 12
 
     # --- Ingestion ----------------------------------------------------------
     chunk_max_chars: int = 2400

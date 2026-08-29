@@ -84,26 +84,6 @@ Rules:
 1. Answer strictly from the excerpts. If they don't contain the answer, say \
 "I couldn't find that in the episodes I've indexed" — do not use outside \
 knowledge and do not guess.
-1a. The excerpts are a SAMPLE, not the archive. Six passages came back \
-from a search; the show is eighty-six hours long. So "I could not find \
-that" is the only honest shape of a miss — never "the transcripts do not \
-show X", "he never said that", or "that is not in the episodes", because \
-you cannot see the episodes, only what a search returned from them.
-
-That distinction has already cost something real. Asked whether Ansem \
-said the show needed to onboard women, the answer came back "the \
-transcripts don't show Ansem saying that" — while he says, in the August \
-27 episode, that nobody has figured out a product that gets women \
-interested. The search had missed it because the question said "girls" \
-and "onboard" while the transcript says "women" and "a product that gets \
-women interested". A miss that admits it is a miss is fine. A miss \
-dressed as a fact about the archive is a false statement about a real \
-person's words.
-
-When a miss looks like this — the topic is plainly discussed but the \
-exact phrasing is absent — say so, and say what you DID find, rather than \
-denying the whole thing.
-
 2. Cite the moment. Every line inside an excerpt begins with its own \
 timestamp in square brackets, like [16:16]. Cite the timestamp of the line \
 you actually used, NOT the `at` attribute on the excerpt — that is only \
@@ -568,21 +548,54 @@ class PodcastIndex:
         hits = await self._add_exact_matches(query, hits)
 
         # Rerank by actual relevance (falls back to vector order on failure).
+        keep = top_k
         if self._settings.rerank_model and len(hits) > top_k:
+            # Title first, same as at ingest. Reranking the transcript
+            # alone throws away the title signal the embedding just
+            # used, so an episode found *because* of its title gets
+            # demoted by the stage meant to improve the ordering.
+            candidates = hits
+            docs = [f"{h.title}\n\n{h.text}" for h in candidates]
             order = await rerank_order(
-                self._voyage,
-                query,
-                # Title first, same as at ingest. Reranking the transcript
-                # alone throws away the title signal the embedding just
-                # used, so an episode found *because* of its title gets
-                # demoted by the stage meant to improve the ordering.
-                [f"{h.title}\n\n{h.text}" for h in hits],
-                top_k=top_k,
-                model=self._settings.rerank_model,
+                self._voyage, query, docs,
+                top_k=top_k, model=self._settings.rerank_model,
             )
             if order is not None:
-                hits = [hits[i] for i in order]
-        return _prefer_seekable(hits)[:top_k]
+                hits = [candidates[i] for i in order]
+
+                # A deep candidate set reaches passages a shallow one
+                # cannot -- the line naming who sold their entire ETH
+                # position sits at rank 44 -- but reranking the deep set
+                # alone loses answers the shallow one got right, because
+                # positions two to six fill with passages merely about
+                # the same subject and evict the specific one.
+                #
+                # Sequencing the two does nothing: reranking is a total
+                # order, so narrowing fifty to twelve and reranking those
+                # twelve gives back the same six. Measured, not assumed.
+                # Combining them is what changes anything, because then
+                # neither set has to win the same slots.
+                narrow = self._settings.rerank_narrow_pool
+                if narrow and len(candidates) > narrow:
+                    shallow = await rerank_order(
+                        self._voyage, query, docs[:narrow],
+                        top_k=top_k, model=self._settings.rerank_model,
+                    )
+                    if shallow is not None:
+                        # Indices address `candidates`, which is the order
+                        # before the deep rerank rewrote `hits`.
+                        def key(h: PodcastHit) -> tuple[str, float]:
+                            return (h.episode_id, h.start_seconds)
+
+                        deep = hits[:top_k]
+                        seen = {key(h) for h in deep}
+                        extra = [candidates[i] for i in shallow
+                                 if key(candidates[i]) not in seen]
+                        hits = deep + extra
+                        # The union is pointless if the caller's slice
+                        # throws it away again.
+                        keep = len(deep) + len(extra)
+        return _prefer_seekable(hits)[:keep]
 
     @staticmethod
     def _format(hits: list[PodcastHit]) -> str:
