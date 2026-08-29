@@ -11,10 +11,14 @@ that spends it (https://docs.x.com/x-api/getting-started/pricing):
     post create  POST /2/tweets                  $0.015 per request
     post create  POST /2/tweets, with a URL      $0.200 per request
 
-That last row is the whole design. A reply containing a link costs thirteen
-times one that does not, which turns a $36/month bot into a $313/month one
-at fifty mentions a day. So replies carry the quote and the timestamp, and
-the link lives in the profile bio instead — cheaper, and a better reply.
+The URL surcharge is on a standalone POST, not on a reply. Everything this
+bot sends is a reply -- `_send` always carries in_reply_to_tweet_id -- so
+links in mention answers cost the ordinary $0.015. Only announce.py posts
+standalone, and that is where the row above bites.
+
+This block previously said a reply with a link cost thirteen times one
+without, and that reading spread into config.py, x_bot.py and
+preview_reply.py before anyone checked it against a bill.
 
 X does not document what counts as "a URL" — nothing about bare domains,
 t.co, or media. Rather than guess at their detector, `assert_linkless`

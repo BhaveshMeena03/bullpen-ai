@@ -8,12 +8,10 @@ stopped working; tag-to-ask is precisely the case that still does.
 
 Three things decide the design.
 
-Replies carry no link. A post containing a URL costs $0.200 against $0.015
-without one — thirteen times, and X does not document what their detector
-counts, so the safe rule is to carry no URL at all. The quote and the
-timestamp are the useful part anyway; the link lives in the bio. Set
-`x_bot_include_links` if someone else is paying, which is the only reason
-to.
+Replies carry their link. X's $0.200 URL surcharge is on a standalone
+post, not on a reply, and everything here is a reply -- so a link costs the
+ordinary $0.015 and there is nothing to save by leaving it out. `always` in
+render.yaml, which is what decides it; the default in config.py does not.
 
 Retrieval happens in-process. Calling the public search endpoint over HTTP
 would put the bot behind this service's own rate limiter — 200 requests per
@@ -462,8 +460,7 @@ def format_summary(summary: str, title: str, limit: int,
                    url: str | None = None) -> str:
     """A stored summary, as a reply.
 
-    The link is worth its $0.200 here in a way it is not on a two-sentence
-    answer. A summary is what someone reads when deciding whether to watch
+    A summary is what someone reads when deciding whether to watch
     the episode at all, so the thing to hand them next is the episode — and
     X renders it as a card with the title and thumbnail, which is most of
     what makes a wall of text look like something rather than a dump.
@@ -1407,12 +1404,13 @@ def wants_link(mode: str, deep_link: str) -> bool:
     Three modes, because "links on" and "links off" are both wrong most of
     the time.
 
-    A link costs $0.200 against $0.015 without one, whatever it points at.
-    But the two kinds of link are not worth the same: a YouTube link carries
-    ?t= and lands on the exact second, while an X broadcast link opens a
-    four-hour video at 0:00 and leaves the reader to scrub. Paying thirteen
-    times as much for the second one buys almost nothing — the episode name
-    and the timestamp in the text get the reader to the same place.
+    Not for the reason first written here: a reply carrying a URL costs the
+    same as one without, because X's surcharge is on standalone posts. What
+    is true is that the two kinds of link are not worth the same to a
+    reader — a YouTube link carries ?t= and lands on the exact second,
+    while an X broadcast link opens a four-hour video at 0:00 and leaves
+    them to scrub. "seekable" exists for anyone who wants only the first
+    kind; production ships both.
 
     So "seekable" pays only when the link actually jumps. On this corpus
     that is about three answers in eight, which is roughly 60% off the link

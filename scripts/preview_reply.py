@@ -130,9 +130,11 @@ async def preview(index: PodcastIndex, post: str, settings) -> None:
     try:
         assert_linkless(reply)
     except LinkInReplyError as exc:
-        # Only reachable with links deliberately enabled; worth saying so,
-        # because it is the difference between $0.015 and $0.200 a reply.
-        print(f"     COSTS $0.200: {exc}")
+        # Not a cost warning. The $0.200 surcharge is on a standalone
+        # post; this is a reply, so the link is free. Shown only because
+        # assert_linkless is what guards the announce path, where it is
+        # not.
+        print(f"     carries a link (free on a reply): {exc}")
 
 
 async def main() -> int:

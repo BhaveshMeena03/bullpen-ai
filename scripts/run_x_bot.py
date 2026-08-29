@@ -17,7 +17,7 @@ into a shell that records history:
 Costs, from https://docs.x.com/x-api/getting-started/pricing:
 
     reading a mention   $0.001      answering it   ~$0.008 (Anthropic)
-    posting a reply     $0.015      with a URL     $0.200
+    posting a reply     $0.015      standalone post with a URL  $0.200
 
 So roughly $0.024 per answered question, or about $36/month at fifty a day.
 Every run prints what it spent.
@@ -106,8 +106,8 @@ async def main() -> int:
                     help="compose replies for the N most recent mentions and "
                          "print them, posting nothing and touching no state")
     ap.add_argument("--links", action="store_true",
-                    help="include deep links — costs $0.200 per reply "
-                         "instead of $0.015")
+                    help="include deep links. Free on a reply — the "
+                         "$0.200 URL rate is for standalone posts")
     args = ap.parse_args()
 
     settings, client, bot = build(args.dry_run, args.cap,
@@ -151,7 +151,7 @@ async def main() -> int:
 
     mode = "DRY RUN — nothing will be posted" if args.dry_run else "LIVE"
     log.info("%s · cap %d/day · links %s", mode, bot.cap,
-             "ON ($0.200/reply)" if bot.include_links else "off ($0.015)")
+             "ON" if bot.include_links else "off")
 
     try:
         while True:

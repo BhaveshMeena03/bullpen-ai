@@ -262,24 +262,20 @@ class Settings(BaseSettings):
     # Replies this account will put into one conversation in a day.
     # Two automated accounts otherwise answer each other forever.
     x_bot_per_thread_cap: int = 3
-    # Replies carry no URL. X charges $0.200 for a post containing one against
-    # $0.015 without — 13x, or the difference between $36 and $313 a month at
-    # fifty mentions a day. The citation (timestamp + episode) is the useful
-    # part anyway and the link lives in the bio. Turn this on only if someone
-    # else is funding the difference.
-    # off | seekable | always
+    # off | seekable | always. Production runs "always" (render.yaml), which
+    # is what decides this — not the default here.
     #
-    # A reply carrying a URL costs $0.200 against $0.015 without one,
-    # whatever it points at. But the two kinds of link are not worth the
-    # same money: a YouTube link carries ?t= and lands on the exact second,
-    # while an X broadcast link opens a four-hour video at 0:00 and leaves
-    # the reader to scrub. The episode name and the timestamp in the text
-    # get them to the same place for a fraction of the price.
+    # There is no cost argument left. X's $0.200 URL surcharge applies to a
+    # standalone post, not to a reply, and every mention answer is a reply.
+    # An earlier version of this comment claimed 13x on replies and priced
+    # three modes off it; the numbers were wrong and the whole compromise
+    # they justified was solving nothing.
     #
-    # "seekable" pays only when the link actually jumps — about three
-    # answers in eight on this corpus, so roughly 60% off the link bill for
-    # nothing anyone would notice missing. "always" is $157/month at the
-    # daily cap; "off" is $18; this is around $60.
+    # The product argument survives on its own: a YouTube link carries ?t=
+    # and lands on the exact second, while an X broadcast link opens a
+    # four-hour video at 0:00. "always" ships the X link anyway, because it
+    # renders a card with the episode title and thumbnail, and looking like
+    # something beats looking like nothing.
     x_bot_include_links: str = "seekable"
     # Seconds between polls, jittered 0.7-1.4x.
     #
