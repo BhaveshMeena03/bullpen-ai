@@ -125,6 +125,13 @@ class PodcastHit(BaseModel):
     # responses: it would double the payload to show a reader the same words
     # twice. Empty for vectors written before it existed.
     text_ts: str = Field(default="", exclude=True)
+    # Who speaks in this passage, when it is known. Only the two hosts are
+    # labelled — guests appear in one episode and cannot be identified by
+    # recurrence — so an empty list means "not established", never "nobody
+    # spoke". Sent to the browser on purpose: a card reading "Ansem · 9:37"
+    # is worth more than a bare timestamp, and it is the only place the
+    # speaker work is visible to somebody who never asks about a host.
+    speakers: list[str] = Field(default_factory=list)
     # When the episode aired. Optional because episodes indexed before
     # dates were captured have none, and a missing date should degrade the
     # answer rather than drop the hit.

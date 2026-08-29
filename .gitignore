@@ -27,3 +27,17 @@ data/.usage.json
 # backlog.
 data/x_bot_state.json
 .broadcast-check.log
+audio/
+.models/
+# Voice fingerprints -- 192-dimension embeddings of Ansem's and Banks's
+# voices, sixteen per episode. Derived from audio anybody can download, so
+# nothing here is secret, and regenerated in an evening by
+# label_speakers.py. But a labelled voice template for a named person is
+# not the same kind of thing as a transcript, and publishing one nobody
+# asked us to publish is a decision rather than an oversight. It is also
+# 42MB that the service never reads.
+#
+# data/speaker_map.json stays tracked: segment number to name, no vectors,
+# and it is the part that took a human ear to produce.
+data/speakers/
+.claude/

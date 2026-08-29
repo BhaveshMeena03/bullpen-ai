@@ -428,6 +428,11 @@ class PodcastIndex:
                     ),
                     text=md.get("text", ""),
                     text_ts=md.get("text_ts") or md.get("text", ""),
+                    # Pinecone gives back whatever was stored; a list is
+                    # what this writes, but a malformed row must not take
+                    # a search down, so anything else becomes empty.
+                    speakers=[str(x) for x in (md.get("speakers") or [])
+                              if isinstance(x, str)],
                     published_at=md.get("published_at"),
                     # Below every vector hit, so that if the reranker is off
                     # or fails these sit at the back rather than displacing
@@ -520,6 +525,11 @@ class PodcastIndex:
                     # text so vectors written before this existed still
                     # answer correctly, just with the old coarse citation.
                     text_ts=md.get("text_ts") or md.get("text", ""),
+                    # Pinecone gives back whatever was stored; a list is
+                    # what this writes, but a malformed row must not take
+                    # a search down, so anything else becomes empty.
+                    speakers=[str(x) for x in (md.get("speakers") or [])
+                              if isinstance(x, str)],
                     published_at=md.get("published_at"),
                     score=match.score,
                 )

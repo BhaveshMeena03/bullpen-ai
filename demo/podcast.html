@@ -75,6 +75,44 @@
     transition:border-color .15s}
   .hit:hover{border-color:var(--green)}
   .hit-wrap{margin-bottom:10px}
+  .who{font-size:11px;font-weight:600;letter-spacing:.03em;
+    padding:2px 7px;border-radius:999px;white-space:nowrap;
+    color:#7ee2b8;background:rgba(52,211,153,.10);
+    border:1px solid rgba(52,211,153,.28)}
+  /* A cited moment inside the answer, clickable. The citation is the
+     product; leaving it as plain text makes the reader hunt for the card
+     that matches it. */
+  .cite{color:#7ee2b8;cursor:pointer;border:0;background:none;padding:0;
+    font:inherit;border-bottom:1px dashed rgba(126,226,184,.5)}
+  .cite:hover{border-bottom-style:solid}
+  .also{margin:44px 0 8px;padding-top:26px;
+    border-top:1px solid rgba(255,255,255,.08)}
+  .also h2{font-size:15px;font-weight:600;opacity:.6;margin:0 0 14px;
+    letter-spacing:.02em}
+  .also-grid{display:grid;gap:12px;grid-template-columns:1fr 1fr}
+  @media (max-width:640px){.also-grid{grid-template-columns:1fr}}
+  .also-card{display:block;padding:14px 16px;border-radius:12px;
+    text-decoration:none;color:inherit;
+    border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.02)}
+  .also-card:hover{border-color:rgba(255,255,255,.22)}
+  .also-name{display:block;font-weight:600;font-size:15px;margin-bottom:5px}
+  .also-say{display:block;font-size:13px;line-height:1.5;opacity:.6}
+  .example{border:1px solid rgba(255,255,255,.10);border-radius:14px;
+    padding:16px 18px;margin:18px 0 6px;background:rgba(255,255,255,.02)}
+  .example-q{font-size:13px;letter-spacing:.02em;opacity:.55;margin-bottom:8px}
+  .example-q::before{content:"“";opacity:.5}
+  .example-q::after{content:"”";opacity:.5}
+  .example-a{font-size:16px;line-height:1.55}
+  .example-foot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+    margin-top:12px}
+  .example-ep{font-size:12px;opacity:.5}
+  .example-play{cursor:pointer}
+  /* 16:9 without a wrapper div, so the player keeps its shape on a phone
+     where the card is the width of the screen. */
+  .player{margin-top:8px}
+  .player:empty{display:none}
+  .player iframe{width:100%;aspect-ratio:16/9;border:0;border-radius:10px;
+    display:block;background:#000}
   /* The actions sit OUTSIDE the anchor. A button nested inside a link is
      invalid, and every click on it would navigate to YouTube instead. */
   /* Always visible. These were revealed on hover, to keep the result list
@@ -175,10 +213,7 @@
 <div class="wrap">
   <div class="topbar">
     <div class="brand">MARKET <span>BUBBLE</span> · search</div>
-    <span style="display:inline-flex;gap:10px;flex-wrap:wrap">
-    <a class="btn btn-primary" href="/demo/assets.html"><svg class="ico" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 13.5V9m4 4.5V4M10 13.5v-6m4 6V2" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>Every token they've analyzed<span class="arw">→</span></a>
-    <a class="btn btn-ghost" href="/demo/concierge.html"><svg class="ico" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M14 7.4c0 2.9-2.7 5.3-6 5.3-.7 0-1.4-.1-2-.3L2.5 13.5l.9-2.5A5 5 0 0 1 2 7.4C2 4.5 4.7 2.1 8 2.1s6 2.4 6 5.3Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>Bullpen Concierge<span class="arw">→</span></a>
-    </span>
+
   </div>
   <h1>Ask the <em>Market Bubble</em> broadcast anything.</h1>
   <p class="sub">Search every episode by meaning, not keywords — and jump
@@ -207,11 +242,32 @@
     <button class="chip">why does ansem think ethereum is done</button>
   </div>
 
+  <!-- A worked example, rendered flat rather than fetched. Nobody types
+       into an empty box for a tool they have not seen work, and running a
+       real search on every page load would spend a model call to show the
+       same answer to everyone. This is one verified moment -- Ansem on
+       Hyperliquid, 9:37 into Market Bubble #4, checked against the
+       transcript -- with the same player the real results use. It hides
+       itself the moment somebody searches. -->
+  <div class="example" id="example">
+    <div class="example-q">what did ansem say about hyperliquid</div>
+    <div class="example-a">Ansem called it “an application that is a real
+      business… growing its users, and actually making strides in a way that
+      no other crypto project has done with implementing tradfi assets —
+      stocks, perps on stocks, perps on commodities.”</div>
+    <div class="example-foot">
+      <button class="chip example-play" id="example-play">▶ 9:37 — hear him say it</button>
+      <span class="example-ep">Why Ansem Thinks Ethereum Is Done.. · Market Bubble #4</span>
+    </div>
+    <div class="player" id="example-player"></div>
+  </div>
+
   <div class="spin" id="spin">Searching the episodes…</div>
 
   <div class="answer" id="answer">
     <h3>Answer</h3>
     <div id="answer-body"></div>
+    <div class="player" id="answer-player"></div>
   </div>
 
   <div class="hits" id="hits"></div>
@@ -221,6 +277,28 @@
     <p class="sub2">Every episode condensed to a 2-minute read, with
     timestamps. Click to expand.</p>
     <div id="eps-list"></div>
+  </div>
+
+  <!-- These were two bright buttons directly above the search box,
+       competing with the one thing the page exists to do. They are real
+       features, not clutter, so they moved rather than went: down here
+       they also get a sentence explaining what they are, which a button
+       in a top bar never had room for. -->
+  <div class="also">
+    <h2>Also built on this archive</h2>
+    <div class="also-grid">
+      <a class="also-card" href="/demo/assets.html">
+        <span class="also-name">Every token they've analyzed<span class="arw">→</span></span>
+        <span class="also-say">Every ticker mentioned on the show, with the
+          episode and the moment it came up.</span>
+      </a>
+      <a class="also-card" href="/demo/concierge.html">
+        <span class="also-name">Bullpen Concierge<span class="arw">→</span></span>
+        <span class="also-say">The same idea pointed at the Bullpen
+          terminal — ask it how something works, get the answer from the
+          docs.</span>
+      </a>
+    </div>
   </div>
 
   <div class="foot">
@@ -427,6 +505,31 @@ function timestampChip(h){
   return '<span class="play">\u25B6 ' + esc(h.timestamp) + '</span>';
 }
 
+// The moment, playable in place. A card that links away makes the claim
+// "we find the exact second" and then asks you to go somewhere else to
+// check it; an embed proves it before you have finished reading the
+// sentence. Only for YouTube — X has no timestamped embed, which is the
+// same reason its cards cannot jump.
+function embedFor(url){
+  var u = String(url || "");
+  var id = (/[?&]v=([A-Za-z0-9_-]{6,})/.exec(u) || /youtu\.be\/([A-Za-z0-9_-]{6,})/.exec(u) || [])[1];
+  if (!id) return null;
+  var at = (/[?&]t=(\d+)/.exec(u) || [])[1] || "0";
+  // enablejsapi off, modestbranding on: this is a citation, not a channel.
+  return "https://www.youtube-nocookie.com/embed/" + id
+       + "?start=" + at + "&rel=0&modestbranding=1&autoplay=1";
+}
+
+// Who is speaking in this passage, when it is known. Only the hosts are
+// labelled, so most cards show nothing here — which is the honest state,
+// not a gap to fill with a guess. Two names means the passage covers an
+// exchange between them rather than one person talking.
+function speakerChip(h){
+  var who = (h && h.speakers) || [];
+  if (!who.length) return "";
+  return '<span class="who">' + esc(who.join(" & ")) + '</span>';
+}
+
 function canSeek(url){
   var u = String(url || "");
   return !/(^|\/\/)([^/]*\.)?(x\.com|twitter\.com)\//.test(u);
@@ -446,6 +549,7 @@ function airedLabel(iso){
   }
 
   function renderHits(list){
+    if(window.hideExample) window.hideExample();
     lastHits=list||[];  // for the shareable card's top-timestamp line
     if(list && list.length){
       // The heading has to match what the results can actually do. When
@@ -465,21 +569,51 @@ function airedLabel(iso){
         html+='<div class="hit-wrap">'
           +'<a class="hit" href="'+escAttr(safeUrl(h.deep_link))+'" target="_blank" rel="noopener">'
           +'<div class="hit-top">'+timestampChip(h)
+          +speakerChip(h)
           +'<span class="ep">'+esc(h.title)+'</span>'
           +(h.published_at?'<span class="aired" title="'+escAttr(h.published_at)+'">'
               +esc(airedLabel(h.published_at))+'</span>':'')
           +'<span class="watch">'+esc(watchLabel(h.deep_link))+'</span></div>'
           +'<div class="quote">'+esc(cleanSnippet(h.text))+'</div></a>'
           +'<div class="hit-actions">'
+          +(canSeek(h.deep_link)
+              ? '<button class="share play-here" data-act="play" data-i="'+i+'">'
+                + '\u25B6 play here</button>' : '')
           +'<button class="share" data-act="x" data-i="'+i+'">post on X</button>'
           +'<button class="share" data-act="img" data-i="'+i+'">save clip</button>'
-          +'</div></div>';
+          +'</div><div class="player" data-slot="'+i+'"></div></div>';
       });
       hits.innerHTML=html;
     } else {
       hits.innerHTML='<p class="empty">No matching moments found. Try rephrasing.</p>';
     }
   }
+
+  // The example plays with the same embed the results use, so what a
+  // visitor sees before searching is what they get after.
+  (function(){
+    var block=document.getElementById("example");
+    var btn=document.getElementById("example-play");
+    var slot=document.getElementById("example-player");
+    if(!btn||!slot||!block) return;
+    btn.addEventListener("click",function(){
+      if(slot.firstChild){ slot.innerHTML=""; btn.textContent="\u25B6 9:37 — hear him say it"; return; }
+      var f=document.createElement("iframe");
+      f.src=embedFor("https://www.youtube.com/watch?v=F4OhqZjtVkY&t=577s");
+      f.loading="lazy"; f.title="Ansem on Hyperliquid, 9:37";
+      f.setAttribute("allow","autoplay; encrypted-media; picture-in-picture");
+      f.setAttribute("allowfullscreen","");
+      slot.appendChild(f);
+      btn.textContent="close";
+    });
+    // Gone once there is a real answer on the page — an example sitting
+    // above somebody's own result is clutter pretending to be content.
+    window.hideExample=function(){
+      if(!block.parentNode) return;
+      slot.innerHTML="";
+      block.parentNode.removeChild(block);
+    };
+  })();
 
   var lastQuery="", lastHits=[];
 
@@ -491,6 +625,27 @@ function airedLabel(iso){
     if(!btn) return;
     var h=lastHits[parseInt(btn.getAttribute("data-i"),10)];
     if(!h) return;
+    if(btn.getAttribute("data-act")==="play"){
+      // Lazy: the iframe is only created when somebody asks for it, so a
+      // page of six results does not load six players nobody watched.
+      var i=btn.getAttribute("data-i");
+      var slot=hits.querySelector('.player[data-slot="'+i+'"]');
+      if(!slot) return;
+      if(slot.firstChild){ slot.innerHTML=""; btn.textContent="\u25B6 play here"; return; }
+      var src=embedFor(h.deep_link);
+      if(!src) return;
+      // One player at a time: two videos talking over each other is worse
+      // than the link it replaced.
+      Array.prototype.forEach.call(hits.querySelectorAll(".player"),function(o){o.innerHTML="";});
+      Array.prototype.forEach.call(hits.querySelectorAll(".play-here"),function(o){o.textContent="\u25B6 play here";});
+      var f=document.createElement("iframe");
+      f.src=src; f.loading="lazy"; f.title="the cited moment";
+      f.setAttribute("allow","autoplay; encrypted-media; picture-in-picture");
+      f.setAttribute("allowfullscreen","");
+      slot.appendChild(f);
+      btn.textContent="close";
+      return;
+    }
     if(btn.getAttribute("data-act")==="x"){ postMoment(h); return; }
     momentCard(h);
     var was=btn.textContent; btn.textContent="saved ✓";
@@ -665,7 +820,78 @@ function airedLabel(iso){
 
   function finishSearch(){
     go.disabled=false; spin.classList.remove("show");
+    citeTimestamps();
     addShareButton();
+  }
+
+  // Make the moments named inside the answer clickable, so the citation
+  // is the thing you press rather than a number to go hunting for in the
+  // cards below.
+  //
+  // Only when a seekable hit actually covers that second. The server had
+  // this exact bug and it was the worst one of the week: a real timestamp
+  // welded to whichever episode happened to rank first, published as a
+  // link that looked checkable and was not. So a timestamp with no hit
+  // near it stays plain text.
+  var CITE_WINDOW = 420;   // a passage is minutes long; this is its reach
+
+  function citeTimestamps(){
+    if(!body || !lastHits || !lastHits.length) return;
+    var seekable = lastHits.filter(function(h){ return canSeek(h.deep_link); });
+    if(!seekable.length) return;
+    body.innerHTML = body.innerHTML.replace(
+      /(^|[\s(>])(\d{1,2}:\d{2}(?::\d{2})?)(?![\d:])/g,
+      function(all, before, stamp){
+        var sec = stampSeconds(stamp);
+        if(sec === null) return all;
+        var hit = nearestHit(seekable, sec);
+        if(!hit) return all;
+        return before + '<button class="cite" data-sec="' + sec
+             + '" data-ep="' + escAttr(hit.deep_link) + '" title="play this moment">'
+             + esc(stamp) + '</button>';
+      });
+  }
+
+  function stampSeconds(stamp){
+    var p = String(stamp).split(":").map(function(n){ return parseInt(n,10); });
+    if(p.some(isNaN)) return null;
+    return p.length === 3 ? p[0]*3600 + p[1]*60 + p[2] : p[0]*60 + p[1];
+  }
+
+  function nearestHit(list, sec){
+    var best=null, gap=Infinity;
+    list.forEach(function(h){
+      var t = stampSeconds(h.timestamp);
+      if(t === null) return;
+      var d = Math.abs(t - sec);
+      if(d < gap){ gap = d; best = h; }
+    });
+    return gap <= CITE_WINDOW ? best : null;
+  }
+
+  // One player for the answer's own citations, opened under the answer.
+  if(body){
+    body.addEventListener("click", function(ev){
+      var b = ev.target.closest ? ev.target.closest("button.cite") : null;
+      if(!b) return;
+      var url = b.getAttribute("data-ep") || "";
+      var src = embedFor(url.split("&t=")[0].split("?t=")[0]
+                         + (url.indexOf("?") > -1 ? "&" : "?")
+                         + "t=" + b.getAttribute("data-sec") + "s");
+      if(!src) return;
+      var slot = document.getElementById("answer-player");
+      if(!slot) return;
+      // Never two at once, here or in the cards.
+      document.querySelectorAll(".player").forEach(function(o){ o.innerHTML=""; });
+      document.querySelectorAll(".play-here").forEach(function(o){
+        o.textContent="\u25B6 play here"; });
+      var f=document.createElement("iframe");
+      f.src=src; f.loading="lazy"; f.title="the cited moment";
+      f.setAttribute("allow","autoplay; encrypted-media; picture-in-picture");
+      f.setAttribute("allowfullscreen","");
+      slot.appendChild(f);
+      slot.scrollIntoView({block:"nearest"});
+    });
   }
 
   // A new search cancels any in-flight one and bumps a token, so a stale
@@ -679,6 +905,16 @@ function airedLabel(iso){
     var query=q.value.trim();
     if(!query) return;
     lastQuery=query;
+    // Put the search in the address bar as it happens. The share button
+    // already produced this URL, but people copy from the bar rather than
+    // hunting for a button — and a link that reproduces the answer is the
+    // difference between somebody describing what this found and showing
+    // it. replaceState, not pushState: a search is not a page you want to
+    // press Back through five times to leave.
+    try {
+      history.replaceState(null, "",
+        location.pathname + "?q=" + encodeURIComponent(query));
+    } catch (e) { /* file:// and some embedded views forbid it */ }
     if(inflight) inflight.abort();
     inflight=new AbortController();
     var myToken=++runToken, mySignal=inflight.signal;
