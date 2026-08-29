@@ -12,16 +12,23 @@ import contextlib
 import json
 import logging
 import os
+import re
 import time
 from collections import Counter, deque
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from html import escape as html_escape
 from pathlib import Path
 
 import anthropic
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from voyageai import error as voyage_error
 
@@ -313,6 +320,46 @@ app.add_middleware(
 # Serve the embeddable widget and the demo terminal page from this same
 # process: /widget/bullpen-concierge.js and /demo/.
 _ROOT = Path(__file__).resolve().parent.parent
+# Before the /demo mount, so a shared search gets a card that names the
+# question. X's crawler does not run JavaScript, so the page it fetches is
+# the page as written — every search link would otherwise show the same
+# generic "search every episode by meaning" card, and the hardcoded og:url
+# told X the canonical page was the empty homepage, which is where clicking
+# the card actually landed.
+@app.get("/demo/podcast.html", include_in_schema=False)
+async def podcast_page(request: Request):
+    page = (_ROOT / "demo" / "podcast.html").read_text()
+    asked = (request.query_params.get("q") or "").strip()
+    canonical = str(request.url)
+    if asked:
+        # The question, as the title. Escaped because it lands inside an
+        # HTML attribute and arrives from a URL anybody can craft.
+        shown = html_escape(asked[:110], quote=True)
+        page = page.replace(
+            '<meta property="og:title" content="Market Bubble Search '
+            '— ask the broadcast anything">',
+            f'<meta property="og:title" content="&#8220;{shown}&#8221;">')
+        page = page.replace(
+            '<meta name="twitter:title" content="Market Bubble Search '
+            '— ask the broadcast anything">',
+            f'<meta name="twitter:title" content="&#8220;{shown}&#8221;">')
+        answer_line = ("Answered from the Market Bubble transcripts, with "
+                       "the moment it was said.")
+        for tag in ("og:description", "twitter:description"):
+            prefix = "property" if tag.startswith("og:") else "name"
+            page = page.replace(
+                f'<meta {prefix}="{tag}" content="Search every episode by '
+                f'meaning and jump to the exact moment on YouTube. Free, no '
+                f'login, open source.">',
+                f'<meta {prefix}="{tag}" content="{answer_line}">')
+    # Never let og:url override the URL somebody actually shared: it made
+    # every search link canonicalise to the empty homepage.
+    page = re.sub(r'<meta property="og:url" content="[^"]*">',
+                  f'<meta property="og:url" content="{html_escape(canonical, quote=True)}">',
+                  page, count=1)
+    return HTMLResponse(page)
+
+
 app.mount("/widget", StaticFiles(directory=_ROOT / "widget"), name="widget")
 app.mount("/demo", StaticFiles(directory=_ROOT / "demo", html=True), name="demo")
 
