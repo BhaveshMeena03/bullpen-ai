@@ -330,7 +330,14 @@ _ROOT = Path(__file__).resolve().parent.parent
 async def podcast_page(request: Request):
     page = (_ROOT / "demo" / "podcast.html").read_text()
     asked = (request.query_params.get("q") or "").strip()
+    # The scheme the VISITOR used, not the one this process was handed.
+    # Render terminates TLS at its proxy, so request.url is http:// even
+    # though every real visitor arrives on https — and a canonical URL on
+    # the wrong scheme is a different URL to a crawler.
     canonical = str(request.url)
+    forwarded = request.headers.get("x-forwarded-proto", "").split(",")[0].strip()
+    if forwarded == "https" and canonical.startswith("http://"):
+        canonical = "https://" + canonical[len("http://"):]
     if asked:
         # The question, as the title. Escaped because it lands inside an
         # HTML attribute and arrives from a URL anybody can craft.

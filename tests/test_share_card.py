@@ -96,3 +96,20 @@ def test_the_page_itself_still_loads(client):
     assert "<title>" in r.text
     assert 'id="q"' in r.text
     assert len(r.text) > 20000
+
+
+def test_the_canonical_url_uses_the_scheme_the_visitor_used(client):
+    """Render terminates TLS at its proxy, so the app sees http:// while
+    every real visitor is on https. A canonical URL on the wrong scheme
+    is a different URL to a crawler — the live card said http:// while
+    the site is https-only."""
+    r = client.get(PAGE, params={"q": "test"},
+                   headers={"x-forwarded-proto": "https"})
+    assert meta(r.text, "og:url").startswith("https://")
+
+
+def test_without_the_header_the_scheme_is_left_alone(client):
+    """Local and direct requests are genuinely http and must not be
+    rewritten into a URL that does not answer."""
+    r = client.get(PAGE, params={"q": "test"})
+    assert meta(r.text, "og:url").startswith("http://")
