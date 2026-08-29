@@ -32,6 +32,35 @@ from .terms import TermIndex
 
 logger = logging.getLogger(__name__)
 
+# Whose passages to search, when a question names one of them.
+#
+# Only the hosts, and only because the speaker labels only cover the
+# hosts: they are in all 33 episodes, so a voice recurring everywhere
+# identifies them. A guest appears once and cannot be identified that
+# way, so filtering on a guest name would search a set nobody labelled
+# and find nothing.
+#
+# "Z" is deliberately absent despite being what Banks calls Ansem on the
+# show. It is one letter and it appears inside ordinary words; the cost
+# of a false match here is searching the wrong person's passages, which
+# is the failure this exists to fix.
+_HOSTS_IN_QUESTION = (
+    ("Ansem", re.compile(r"(?i)\bansem\b")),
+    ("FaZe Banks", re.compile(r"(?i)\b(?:faze\s+)?banks\b")),
+)
+
+
+def host_named_in(query: str) -> str | None:
+    """The host a question is about, if it is about one.
+
+    Returns None when a question names both or neither. Both is not a
+    filter — "what did ansem and banks disagree about" wants the
+    conversation, not one side of it.
+    """
+    found = [name for name, pattern in _HOSTS_IN_QUESTION
+             if pattern.search(query or "")]
+    return found[0] if len(found) == 1 else None
+
 NAMESPACE = "podcast"
 
 REFUSAL_ANSWER = ("I can't help with that one — try asking about "
@@ -85,6 +114,31 @@ the person named did not say it and the person who did gets no credit. When \
 you cannot tell, write "a guest", "one of the hosts", or "the founder of X" \
 if the excerpt establishes the company. Attribute to a named person only \
 when the excerpt says the name, or someone is addressed by it.
+5b. Some lines carry a speaker's name before the text, like "[12:02] \
+FaZe Banks: I put close to seven figures in Hyperliquid". That prefix is \
+the ONLY thing that establishes who spoke. Attribute a line to the name \
+in front of it and to nobody else. A line with no prefix has no known \
+speaker — describe it as "one of the hosts" or "a guest", never as the \
+person the question asked about. Asked what Banks said about Solana, the \
+excerpts came back containing both hosts and a line prefixed "Ansem:" \
+was reported as Banks saying it, because the question had named Banks. \
+The prefix outranks the question every time.
+
+5c. A name INSIDE a line is a person being talked about, not the person \
+talking. "FaZe Banks: I'm gonna help continue to guide Z the best way I \
+can" is Banks speaking about Ansem — it is not Ansem speaking. Attributing \
+it to Ansem, because his name appears in the words, reverses who said what \
+about whom. Read only the prefix.
+
+5d. A line with NO prefix is not a line you cannot attribute. Only the \
+two hosts are labelled; every guest is unprefixed, so treating an absent \
+prefix as "unknowable" refuses to answer anything about a guest at all — \
+which took "what did Jesse say about Base" from a good answer to a \
+refusal. For unprefixed lines fall back to rule 5: attribute when the \
+episode or the conversation makes it plain, such as a guest who is named \
+in the title, introduced by name, or addressed by name. The prefix rules \
+above decide BETWEEN the two hosts; they do not silence everyone else.
+
 5a. A name in the QUESTION is not evidence about the excerpts. Asked "how \
 much did Banks make this month", the excerpts do not become about Banks — \
 and answering from a passage that never names him, as though it were his, \
@@ -388,6 +442,18 @@ class PodcastIndex:
         return hits
 
     async def _retrieve(self, query: str, top_k: int) -> list[PodcastHit]:
+        # If the question names a host, search what that host actually
+        # said. Without this the ranking is decided by topic alone, and
+        # for "what did banks say about solana" the six best Solana
+        # passages are all Ansem's — he has 361 Solana segments to Banks's
+        # 117. The model then reports, correctly and uselessly, that it
+        # cannot find Banks discussing Solana. It was reading the wrong
+        # six passages.
+        #
+        # A metadata filter, not a re-ranking trick: the embeddings are
+        # untouched and the same vector search runs, over the subset of
+        # passages where that person speaks.
+        speaker = host_named_in(query)
         # Cached, retry-on-rate-limit query embedding — repeat queries are
         # free and a rate-limited one backs off instead of hard-failing.
         vector = await embed_query(
@@ -405,21 +471,35 @@ class PodcastIndex:
             else top_k
         )
 
-        def _query():
-            return self.index.query(
-                vector=vector,
-                top_k=fetch_k,
-                namespace=NAMESPACE,
-                include_metadata=True,
-            )
+        def _query(restrict: str | None):
+            kwargs = {
+                "vector": vector,
+                "top_k": fetch_k,
+                "namespace": NAMESPACE,
+                "include_metadata": True,
+            }
+            if restrict:
+                kwargs["filter"] = {"speakers": {"$in": [restrict]}}
+            return self.index.query(**kwargs)
 
         # Bounded like the upsert above, and for the same half-open-socket
         # reason. A read is the more dangerous case: it is on the request path
         # and holds a thread from the bounded to_thread pool while it hangs.
         response = await asyncio.wait_for(
-            asyncio.to_thread(_query),
+            asyncio.to_thread(_query, speaker),
             timeout=self._settings.pinecone_read_timeout_seconds,
         )
+        # Ask again unfiltered when the filter found nothing worth having.
+        # Only half the archive carries speaker labels, so a question about
+        # a host whose passages are all unlabelled would otherwise return
+        # nothing at all — worse than the topic-ranked answer it replaces.
+        if speaker and len(getattr(response, "matches", []) or []) < 3:
+            logger.info("speaker filter for %r returned too little — "
+                        "falling back to the whole archive", speaker)
+            response = await asyncio.wait_for(
+                asyncio.to_thread(_query, None),
+                timeout=self._settings.pinecone_read_timeout_seconds,
+            )
         hits: list[PodcastHit] = []
         for match in response.matches:
             if match.score < self._settings.retrieval_min_score:

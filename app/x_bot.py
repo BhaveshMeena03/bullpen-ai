@@ -2360,6 +2360,7 @@ class MentionBot:
                 source="x",
                 asker=getattr(mention, "author", None),
                 answered=not is_a_miss(text),
+                reply=text,
                 reference=mention.id,
             )
         return True

@@ -52,6 +52,9 @@ async def main() -> int:
     ap.add_argument("--misses", action="store_true",
                     help="only the questions it could not answer")
     ap.add_argument("--days", type=int, help="only the last N days")
+    ap.add_argument("--replies", action="store_true",
+                    help="show what the bot actually replied, which is the "
+                         "only way to spot a confident wrong answer")
     ap.add_argument("--limit", type=int, default=40,
                     help="how many questions to print")
     args = ap.parse_args()
@@ -87,7 +90,11 @@ async def main() -> int:
         mark = " " if row.get("answered", True) else "!"
         when = (row.get("asked_at") or "")[:16].replace("T", " ")
         who = row.get("asker") or "?"
-        print(f"  {mark} {when}  @{who[:16]:16}  {row.get('question','')[:90]}")
+        print(f"  {mark} {when}  {str(who)[:18]:18}  "
+              f"{row.get('question','')[:78]}")
+        if args.replies and row.get("reply"):
+            body = " ".join(row["reply"].split())
+            print(f"          -> {body[:140]}")
 
     if not args.misses and missed:
         print(f"\n  ── {len(missed)} of these were misses. "

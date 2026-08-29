@@ -56,6 +56,7 @@ class QuestionLog:
                      asker: str | None = None, answered: bool = True,
                      episode: str | None = None,
                      timestamp: str | None = None,
+                     reply: str | None = None,
                      reference: str | None = None) -> None:
         """Note one question and whether the archive could answer it.
 
@@ -83,6 +84,12 @@ class QuestionLog:
             record["episode"] = episode
         if timestamp:
             record["timestamp"] = timestamp
+        if reply:
+            # What actually went out. A question and a hit/miss flag say
+            # whether something came back, never whether it was any good —
+            # and the failures worth finding are the confident wrong ones,
+            # which look identical to the right ones in a boolean.
+            record["reply"] = reply[:900]
 
         def _upsert() -> None:
             self.index.upsert(
