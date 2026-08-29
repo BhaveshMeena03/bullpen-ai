@@ -340,6 +340,10 @@ def main() -> None:
     ap.add_argument("--engine", choices=["local", "groq"], default="local",
                     help="local runs on this machine with no rate limit "
                          "(default); groq needs GROQ_API_KEY")
+    ap.add_argument("--keep-audio", action="store_true",
+                    help="save the audio to audio/<episode_id>.mp3. Speaker "
+                         "labelling needs it, and re-downloading an X "
+                         "broadcast costs 900MB a second time.")
     ap.add_argument("--model", choices=sorted(MLX_MODELS), default="turbo",
                     help="local model: turbo is ~6x faster, large-v3 is "
                          "slightly more accurate")
@@ -389,6 +393,18 @@ def main() -> None:
                 continue
             print(f"  sample overlap {ratio:.0%} — transcribing in full")
             segments = transcribe(audio, opts)
+
+            # Keep the audio when asked. Who is speaking is a fact about
+            # the sound and cannot be recovered from the words, so an
+            # episode transcribed and discarded has to be downloaded again
+            # — 900MB again, for an X broadcast — before it can be
+            # labelled. The pipeline wants both, so it takes both once.
+            if args.keep_audio:
+                keep_dir = ROOT / "audio"
+                keep_dir.mkdir(exist_ok=True)
+                kept = keep_dir / f"{episode_id}.mp3"
+                shutil.copy2(audio, kept)
+                print(f"  kept the audio at {kept.relative_to(ROOT)}")
 
         if len(segments) < 20:
             print(f"  SKIP {url}: only {len(segments)} segments, looks empty")

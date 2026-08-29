@@ -88,6 +88,9 @@ async def main() -> int:
     ap.add_argument("--dry-run", action="store_true",
                     help="show what would change and write nothing")
     ap.add_argument("--limit", type=int, help="only this many episodes")
+    ap.add_argument("--only", action="append", default=[], metavar="EPISODE_ID",
+                    help="just these. Indexing one new broadcast should not "
+                         "rewrite the metadata of twenty-five old ones.")
     args = ap.parse_args()
 
     settings = get_settings()
@@ -96,7 +99,18 @@ async def main() -> int:
     index = Pinecone(api_key=settings.pinecone_api_key).Index(
         settings.pinecone_index)
 
-    todo = list(mapping)[:args.limit] if args.limit else list(mapping)
+    todo = list(mapping)
+    if args.only:
+        wanted = set(args.only)
+        todo = [e for e in todo if e in wanted]
+        missing = wanted - set(todo)
+        if missing:
+            # Silence here would look like success on an episode that has
+            # no labels at all.
+            print(f"  no speaker map for {sorted(missing)} — "
+                  f"run build_speaker_map.py first")
+    elif args.limit:
+        todo = todo[:args.limit]
     updates: list[tuple[str, str, list[str]]] = []
     named = plain = 0
 

@@ -28,6 +28,25 @@ You summarize episodes of the "Market Bubble" podcast (hosted by Ansem and \
 FaZe Banks) from their transcripts. The transcript lines are prefixed with \
 [h:mm:ss] timestamps.
 
+Some lines also carry the speaker's name before the text, like "[12:02] \
+FaZe Banks: I put close to seven figures in Hyperliquid". Where a name is \
+there, use it — "Ansem argued X and Banks pushed back" is worth far more \
+than "the hosts discussed X". Two rules about those names, and they are \
+the same two the answering side follows because breaking either one puts \
+words in a real person's mouth:
+
+The prefix is the ONLY thing that establishes who spoke. Attribute a line \
+to the name in front of it and to nobody else.
+
+A name INSIDE a line is somebody being talked about, not the person \
+talking. "FaZe Banks: I'm gonna help continue to guide Z" is Banks \
+speaking about Ansem, not Ansem speaking.
+
+Lines with no prefix are usually guests, who are not labelled at all. \
+Describe them the way the episode does — by name if the title or an \
+introduction makes it plain, otherwise as "a guest". Never borrow a \
+host's name for an unprefixed line.
+
 Produce a summary with exactly these sections, in Markdown:
 
 **TL;DR** — 2-3 sentences: what this episode is about and the single most \
@@ -57,9 +76,29 @@ def _fmt_ts(seconds: float) -> str:
     return f"{h}:{m:02d}:{sec:02d}"
 
 
-def _annotated_transcript(episode: Episode, max_chars: int = 350_000) -> str:
-    """Transcript with [h:mm:ss] markers so the model can cite timestamps."""
-    lines = [f"[{_fmt_ts(seg.t)}] {seg.text}" for seg in episode.segments]
+def _annotated_transcript(episode: Episode, max_chars: int = 350_000,
+                          speakers: dict[str, str] | None = None) -> str:
+    """Transcript with [h:mm:ss] markers so the model can cite timestamps.
+
+    And a name in front of the line where one is known. Without it a
+    summary can only say "the hosts discussed", because the transcript it
+    reads has no idea who was talking — which is how twelve of the first
+    thirty-three summaries came out with no names in them at all.
+
+    Numbered the way the fingerprinting numbered them: non-empty text
+    only, in order. A line with no entry keeps exactly the shape it had.
+    """
+    speakers = speakers or {}
+    lines, numbered = [], 0
+    for seg in episode.segments:
+        stamp = _fmt_ts(seg.t)
+        if not (seg.text or "").strip():
+            lines.append(f"[{stamp}] {seg.text}")
+            continue
+        who = speakers.get(str(numbered))
+        numbered += 1
+        lines.append(f"[{stamp}] {who}: {seg.text}" if who
+                     else f"[{stamp}] {seg.text}")
     text = "\n".join(lines)
     if len(text) > max_chars:  # ~100K tokens; extremely long episodes
         text = text[:max_chars] + "\n[transcript truncated]"
@@ -88,7 +127,8 @@ class SummaryStore:
         return vec
 
     # -- generation (run once per episode, by the admin script) -------------
-    async def summarize(self, episode: Episode) -> str:
+    async def summarize(self, episode: Episode,
+                        speakers: dict[str, str] | None = None) -> str:
         response = await self._anthropic.messages.create(
             model=self._settings.summary_model,
             max_tokens=2000,
@@ -98,7 +138,7 @@ class SummaryStore:
                     "role": "user",
                     "content": (
                         f"Episode: {episode.title}\n\n"
-                        f"{_annotated_transcript(episode)}"
+                        f"{_annotated_transcript(episode, speakers=speakers)}"
                     ),
                 }
             ],

@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import re
 import subprocess
 import sys
@@ -54,6 +55,7 @@ from app.summaries import SummaryStore  # noqa: E402
 from app.x_api import API, XCredentials  # noqa: E402
 
 EPISODES = ROOT / "data" / "episodes.json"
+SPEAKER_MAP = ROOT / "data" / "speaker_map.json"
 
 
 def step(n: int, of: int, what: str) -> None:
@@ -132,9 +134,9 @@ async def main() -> int:
     before = {e["episode_id"] for e in load(EPISODES)}
 
     # 1 — transcribe ---------------------------------------------------------
-    step(1, 7, "transcribing (local, no API — this is the slow part)")
+    step(1, 8, "transcribing (local, no API — this is the slow part)")
     cmd = [sys.executable, "scripts/transcribe_x_broadcast.py", args.url,
-           "--model", args.model]
+           "--model", args.model, "--keep-audio"]
     if args.date:
         cmd += ["--date", args.date]
     if subprocess.run(cmd, cwd=ROOT).returncode != 0:
@@ -150,18 +152,51 @@ async def main() -> int:
         return 0
 
     # 2 — ingest -------------------------------------------------------------
-    step(2, 7, f"indexing {len(fresh)} episode(s) — appending, not rebuilding")
+    step(2, 8, f"indexing {len(fresh)} episode(s) — appending, not rebuilding")
     index = PodcastIndex()
     parsed = [Episode(**e) for e in fresh]
     windows = await index.ingest(parsed)
     print(f"  {windows} searchable passages added")
 
-    # 3 — summarize ----------------------------------------------------------
-    step(3, 7, "summarising, so it shows up when browsing")
+    # 3 — who is speaking ----------------------------------------------------
+    # Before the summary, because the summary reads the transcript and a
+    # transcript with names in it produces "Ansem argued X and Banks pushed
+    # back" instead of "the hosts discussed X". Never fatal: an episode
+    # without labels is the episode everything before tonight had.
+    step(3, 8, "working out who is speaking")
+    speaker_map: dict[str, dict[str, str]] = {}
+    for episode in parsed:
+        audio = ROOT / "audio" / f"{episode.episode_id}.mp3"
+        if not audio.exists():
+            print(f"  no audio kept for {episode.episode_id} — skipping "
+                  f"labels, everything else still runs")
+            continue
+        for label, cmd in (
+            ("fingerprinting", [sys.executable, "scripts/label_speakers.py",
+                                "--only", episode.episode_id]),
+            ("matching against the hosts", [sys.executable,
+                                            "scripts/build_speaker_map.py"]),
+            ("labelling the passages", [sys.executable,
+                                        "scripts/apply_speaker_labels.py",
+                                        "--only", episode.episode_id]),
+        ):
+            print(f"  {label}…", flush=True)
+            if subprocess.run(cmd, cwd=ROOT).returncode != 0:
+                print(f"  {label} failed — continuing without labels")
+                break
+    if SPEAKER_MAP.exists():
+        try:
+            speaker_map = json.loads(SPEAKER_MAP.read_text())
+        except json.JSONDecodeError:
+            speaker_map = {}
+
+    # 4 — summarize ----------------------------------------------------------
+    step(4, 8, "summarising, so it shows up when browsing")
     summaries = SummaryStore()
     for episode in parsed:
         try:
-            await summaries.store(episode, await summaries.summarize(episode))
+            await summaries.store(episode, await summaries.summarize(
+                episode, speakers=speaker_map.get(episode.episode_id)))
             print(f"  summarised {episode.title[:52]}")
         except Exception as exc:                              # noqa: BLE001
             # Not fatal: the episode is already searchable, which is the
@@ -175,7 +210,7 @@ async def main() -> int:
     # somebody was about to quote the summary at the show's host. This runs
     # every time now, because the summary is most of what "summarize the
     # latest episode" returns and nobody reads it before it goes out.
-    step(4, 7, "checking the summary's timestamps against the transcript")
+    step(5, 8, "checking the summary's timestamps against the transcript")
     for episode in parsed:
         subprocess.run([sys.executable, "scripts/verify_summaries.py",
                         "--episode-id", episode.episode_id, "--apply"],
@@ -185,11 +220,11 @@ async def main() -> int:
     # Rebuilt here rather than remembered later: a stale index simply has no
     # entry for the new episode, so a question about it silently loses the
     # exact-name matching and nobody finds out.
-    step(5, 7, "rebuilding the exact-token index")
+    step(6, 8, "rebuilding the exact-token index")
     subprocess.run([sys.executable, "scripts/build_term_index.py"], cwd=ROOT)
 
     # 5 — highlights ---------------------------------------------------------
-    step(6, 7, "refreshing the pool the bot answers from unprompted")
+    step(7, 8, "refreshing the pool the bot answers from unprompted")
     if args.skip_highlights:
         print("  skipped")
     else:
@@ -202,7 +237,7 @@ async def main() -> int:
                        cwd=ROOT)
 
     # 6 — prove it -----------------------------------------------------------
-    step(7, 7, "asking the live index about it")
+    step(8, 8, "asking the live index about it")
     for episode in parsed:
         # Named guests are what people actually search for, and the title is
         # where they are named.
