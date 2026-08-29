@@ -2358,7 +2358,11 @@ class MentionBot:
             await self._questions.record(
                 question_from(mention.text),
                 source="x",
-                asker=getattr(mention, "author", None),
+                # author_id, not author: the Mention dataclass has no
+                # "author" field, so every row logged its asker as
+                # unknown and the log could not tell one person testing
+                # it from twenty people using it.
+                asker=getattr(mention, "author_id", None),
                 answered=not is_a_miss(text),
                 reply=text,
                 reference=mention.id,
