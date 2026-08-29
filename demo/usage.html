@@ -13,9 +13,10 @@
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--text);min-height:100vh;padding:0 16px;
-    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+    font:15px/1.55 var(--sans);font-feature-settings:"tnum" 1}
   .wrap{max-width:900px;margin:0 auto;padding:34px 0 70px}
-  h1{font-size:26px;font-weight:800;margin-bottom:6px}
+  h1{font-family:var(--display);font-weight:400;font-size:38px;
+    line-height:1.12;letter-spacing:-.01em;margin-bottom:8px}
   .sub{color:var(--muted);font-size:14px;margin-bottom:26px;max-width:640px}
   .mono{font-variant-numeric:tabular-nums;
     font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
@@ -47,7 +48,7 @@
   .note{background:#1a1710;border:1px solid #3a3016;color:#d7c48c;
     border-radius:10px;padding:11px 14px;font-size:12.5px;margin-bottom:24px}
   @media(max-width:560px){
-    .wrap{padding:22px 0 50px} h1{font-size:21px}
+    .wrap{padding:22px 0 50px} h1{font-size:30px}
     td,th{font-size:12.5px}
   }
 </style>

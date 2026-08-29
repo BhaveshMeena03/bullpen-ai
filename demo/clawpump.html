@@ -30,7 +30,7 @@
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
   body{background:var(--bg);color:var(--text);
-    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font:15px/1.55 var(--sans);font-feature-settings:"tnum" 1;
     display:flex;flex-direction:column;min-height:100vh}
   .banner{width:100%;background:#221c0c;color:#e8c157;font-size:12px;
     text-align:center;padding:7px 14px;line-height:1.4}
@@ -42,7 +42,8 @@
   .brand{font-weight:800;letter-spacing:.5px;font-size:15px}
   .brand span{color:var(--green)}
 
-  h1{font-size:26px;line-height:1.2;margin-bottom:6px}
+  h1{font-family:var(--display);font-weight:400;font-size:38px;
+    line-height:1.12;letter-spacing:-.01em;margin-bottom:8px}
   h1 em{color:var(--green);font-style:normal}
   .sub{color:var(--muted);margin-bottom:16px;max-width:620px;font-size:14px}
 
@@ -113,7 +114,7 @@
     .topbar{flex-direction:row;align-items:center;gap:10px}
     .topbar .btn{padding:7px 12px;font-size:12.5px;box-shadow:none}
     .wrap{padding:14px 16px 0}
-    h1{font-size:21px}
+    h1{font-size:30px}
     /* The intro repeats what the chips and the greeting already say. */
     .sub{display:none}
     /* Two examples are an invitation; five are a menu that costs a screen. */

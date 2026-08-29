@@ -21,7 +21,7 @@
 <meta name="twitter:image" content="https://search.lexthedev.com/demo/og-broadcast.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Inter:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="/demo/ui.css">
 <style>
   :root{
@@ -35,28 +35,6 @@
     font-feature-settings:"tnum" 1;
     display:flex;flex-direction:column;align-items:center;padding:0 16px;
     position:relative}
-
-  /* Depth, from two fixed layers behind everything.
-     A flat fill reads as a default rather than a decision. The glow sits
-     where the eye already goes — behind the headline and the box — and
-     falls off before it reaches the answer, so nothing anybody has to
-     read sits on a gradient. The grain is there because large dark areas
-     band on cheap panels and look like a void on good ones; at 3% it is
-     texture rather than noise. Both are pointer-events:none and fixed, so
-     they cost nothing and never move. */
-  body::before{
-    content:"";position:fixed;inset:0;z-index:-2;pointer-events:none;
-    background:
-      radial-gradient(900px 460px at 50% -8%,
-        rgba(22,199,132,.10), transparent 70%),
-      radial-gradient(700px 380px at 88% 6%,
-        rgba(22,199,132,.05), transparent 72%);
-  }
-  body::after{
-    content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
-    opacity:.032;
-    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
-  }
 
   /* The disclosure, saying the same thing without shouting it. It was
      mustard on brown — the palette a browser uses for a warning — so the
@@ -78,7 +56,7 @@
   h1{font-family:"Instrument Serif",Georgia,"Times New Roman",serif;
     font-size:42px;font-weight:400;line-height:1.12;margin-bottom:10px;
     letter-spacing:-.01em}
-  h1 em{color:var(--green);font-style:italic}
+  h1 em{color:var(--green);font-style:normal}
   .sub{color:var(--muted);margin-bottom:26px}
   form{display:flex;gap:10px;margin-bottom:14px}
   #q{flex:1;background:var(--panel);border:1px solid var(--line);
