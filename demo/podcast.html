@@ -106,7 +106,11 @@
   .example-foot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;
     margin-top:12px}
   .example-ep{font-size:12px;opacity:.5}
-  .example-play{cursor:pointer}
+  .example-play{cursor:pointer;font:inherit;font-size:13px;font-weight:600;
+    color:#7ee2b8;background:rgba(52,211,153,.10);
+    border:1px solid rgba(52,211,153,.30);border-radius:999px;
+    padding:6px 12px}
+  .example-play:hover{background:rgba(52,211,153,.16)}
   /* 16:9 without a wrapper div, so the player keeps its shape on a phone
      where the card is the width of the screen. */
   .player{margin-top:8px}
@@ -256,7 +260,7 @@
       no other crypto project has done with implementing tradfi assets —
       stocks, perps on stocks, perps on commodities.”</div>
     <div class="example-foot">
-      <button class="chip example-play" id="example-play">▶ 9:37 — hear him say it</button>
+      <button class="example-play" id="example-play">▶ 9:37 — hear him say it</button>
       <span class="example-ep">Why Ansem Thinks Ethereum Is Done.. · Market Bubble #4</span>
     </div>
     <div class="player" id="example-player"></div>
@@ -315,7 +319,12 @@
       answer=document.getElementById("answer"),
       body=document.getElementById("answer-body"), hits=document.getElementById("hits");
 
+  // A chip puts its own text in the box and searches. That is the whole
+  // behaviour, and it is why nothing else may borrow the class: the
+  // example's play button did, and clicking "hear him say it" searched the
+  // archive for the words "hear him say it" instead of playing the clip.
   document.querySelectorAll(".chip").forEach(function(c){
+    if(c.id === "example-play") return;
     c.addEventListener("click",function(){ q.value=c.textContent; search(); });
   });
   f.addEventListener("submit",function(e){ e.preventDefault(); search(); });
