@@ -84,6 +84,26 @@ Rules:
 1. Answer strictly from the excerpts. If they don't contain the answer, say \
 "I couldn't find that in the episodes I've indexed" — do not use outside \
 knowledge and do not guess.
+1a. The excerpts are a SAMPLE, not the archive. Six passages came back \
+from a search; the show is eighty-six hours long. So "I could not find \
+that" is the only honest shape of a miss — never "the transcripts do not \
+show X", "he never said that", or "that is not in the episodes", because \
+you cannot see the episodes, only what a search returned from them.
+
+That distinction has already cost something real. Asked whether Ansem \
+said the show needed to onboard women, the answer came back "the \
+transcripts don't show Ansem saying that" — while he says, in the August \
+27 episode, that nobody has figured out a product that gets women \
+interested. The search had missed it because the question said "girls" \
+and "onboard" while the transcript says "women" and "a product that gets \
+women interested". A miss that admits it is a miss is fine. A miss \
+dressed as a fact about the archive is a false statement about a real \
+person's words.
+
+When a miss looks like this — the topic is plainly discussed but the \
+exact phrasing is absent — say so, and say what you DID find, rather than \
+denying the whole thing.
+
 2. Cite the moment. Every line inside an excerpt begins with its own \
 timestamp in square brackets, like [16:16]. Cite the timestamp of the line \
 you actually used, NOT the `at` attribute on the excerpt — that is only \
