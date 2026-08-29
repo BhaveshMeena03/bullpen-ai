@@ -19,6 +19,9 @@
 <meta name="twitter:title" content="Market Bubble Search — ask the broadcast anything">
 <meta name="twitter:description" content="Search every episode by meaning and jump to the exact moment on YouTube. Free, no login, open source.">
 <meta name="twitter:image" content="https://search.lexthedev.com/demo/og-broadcast.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="/demo/ui.css">
 <style>
   :root{
@@ -27,7 +30,9 @@
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--text);min-height:100vh;
-    font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    font:15px/1.6 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,
+      sans-serif;
+    font-feature-settings:"tnum" 1;
     display:flex;flex-direction:column;align-items:center;padding:0 16px;
     position:relative}
 
@@ -70,8 +75,10 @@
   @media(max-width:560px){
     .topbar{flex-direction:column;align-items:flex-start;gap:10px}
   }
-  h1{font-size:30px;font-weight:800;line-height:1.2;margin-bottom:8px}
-  h1 em{color:var(--green);font-style:normal}
+  h1{font-family:"Instrument Serif",Georgia,"Times New Roman",serif;
+    font-size:42px;font-weight:400;line-height:1.12;margin-bottom:10px;
+    letter-spacing:-.01em}
+  h1 em{color:var(--green);font-style:italic}
   .sub{color:var(--muted);margin-bottom:26px}
   form{display:flex;gap:10px;margin-bottom:14px}
   #q{flex:1;background:var(--panel);border:1px solid var(--line);
@@ -115,6 +122,9 @@
   .cite{color:#7ee2b8;cursor:pointer;border:0;background:none;padding:0;
     font:inherit;border-bottom:1px dashed rgba(126,226,184,.5)}
   .cite:hover{border-bottom-style:solid}
+  /* A timestamp inside a summary keeps the look it had as a link. */
+  .ep-cite{color:var(--green);font-variant-numeric:tabular-nums;
+    font-weight:600;border-bottom-color:rgba(22,199,132,.45)}
   .also{margin:44px 0 8px;padding-top:26px;
     border-top:1px solid rgba(255,255,255,.08)}
   .also h2{font-size:15px;font-weight:600;opacity:.6;margin:0 0 14px;
@@ -187,8 +197,10 @@
     margin-left:2px;font-weight:500}
   .copyts:hover{color:var(--green);border-color:var(--green)}
   .copyts.done{color:var(--green);border-color:var(--green)}
-  .seeknote{color:var(--muted);font-size:11.5px;margin:-4px 0 10px;
-    line-height:1.45}
+  /* Sits in the action row of the one card it applies to, where the play
+     button would be, so it reads as the reason that card has none. */
+  .seeknote{color:var(--muted);font-size:11.5px;line-height:1.45;
+    align-self:center}
   .watch{margin-left:auto;color:var(--green);font-size:12px;white-space:nowrap}
   .ep{color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;
     white-space:nowrap;max-width:100%}
@@ -232,7 +244,7 @@
   .share:hover{color:var(--green);border-color:var(--green)}
   /* Mobile */
   @media (max-width:520px){
-    h1{font-size:24px}
+    h1{font-size:32px}
     .sub{font-size:14px}
     form{flex-direction:column}
     form button{padding:13px}
@@ -473,13 +485,25 @@
   // Turn [h:mm:ss] / [m:ss] markers in a summary into links that open the
   // episode at that second on YouTube. Runs on md()'s escaped HTML, so the
   // bracketed timestamps are plain literal text we can safely replace.
+  // A timestamp inside a summary opens the moment in place, the same way
+  // one inside an answer does. It used to be a link that opened YouTube in
+  // a new tab — which is exactly the behaviour the rest of the page
+  // stopped doing, so the summaries were the last half-converted part of
+  // it. An X broadcast keeps the outbound link, because X still cannot
+  // jump to a timestamp and a button that opened it at 0:00 would be a
+  // worse promise than a plain link.
   function linkifyTimestamps(html, url){
+    var seekable = canSeek(url);
     return html.replace(/\[(?:(\d+):)?(\d{1,2}):(\d{2})\]/g,
       function(m, h, mm, ss){
         var sec=(parseInt(h||0,10)*3600)+(parseInt(mm,10)*60)+parseInt(ss,10);
         var link=url+(url.indexOf("?")>-1?"&":"?")+"t="+sec+"s";
-        return '<a class="ts" href="'+escAttr(safeUrl(link))+'" target="_blank" '+
-               'rel="noopener">'+m+'</a>';
+        if(!seekable){
+          return '<a class="ts" href="'+escAttr(safeUrl(link))+'" target="_blank" '+
+                 'rel="noopener">'+m+'</a>';
+        }
+        return '<button class="cite ep-cite" data-sec="'+sec+'" '+
+               'data-ep="'+escAttr(url)+'" title="play this moment">'+m+'</button>';
       });
   }
 
@@ -500,7 +524,8 @@
           var live = !canSeek(ep.url || "");
           var badge = live ? '<span class="srcbadge">full live · on X</span>' : '';
           d.innerHTML='<summary><span class="tw">▶</span>'+esc(ep.title)+badge+
-            '</summary><div class="ep-body">'+bodyHtml+
+            '</summary><div class="ep-body">'
+            +'<div class="player ep-player"></div>'+bodyHtml+
             '<a class="ep-link" href="'+escAttr(safeUrl(ep.url||""))+'" '+
             'target="_blank" rel="noopener">'
             + (live ? 'Watch the full broadcast on X →'
@@ -611,11 +636,10 @@ function airedLabel(iso){
       var seekable = list.filter(function(h){ return canSeek(h.deep_link); }).length;
       var head = seekable === list.length ? 'Jump to the moment'
                                           : 'Where it was said';
-      var note = seekable < list.length
-        ? '<div class="seeknote">X doesn\u2019t support jumping to a timestamp in '
-          + 'video \u2014 copy the time and scrub to it.</div>'
-        : '';
-      var html='<h3>'+head+'</h3>'+note;
+      // The note used to sit under the heading, so a set where four of six
+      // results play announced to all six that nothing would. It belongs on
+      // the cards it is true of.
+      var html='<h3>'+head+'</h3>';
       list.forEach(function(h,i){
         html+='<div class="hit-wrap">'
           +'<a class="hit" href="'+escAttr(safeUrl(h.deep_link))+'" target="_blank" rel="noopener">'
@@ -629,7 +653,9 @@ function airedLabel(iso){
           +'<div class="hit-actions">'
           +(canSeek(h.deep_link)
               ? '<button class="share play-here" data-act="play" data-i="'+i+'">'
-                + '\u25B6 play here</button>' : '')
+                + '\u25B6 play here</button>'
+              : '<span class="seeknote">X can\u2019t jump to a time in video '
+                + '\u2014 copy it and scrub</span>')
           +'<button class="share" data-act="x" data-i="'+i+'">post on X</button>'
           +'<button class="share" data-act="img" data-i="'+i+'">save clip</button>'
           +'</div><div class="player" data-slot="'+i+'"></div></div>';
@@ -918,6 +944,33 @@ function airedLabel(iso){
       if(d < gap){ gap = d; best = h; }
     });
     return gap <= CITE_WINDOW ? best : null;
+  }
+
+  // The same for a timestamp inside an episode summary, opened at the top
+  // of that episode's own card so the summary stays readable underneath.
+  // Delegated from the list, because the cards are built after this runs.
+  var epsList = document.getElementById("eps-list");
+  if(epsList){
+    epsList.addEventListener("click", function(ev){
+      var b = ev.target.closest ? ev.target.closest("button.ep-cite") : null;
+      if(!b) return;
+      var url = b.getAttribute("data-ep") || "";
+      var src = embedFor(url + (url.indexOf("?") > -1 ? "&" : "?")
+                         + "t=" + b.getAttribute("data-sec") + "s");
+      if(!src) return;
+      var card = b.closest("details");
+      var slot = card && card.querySelector(".ep-player");
+      if(!slot) return;
+      document.querySelectorAll(".player").forEach(function(o){ o.innerHTML=""; });
+      document.querySelectorAll(".play-here").forEach(function(o){
+        o.textContent="\u25B6 play here"; });
+      var f=document.createElement("iframe");
+      f.src=src; f.loading="lazy"; f.title="this moment in the episode";
+      f.setAttribute("allow","autoplay; encrypted-media; picture-in-picture");
+      f.setAttribute("allowfullscreen","");
+      slot.appendChild(f);
+      slot.scrollIntoView({block:"nearest"});
+    });
   }
 
   // One player for the answer's own citations, opened under the answer.
