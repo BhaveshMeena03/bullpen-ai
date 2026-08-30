@@ -829,9 +829,10 @@ _INTRO_PHRASINGS = (
     "If it isn't in the archive I'll say so rather than guess.",
 
     "Tag me with a question about anything said on the show and you get "
-    "the answer, who said it, and the moment it was said.\n\n"
-    "The hosts are told apart by voice, so \"what did ansem say\" does not "
-    "come back with something Banks said.\n\n"
+    "the answer, who said it, and the second it was said.\n\n"
+    "Ask \"who is michael catt\" and it is Banks who answers — \"our head "
+    "of production... he does 80 different jobs\" — because the hosts are "
+    "told apart by voice rather than guessed at.\n\n"
     "Only what is in the transcripts. Nothing invented.",
 )
 
