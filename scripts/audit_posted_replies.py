@@ -130,12 +130,18 @@ def audit(reply: str, episodes: dict, speakers: dict,
     else:
         return problems
 
-    # A reply citing several moments -- a summary especially -- is not
-    # making claims about one 150-second window. Widen to the whole
-    # episode rather than flagging every figure in it.
-    spread = len({c for c in CITED.findall(reply)}) > 1
-    text = (" ".join(x.get("text", "") for x in episode["segments"]).lower()
-            if spread else near(episode, at))
+    # Two texts, because the two checks ask different questions.
+    #
+    # A QUOTE has to appear near the second the reply points at -- that is
+    # the promise the timestamp makes.
+    #
+    # A FIGURE only has to be somewhere in the episode. Replies routinely
+    # cover four moments and cite one: a reply about the Orangie
+    # conversation cited 34:25 and mentioned "18 months early", which is
+    # said at 1:23 of the same episode. Checking a number against a
+    # 150-second window called a true statement a fabrication, twice.
+    text = near(episode, at)
+    whole = " ".join(x.get("text", "") for x in episode["segments"]).lower()
     if not text:
         problems.append(f"the link lands at {at}s, where the episode has "
                         f"no transcript")
@@ -191,7 +197,7 @@ def audit(reply: str, episodes: dict, speakers: dict,
         # "there's fucking 30 000 coins that launch a day" -- so both
         # separators come out before matching, or a true figure reads as
         # unsupported.
-        flat = re.sub(r"(?<=\d)[ ,](?=\d)", "", text)
+        flat = re.sub(r"(?<=\d)[ ,](?=\d)", "", whole)
         if digits.rstrip(".") in flat:
             continue
         bare = digits.split(".")[0]

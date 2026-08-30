@@ -123,8 +123,31 @@ services:
       # quality is still being watched, and announced as such — "open to
       # everyone soon" is a promise, so it has to be true that it is not
       # open to everyone yet.
+      # Open to everyone. It ran verified-only while the guards that gate
+      # kept by accident did not exist yet -- it bounded reply volume, and
+      # it meant the text reaching the model came from people with
+      # something to lose. Both are now done on purpose:
+      #
+      #   X_BOT_PER_AUTHOR_CAP  one account's share of the day, checked
+      #                         before any retrieval spend
+      #   strip_model_links     no URL the model wrote survives into a
+      #                         reply; only ones this code built from a
+      #                         cited hit
+      #   attribution.correct   a quote whose voice label contradicts the
+      #                         host named is demoted to "one of the
+      #                         hosts" rather than posted as a false
+      #                         claim about a real person
+      #
+      # Set back to "true" to close it again -- no deploy, and the next
+      # poll honours it.
       - key: X_BOT_VERIFIED_ONLY
-        value: "true"
+        value: "false"
+      # Replies one ACCOUNT gets in a day. The per-thread cap never bounded
+      # this: thirty mentions in thirty threads is thirty conversations and
+      # no repeats, so one person could take the whole daily 300. Priority
+      # authors are exempt.
+      - key: X_BOT_PER_AUTHOR_CAP
+        value: "8"
       # Premium accounts can post far past 280, and automated accounts get
       # the same allowance as human ones. Confirmed by posting one: a
       # 900-character reply went out fine. 1500 rather than the 25,000 the
