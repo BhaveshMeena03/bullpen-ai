@@ -18,10 +18,12 @@ scheduled run that finds nothing simply does nothing.
 
 import asyncio
 import json
+import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 
 from anthropic import AsyncAnthropic  # noqa: E402
 
@@ -53,6 +55,60 @@ def load_indexed() -> list[dict]:
         except json.JSONDecodeError:
             return []
     return []
+
+
+def stored_speakers(vid: str) -> dict[str, str] | None:
+    """Whatever names are already known for an episode, if any."""
+    path = ROOT / "data" / "speaker_map.json"
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text()).get(vid) or None
+    except Exception:                                       # noqa: BLE001
+        return None
+
+
+def label_speakers(vid: str, log) -> dict[str, str] | None:
+    """Recover who is speaking, for one new episode.
+
+    Four steps, run as subprocesses because each is a working script with
+    its own arguments and failure handling, and because the fingerprinting
+    loads a voice encoder this process has no other use for.
+
+    Ran by hand for every episode until #17 arrived unlabelled and nobody
+    noticed until somebody asked the bot what Banks said in it. An episode
+    that ingests without this is searchable but anonymous: "what did Banks
+    say" degrades to "one of the hosts", silently, and only on the newest
+    episode -- the one people ask about.
+
+    build_speaker_map has no --only and does not want one. It identifies
+    the hosts by which voices recur across the WHOLE archive, so it needs
+    every episode to tell a host from a guest.
+
+    Never fatal. A labelled episode is better than an unlabelled one and
+    an unlabelled one is far better than a failed sync.
+    """
+    steps = (
+        (["scripts/fetch_audio.py", "--only", vid], "audio"),
+        (["scripts/label_speakers.py", "--only", vid], "fingerprints"),
+        (["scripts/build_speaker_map.py"], "names"),
+        (["scripts/apply_speaker_labels.py", "--only", vid], "labels"),
+    )
+    for argv, what in steps:
+        done = subprocess.run([sys.executable, *argv], cwd=str(ROOT),
+                              capture_output=True, text=True)
+        if done.returncode != 0:
+            tail = (done.stderr or done.stdout).strip().splitlines()
+            log(f"  {vid}: speaker {what} FAILED ({tail[-1][:90] if tail else '?'}) "
+                f"— indexed and searchable, but nobody is named in it")
+            return None
+    try:
+        mapping = json.loads((ROOT / "data" / "speaker_map.json").read_text())
+    except Exception:                                       # noqa: BLE001
+        return None
+    named = mapping.get(vid) or {}
+    log(f"  {vid}: {len(named)} segments attributed by voice")
+    return named or None
 
 
 async def reconcile(indexed, summaries, asset_store, anthropic_client) -> None:
@@ -102,7 +158,12 @@ async def reconcile(indexed, summaries, asset_store, anthropic_client) -> None:
         vid = raw["episode_id"]
         try:
             episode = Episode(**raw)
-            summary = await summaries.summarize(episode)
+            # The repair path needs the names too. Backfilling a summary
+            # without them writes an anonymous one over an episode whose
+            # speakers are already known, and nothing would ever revisit
+            # it.
+            summary = await summaries.summarize(
+                episode, speakers=stored_speakers(vid))
             await summaries.store(episode, summary)
             log(f"  {vid}: summary backfilled ({len(summary)} chars)")
         except Exception as exc:  # noqa: BLE001 — try the rest regardless
@@ -208,16 +269,20 @@ async def main(argv: list[str]) -> int:
         # is the expected case, not an unlucky one.
         merge_episodes([raw], OUT)
 
-        # 3. summarize (idempotent; a summary failure must not lose the ingest)
+        # 3. work out who is speaking, before the summary is written, so
+        #    the summary can name them.
+        speakers = label_speakers(vid, log)
+
+        # 4. summarize (idempotent; a summary failure must not lose the ingest)
         try:
-            summary = await summaries.summarize(episode)
+            summary = await summaries.summarize(episode, speakers=speakers)
             await summaries.store(episode, summary)
             log(f"  {vid}: summary stored ({len(summary)} chars)")
         except Exception as exc:  # noqa: BLE001
             log(f"  {vid}: summary FAILED ({exc}) — search still works, "
                 f"re-run summarize_episodes.py later")
 
-        # 4. extract the assets discussed, and store them where the DEPLOYED
+        # 5. extract the assets discussed, and store them where the DEPLOYED
         #    app reads them. Without this the token dashboard silently goes
         #    stale while search and summaries stay current.
         try:
@@ -230,7 +295,7 @@ async def main(argv: list[str]) -> int:
 
         added += 1
 
-        # 5. announce it, last and least. This runs only after the episode is
+        # 6. announce it, last and least. This runs only after the episode is
         #    actually searchable, so a post can never point at something that
         #    is not there yet. Idempotency is inherited rather than tracked:
         #    Pinecone decides what counts as new, so an episode reaches this

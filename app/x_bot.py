@@ -347,6 +347,50 @@ def summary_request(question: str) -> int | None:
     return int(number) if number else None
 
 
+# How near two cuts of one show are published. The live broadcast goes out
+# on the Thursday and the edited upload follows within a couple of days.
+_SAME_SHOW_DAYS = 3
+
+
+def _same_show_as(numbered: list[dict], every: list[dict]) -> list[dict]:
+    """The unnumbered broadcasts that are the same show as `numbered`.
+
+    Every live broadcast is titled "... Market Bubble Ep 16" except when it
+    is not: the 27 August show went out as "$100K POLYMARKET FANTASY
+    FOOTBALL DRAFT NIGHT", with no number anywhere in it. Asked to
+    summarise episode 17, the account said it had no such episode -- of a
+    show it had transcribed in full two days earlier, because the number
+    lives in the title and that title had none.
+
+    A show that is not numbered is still the same show as the numbered cut
+    published beside it. Matching on the date rather than the words is what
+    survives a title nobody could have predicted.
+    """
+    if not numbered:
+        return []
+    days = [s.get("published_at", "")[:10] for s in numbered
+            if s.get("published_at")]
+    if not days:
+        return []
+    from datetime import date
+
+    def when(text: str) -> date | None:
+        try:
+            return date.fromisoformat(text[:10])
+        except ValueError:
+            return None
+
+    anchors = [d for d in (when(x) for x in days) if d]
+    out = []
+    for candidate in every:
+        if episode_number(candidate.get("title", "")) is not None:
+            continue
+        at = when(candidate.get("published_at") or "")
+        if at and any(abs((at - a).days) <= _SAME_SHOW_DAYS for a in anchors):
+            out.append(candidate)
+    return out
+
+
 def episode_number(title: str) -> int | None:
     """The show's own number for an episode, from its title."""
     found = re.search(r"(?ix)(?: market\s+bubble | ep(?:isode)? )\s*\#?\s*(\d{1,2})\b",
@@ -2135,6 +2179,7 @@ class MentionBot:
             self._summary_cache = await self._summaries.list_all()
         matches = [s for s in self._summary_cache
                    if episode_number(s.get("title", "")) == number]
+        matches += _same_show_as(matches, self._summary_cache)
         if not matches:
             return None
         return max(matches, key=lambda s: len(s.get("summary", "")))
