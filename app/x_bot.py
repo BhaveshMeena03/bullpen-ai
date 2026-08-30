@@ -304,7 +304,17 @@ _ASKS_FOR_CA = re.compile(
 # happened at 1:22:17" captured the 1 and replied with a whole summary of
 # episode 1, three thousand characters answering a question about a moment.
 _NUMBER = r"(?<![:.\d])(\d{1,2})(?!\s*[:.\d])"
-_ASKS = r"summar(?:ise|ize|y)|recap|rundown|what\s+happened"
+# How people actually ask for a summary. "tldr" is the common one on X
+# and was missing, so nine phrasings in fourteen fell through to ordinary
+# search and got a six-passage answer where a stored summary of the whole
+# episode was sitting ready.
+#
+# "about" is deliberately NOT here. "what did they say about hyperliquid
+# in episode 17" would match it and return a summary instead of the
+# answer somebody asked for -- the trigger has to be a word that only
+# ever means "summarise", never one that merely appears near a number.
+_ASKS = (r"summar(?:ise|ize|y)|recap|rundown|run\s*down|what\s+happened"
+         r"|tl\s*;?\s*dr|brief(?:\s+me)?|overview|break\s*down|sum\s+up")
 # "the latest episode", with no number in it. Without this the request
 # falls through to ordinary search, and the model answers from whatever
 # passages came back — which produced "I've indexed episodes through early
