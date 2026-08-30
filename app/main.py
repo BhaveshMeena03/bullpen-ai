@@ -19,6 +19,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from html import escape as html_escape
 from pathlib import Path
+from urllib.parse import quote_plus
 
 import anthropic
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -27,12 +28,13 @@ from fastapi.responses import (
     HTMLResponse,
     JSONResponse,
     RedirectResponse,
+    Response,
     StreamingResponse,
 )
 from fastapi.staticfiles import StaticFiles
 from voyageai import error as voyage_error
 
-from . import market
+from . import market, og_card
 from .agent import REFUSAL_MESSAGE, ConciergeAgent
 from .answer_cache import AnswerCache, make_key
 from .assets import aggregate as aggregate_assets
@@ -326,6 +328,35 @@ _ROOT = Path(__file__).resolve().parent.parent
 # generic "search every episode by meaning" card, and the hardcoded og:url
 # told X the canonical page was the empty homepage, which is where clicking
 # the card actually landed.
+@app.get("/og/search.png", include_in_schema=False)
+async def og_search_card(request: Request, q: str = ""):
+    """The share card, drawn around the question that was actually asked.
+
+    The static PNG had an example question printed in its search box, so
+    sharing a search showed the reader two different questions -- the one
+    baked into the image and the real one X overlays from og:title.
+
+    Cached hard and keyed by an etag over the question: a crawler fetches
+    each card once, and the same link shared twice costs nothing to draw
+    again.
+    """
+    asked = (q or "").strip()[:180]
+    tag = f'W/"{og_card.etag(asked)}"'
+    if request.headers.get("if-none-match") == tag:
+        return Response(status_code=304, headers={"ETag": tag})
+    try:
+        png = await asyncio.to_thread(og_card.render, asked or None)
+    except Exception:                                       # noqa: BLE001
+        # A card is decoration; a search page that 500s because it could
+        # not draw one is not. Fall back to the static image.
+        logger.exception("og card render failed")
+        return RedirectResponse("/demo/og-broadcast.png", status_code=302)
+    return Response(png, media_type="image/png", headers={
+        "ETag": tag,
+        "Cache-Control": "public, max-age=86400, s-maxage=604800",
+    })
+
+
 @app.get("/demo/podcast.html", include_in_schema=False)
 async def podcast_page(request: Request):
     page = (_ROOT / "demo" / "podcast.html").read_text()
@@ -350,6 +381,15 @@ async def podcast_page(request: Request):
             '<meta name="twitter:title" content="Market Bubble Search '
             '— ask the broadcast anything">',
             f'<meta name="twitter:title" content="&#8220;{shown}&#8221;">')
+        # The card is drawn per question too, so the image and the title
+        # stop showing two different ones.
+        card = f"{canonical.split('?')[0].rsplit('/demo/', 1)[0]}/og/search.png?q={quote_plus(asked[:180])}"
+        for tag_name in ("og:image", "twitter:image"):
+            prefix = "property" if tag_name.startswith("og:") else "name"
+            page = re.sub(
+                rf'<meta {prefix}="{tag_name}" content="[^"]*">',
+                f'<meta {prefix}="{tag_name}" content="{html_escape(card, quote=True)}">',
+                page, count=1)
         answer_line = ("Answered from the Market Bubble transcripts, with "
                        "the moment it was said.")
         for tag in ("og:description", "twitter:description"):

@@ -6,3 +6,7 @@ voyageai==0.4.1
 pinecone==9.1.0
 pydantic==2.13.4
 pydantic-settings==2.14.2
+# Draws the social card per question (app/og_card.py). The card is flat
+# shapes and four lines of text, so this is here instead of a headless
+# browser in the image.
+pillow==12.3.0

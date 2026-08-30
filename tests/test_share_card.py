@@ -83,9 +83,15 @@ def test_a_long_query_is_trimmed_rather_than_dumped(client):
 
 def test_the_card_image_is_still_declared(client):
     """The title is the change; losing the image would trade a generic
-    card for a bare link, which is worse than what it replaced."""
+    card for a bare link, which is worse than what it replaced.
+
+    No longer required to end in .png: a search now points at
+    /og/search.png?q=..., which draws the question into the card's search
+    box so the image and the title stop showing two different ones.
+    """
     r = client.get(PAGE, params={"q": "anything"})
-    assert meta(r.text, "og:image", ).endswith(".png")
+    image = meta(r.text, "og:image")
+    assert image.endswith(".png") or "/og/search.png?q=" in image
     assert meta(r.text, "twitter:card") == "summary_large_image"
 
 
