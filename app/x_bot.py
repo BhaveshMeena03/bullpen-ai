@@ -708,7 +708,8 @@ def summons(question: str) -> bool:
     return bool(_SUMMONS.search(strip_urls(question or "").strip()))
 
 
-def automation_answer(question: str, site: str | None = None) -> str | None:
+def automation_answer(question: str, site: str | None = None,
+                      seed: str | None = None) -> str | None:
     """Yes, and who runs it.
 
     Said plainly and first. The description of what the archive contains is
@@ -719,16 +720,16 @@ def automation_answer(question: str, site: str | None = None) -> str | None:
     if summons(question):
         # Asked to introduce itself, so the whole message is the ask. The
         # opener differs because "Yes —" answers a question nobody asked.
-        return _automation_text(site, lead=None)
+        return _automation_text(site, lead=None, seed=seed)
     found = _ASKS_IF_AUTOMATED.search(question or "")
     if not found or not _is_the_whole_question(found, question):
         return None
-    return _automation_text(site)
+    return _automation_text(site, seed=seed)
 
 
 def _automation_text(site: str | None,
-                     lead: str | None = "Yes — automated, and run by Lex."
-                     ) -> str:
+                     lead: str | None = "Yes — automated, and run by Lex.",
+                     seed: str | None = None) -> str:
     """The description, with or without the disclosure in front of it.
 
     X approved the Automated Account label on 2026-08-28, so every reply
@@ -740,13 +741,11 @@ def _automation_text(site: str | None,
     A label is not an answer to a question, and an account that dodges
     that one has given away the only thing it has.
     """
-    body = (
-        "I'm a search engine over the Market Bubble archive: tag me with a "
-        "question about anything said on the show and I answer from the "
-        "transcripts, with the timestamp it was said at.\n\n"
-        "I only answer from what is actually in the episodes. If it is not "
-        "in there, I say so."
-    )
+    # Seeded on the mention rather than the question, which is the whole
+    # point: "introduce yourself" is typed identically every time, so
+    # seeding on it would pick the same variant for everybody and leave
+    # the duplicates exactly where they were.
+    body = _pick(_INTRO_PHRASINGS, seed or "")
     if lead:
         body = f"{lead}\n\n{body}"
     return f"{body}\n\n{site}" if site else body
@@ -775,10 +774,8 @@ _ABOUT_PHRASINGS = (
     "Every episode is transcribed and indexed by meaning, so \"why does "
     "ansem think eth is done\" finds the moment even if nobody said it "
     "that way.\n\n"
-    "You get the answer and the exact second it was said. Every episode is "
-    "in there, plus the full live broadcasts — about a third of each show "
-    "never reaches the YouTube upload, and that part is searchable here and "
-    "nowhere else.\n\n"
+    "You get the answer and the exact second it was said. The live "
+    "broadcasts are in there alongside the uploads.\n\n"
     "I only answer from what was actually said. If it isn't in the "
     "archive I'll tell you so rather than guess.",
 
@@ -787,9 +784,8 @@ _ABOUT_PHRASINGS = (
     "can ask the way you'd ask a person and it finds the moment even when "
     "the words don't line up.\n\n"
     "Ask me anything from any episode and you get the answer plus the "
-    "timestamp it was said at. That includes the live broadcasts, which run "
-    "about a third longer than the uploads — the Squire founder interview, "
-    "for instance, starts 26 minutes after the ep 10 video ends.\n\n"
+    "timestamp it was said at. The live broadcasts are indexed too, not "
+    "just the uploads.\n\n"
     "Everything is grounded in the transcripts. No guessing.",
 
     "I've transcribed and indexed every Market Bubble episode, then made it "
@@ -797,10 +793,46 @@ _ABOUT_PHRASINGS = (
     "So you can ask \"what did luca netz say about pudgy penguins\" without "
     "knowing which episode, and get back what he said and the second he "
     "said it.\n\n"
-    "The live broadcasts are indexed too, which is the part nobody else "
-    "has — roughly a third of every show is cut before it reaches YouTube.\n\n"
+    "The live broadcasts are indexed as well as the uploads.\n\n"
     "I answer only from the transcripts, and say so when something isn't "
     "in there.",
+)
+
+# Asked to introduce itself, the account replied with one fixed paragraph
+# every time -- thirty-one identical copies out of ninety-one replies,
+# which is a third of everything it has ever posted and precisely what
+# X's platform manipulation policy names.
+#
+# Not model-written: this is the one answer that must never drift, since
+# it is the account describing itself. A pool costs nothing and cannot
+# hallucinate.
+#
+# Each carries a different real example, so the introduction demonstrates
+# the thing instead of describing it.
+_INTRO_PHRASINGS = (
+    "I'm a search engine over the Market Bubble archive: tag me with a "
+    "question about anything said on the show and I answer from the "
+    "transcripts, with the timestamp it was said at.\n\n"
+    "I only answer from what is actually in the episodes. If it is not "
+    "in there, I say so.",
+
+    "Semantic search over every Market Bubble episode.\n\n"
+    "Ask in plain English — \"who was the guy who sold his entire ETH "
+    "position\" finds David Hoffman at 27:09, without you needing to know "
+    "his name.\n\n"
+    "I only answer from what was actually said.",
+
+    "Every word of every Market Bubble episode, indexed by meaning.\n\n"
+    "Ask \"what did banks say about hyperliquid\" and you get his own "
+    "line — \"basically full ported hyperliquid at $30\" — and the second "
+    "he said it.\n\n"
+    "If it isn't in the archive I'll say so rather than guess.",
+
+    "Tag me with a question about anything said on the show and you get "
+    "the answer, who said it, and the moment it was said.\n\n"
+    "The hosts are told apart by voice, so \"what did ansem say\" does not "
+    "come back with something Banks said.\n\n"
+    "Only what is in the transcripts. Nothing invented.",
 )
 
 _ABOUT_ORIGIN = ("Built for the AnsemHack Clawrena, and for the Market "
@@ -2143,7 +2175,8 @@ class MentionBot:
                     "keep are the ones nobody is the butt of, and there are "
                     "not many. Ask me about the show instead.")
 
-        automated = automation_answer(question, self._site)
+        automated = automation_answer(question, self._site,
+                                      seed=str(mention.id))
         if automated:
             logger.info("%s asked whether this is a bot — saying so",
                         mention.id)

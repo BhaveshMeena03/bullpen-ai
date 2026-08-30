@@ -3002,7 +3002,7 @@ def test_the_account_can_be_summoned_to_introduce_itself():
     bot in your own comment, and the reply lands under it where the thread
     can see it. The phrases read as an introduction, because that is what
     you would actually type there."""
-    from app.x_bot import automation_answer, summons
+    from app.x_bot import _INTRO_PHRASINGS, automation_answer, summons
 
     for phrase in ("introduce yourself", "tell them what you do",
                    "tell him what you do", "tell everyone what you do",
@@ -3014,7 +3014,14 @@ def test_the_account_can_be_summoned_to_introduce_itself():
                    "gm everyone tell them what you do"):
         assert summons(phrase), phrase
         reply = automation_answer(phrase, "example.com")
-        assert reply and "search engine" in reply.lower()
+        # Any of the introductions, not one exact phrase: the reply is
+        # picked per mention now, because thirty-one identical copies of
+        # a single paragraph is what X's spam policy is written about.
+        # What matters is that an introduction came back rather than a
+        # retrieved answer -- this phrasing once returned a fact about
+        # Anthropic.
+        assert reply and any(v.split("\n")[0] in reply
+                             for v in _INTRO_PHRASINGS), reply[:80]
         # No disclosure line in front. X approved the Automated Account
         # label on 2026-08-28, so every reply already carries "Automated by
         # @Lexx_eth" above the text — opening with "I'm automated" repeats
