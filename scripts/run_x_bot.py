@@ -84,6 +84,7 @@ def build(dry_run: bool, cap: int | None, links: bool | None):
         daily_spend_cap_usd=settings.x_bot_daily_spend_cap_usd,
         per_thread_cap=settings.x_bot_per_thread_cap,
         verified_only=settings.x_bot_verified_only,
+        per_author_cap=settings.x_bot_per_author_cap,
         post_limit=settings.x_bot_post_limit,
         summary_limit=settings.x_bot_summary_limit,
         summaries=SummaryStore(),

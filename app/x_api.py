@@ -81,6 +81,10 @@ PRICE_POST_WITH_URL = 0.200
 # So a link needs a scheme, the www prefix, or a path after the domain.
 # A bare domain someone actually meant as a link survives in the text, which
 # is the safe direction: X bills a mention-gated reply the same either way.
+# Incoming text: what strip_urls removes from a mention before the
+# question is read. Deliberately NARROW -- a bare domain only counts with
+# a path after it, because "pump.fun" and "friend.tech" are the names of
+# things the hosts discuss, and stripping those mangles the question.
 _URL_SHAPED = re.compile(
     r"""(?xi)
     (?: https?://                       # explicit scheme
@@ -90,6 +94,56 @@ _URL_SHAPED = re.compile(
           | link|sh|to|us|uk|info|biz|eth|sol|fi|xx )
         /                               # which is what makes it a link
     )""")
+
+# Outgoing text: stricter, because the cost of a false negative is a
+# drainer address posted under an account people trust, and the cost of a
+# false positive is one answer that reads slightly oddly.
+#
+# Shorteners and high-abuse TLDs count as links with NO path -- nobody
+# says "bit.ly" or "wallet-drain.zip" meaning a project. Everything else
+# still needs a path, so pump.fun and friend.tech survive.
+_LINKY_BARE = re.compile(
+    r"""(?xi)\b
+    (?: (?: bit\.ly | t\.me | discord\.gg | tinyurl\.com | goo\.gl
+          | is\.gd | cutt\.ly | rb\.gy | shorturl\.at | lnkd\.in )
+      | [a-z0-9][a-z0-9-]{1,62}\.
+        (?: zip|mov|click|top|live|site|online|cc|vip|win|claim|gift
+          | money|cash|fund|wallet|exchange )
+    )\b""")
+
+# Obfuscation that reads as a domain to a person and not to either
+# pattern above. A prompt-injected model reaches for these the moment a
+# plain domain is refused.
+_OBFUSCATED = re.compile(
+    r"""(?xi)
+    \b[a-z0-9][a-z0-9-]{0,62}
+    \s* (?: \(\s*dot\s*\) | \[\s*\.?\s*\] | \s+dot\s+ ) \s*
+    (?: com|org|net|io|ai|co|xyz|app|dev|tech|gg|so|fun|me|tv|link|sh|to
+      | us|uk|info|biz|eth|sol|fi|ly|zip|finance|money|cash|click|top ) \b
+    """)
+
+# Normalised before matching: a non-ASCII hyphen or full-width stop looks
+# identical to a reader and defeats the character classes above.
+_CONFUSABLE = str.maketrans({
+    "\u2010": "-", "\u2011": "-", "\u2012": "-", "\u2013": "-",
+    "\u2014": "-", "\u2212": "-", "\uff0d": "-",
+    "\uff0e": ".", "\u3002": ".", "\u02d9": ".", "\u2024": ".",
+    "\u2044": "/", "\uff0f": "/",
+})
+
+
+def looks_like_a_link(text: str) -> str | None:
+    """The link-shaped thing in `text`, or None.
+
+    Broader than a URL parser on purpose: this does not decide whether
+    something resolves, it decides whether a reader would click it.
+    """
+    flat = (text or "").translate(_CONFUSABLE)
+    for pattern in (_URL_SHAPED, _LINKY_BARE, _OBFUSCATED):
+        found = pattern.search(flat)
+        if found:
+            return found.group(0)
+    return None
 
 
 class LinkInReplyError(RuntimeError):
@@ -128,12 +182,9 @@ def strip_urls(text: str) -> str:
 
 
 def assert_linkless(text: str) -> None:
-    found = _URL_SHAPED.search(text)
+    found = looks_like_a_link(text)
     if found:
-        raise LinkInReplyError(
-            f"reply contains {found.group(0)!r}, which would cost "
-            f"${PRICE_POST_WITH_URL:.3f} instead of ${PRICE_POST:.3f}"
-        )
+        raise LinkInReplyError(f"reply contains {found!r}")
 
 
 def _raise_if_out_of_credits(response: httpx.Response) -> None:

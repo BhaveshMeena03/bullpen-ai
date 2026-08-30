@@ -262,6 +262,15 @@ class Settings(BaseSettings):
     # Replies this account will put into one conversation in a day.
     # Two automated accounts otherwise answer each other forever.
     x_bot_per_thread_cap: int = 3
+    # Replies one ACCOUNT can be given in a day. The per-thread cap does
+    # not bound this -- thirty mentions in thirty threads is thirty
+    # conversations and no repeats -- and while the bot only answered
+    # verified accounts, that gate limited it by accident. Answering
+    # everyone removes the accident: without this, one person can take the
+    # whole daily cap and leave nothing for anybody else.
+    #
+    # Priority authors are exempt, same as the daily cap.
+    x_bot_per_author_cap: int = 8
     # off | seekable | always. Production runs "always" (render.yaml), which
     # is what decides this — not the default here.
     #
