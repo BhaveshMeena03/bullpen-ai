@@ -37,7 +37,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from app import attribution, hedging
+from app import attribution, hedging, names
 from app.podcast import NOT_FOUND_ANSWER
 from app.x_api import _URL_SHAPED, Mention, XClient, looks_like_a_link, strip_urls
 
@@ -2525,6 +2525,16 @@ class MentionBot:
         # the forbidden openings -- and it went 4-in-15 to 2-in-15 and
         # stopped. A reader on X takes the first line and scrolls, so a
         # reply that worked reads as one that did not.
+        # Spell the names right even when the captions do not. "Hyperlid
+        # briefly flipped Salana price" went out as FaZe Banks' words; he
+        # said Hyperliquid and Solana, so reproducing the transcription
+        # error is the misquote and correcting it is the faithful thing.
+        spelled, renamed = names.fix(result.answer)
+        if renamed:
+            logger.info("%s: corrected caption spellings — %s",
+                        mention.id, ", ".join(renamed))
+            result = result.model_copy(update={"answer": spelled})
+
         plain, denial = hedging.strip_denial(result.answer)
         if denial:
             logger.info("%s: dropped a denial the answer contradicts (%r)",

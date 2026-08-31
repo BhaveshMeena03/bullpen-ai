@@ -20,6 +20,7 @@ import voyageai
 from anthropic import AsyncAnthropic
 from pinecone import Pinecone
 
+from . import names
 from .config import get_settings
 from .embeddings import embed_query, embed_texts, rerank_order
 from .schemas import (
@@ -420,6 +421,13 @@ class PodcastIndex:
         product, and an addition that can subtract is not worth having.
         """
         ids = self._terms.lookup(query)
+        # This index matches letters, so it has holes exactly where the
+        # captions do: "Solana" appears as "Salana" in 39% of the archive
+        # and this lookup cannot see any of it. The embeddings bridge that
+        # on their own; the term index needs the spellings spelled out.
+        for spelling in names.expand(query):
+            ids = ids or set()
+            ids |= self._terms.lookup(spelling) or set()
         if not ids:
             return hits
 
