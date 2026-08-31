@@ -37,7 +37,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from app import attribution
+from app import attribution, hedging
 from app.podcast import NOT_FOUND_ANSWER
 from app.x_api import _URL_SHAPED, Mention, XClient, looks_like_a_link, strip_urls
 
@@ -2519,6 +2519,17 @@ class MentionBot:
             logger.info("%s: dropped a denial in front of a cited answer",
                         mention.id)
             result = result.model_copy(update={"answer": unhedged})
+
+        # Delete a denial the answer itself disproves. Rule 1a was aimed
+        # at this twice -- once as a principle, then as a mechanic listing
+        # the forbidden openings -- and it went 4-in-15 to 2-in-15 and
+        # stopped. A reader on X takes the first line and scrolls, so a
+        # reply that worked reads as one that did not.
+        plain, denial = hedging.strip_denial(result.answer)
+        if denial:
+            logger.info("%s: dropped a denial the answer contradicts (%r)",
+                        mention.id, denial[:70])
+            result = result.model_copy(update={"answer": plain})
 
         fixed, demoted = attribution.correct(result.answer, result.hits)
         if demoted:
