@@ -1584,6 +1584,75 @@ def cited_hit(answer: str, hits: list):
     return hits[0], None
 
 
+# The openings that announce a failure. Written from replies that
+# actually went out, not imagined -- each of these was observed in front
+# of an answer that then went on to cite a real moment.
+_DENIAL = re.compile(
+    r"""(?ix)^\W*
+    (?: i \s+ (?: couldn't | could \s+ not | can't | cannot | don't
+                | do \s+ not | didn't | did \s+ not ) \s+
+        (?: find | see | have )
+      | i \s+ don't \s+ have \s+ enough
+      | there(?: 's | \s+ is ) \s+ (?: no | nothing | not )
+      | no \s+ (?: direct | specific | clear ) \s+
+        (?: statement | mention | quote | passage )
+      | not \s+ (?: in \s+ (?: those | that ) | word \s+ for \s+ word
+                 | exactly | quite )
+      | nothing \s+ (?: in | matching | specific )
+      | the \s+ (?: excerpts | transcripts ) \s+ (?: don't | do \s+ not )
+      | i \s+ looked )""")
+
+# "…, but", "…— though", "…. However," -- where the real answer starts.
+_TURNS = re.compile(
+    r"(?i)(?:,\s*|\s+—\s*|\s+--\s*|\.\s+)"
+    r"(?:but|however|though|although|that said|what i (?:did|can))\b[,:]?\s*")
+
+_A_CITATION = re.compile(r"\b\d{1,2}:\d{2}(?::\d{2})?\b")
+
+
+def strip_leading_denial(answer: str) -> tuple[str, bool]:
+    """Drop an opening that says nothing was found, when something was.
+
+    "I couldn't find that in the episodes I've indexed. The excerpts
+    mention Michael Cat repeatedly -- head of production at Market
+    Bubble, around 3:05." The first sentence is wrong and it is the only
+    one most people read.
+
+    Rule 1a was written at this twice: once as a principle, then again as
+    a mechanic listing the forbidden openings verbatim. It went from four
+    in fifteen to two and stopped. Attribution went the same way until it
+    moved into code, so this does too.
+
+    A genuine refusal is untouched. The test is not what the sentence
+    says, it is whether the reply goes on to cite a moment: if nothing is
+    cited, "I couldn't find that" is the honest answer and the whole
+    reply.
+    """
+    text = (answer or "").strip()
+    if not text or not _DENIAL.match(text):
+        return answer, False
+
+    # Shape one: the denial is its own sentence.
+    parts = re.split(r"(?<=[.!?])\s+", text, maxsplit=1)
+    if len(parts) == 2 and _A_CITATION.search(parts[1]) and len(parts[1]) > 60:
+        return _tidy(parts[1]), True
+
+    # Shape two: the denial is a clause and the answer follows a turn --
+    # "Not in those words, but the archive has this: around 27:09..."
+    turn = _TURNS.search(text)
+    if turn:
+        rest = text[turn.end():]
+        if _A_CITATION.search(rest) and len(rest) > 60:
+            return _tidy(rest), True
+    return answer, False
+
+
+def _tidy(text: str) -> str:
+    """Reopen a sentence that used to be in the middle of one."""
+    text = re.sub(r"(?i)^(?:however|but|though|although)[,:]?\s+", "", text.strip())
+    return text[:1].upper() + text[1:] if text else text
+
+
 def strip_model_links(answer: str) -> str:
     """Remove any link-shaped text the MODEL produced.
 
@@ -2425,6 +2494,16 @@ class MentionBot:
         # guess, and a confident wrong correction is worse than a vague
         # true one. Runs before every gate below, so what is measured,
         # logged and posted is the same string.
+        # An answer that opens by saying it found nothing, and then cites
+        # something, is one sentence away from reading as a failure. Done
+        # before attribution and before every gate below, so what is
+        # measured, logged and posted is one string.
+        unhedged, dropped = strip_leading_denial(result.answer)
+        if dropped:
+            logger.info("%s: dropped a denial in front of a cited answer",
+                        mention.id)
+            result = result.model_copy(update={"answer": unhedged})
+
         fixed, demoted = attribution.correct(result.answer, result.hits)
         if demoted:
             logger.warning("%s: attribution corrected — %s",
