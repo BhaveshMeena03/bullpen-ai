@@ -2421,6 +2421,27 @@ class MentionBot:
         # you clarify who you're asking about?" — a miss AND a deflection,
         # so the gate returned silence and the nudge built for exactly this
         # case could never fire.
+        # In a thread this account has already answered in, X carries its
+        # handle into every subsequent reply automatically. So a message
+        # between two other people arrives looking like a fresh summons:
+        # "@TheGreatCattsby @mbubbleSearch 🤣😂 it only answers from what
+        # was said on the broadcast sorry 😅" was an aside to a friend,
+        # and got "I couldn't find that in the episodes I've indexed"
+        # posted underneath it.
+        #
+        # A miss is a good reply to a real question and a bad one to
+        # somebody's joke. Since an auto-carried mention cannot be told
+        # from a typed one, the tie is broken on the answer instead: in a
+        # thread already answered, say nothing rather than "I couldn't
+        # find that". A genuine follow-up that finds something still
+        # posts, and anyone who meant to ask can ask again.
+        conversation = str(mention.conversation_id or mention.id)
+        already_here = self.state.conversation_replies.get(conversation, 0) > 0
+        if already_here and is_a_miss(result.answer) and not rescued:
+            logger.info("%s: miss on a thread already answered — likely an "
+                        "auto-carried mention, staying quiet", mention.id)
+            return None
+
         if (is_a_miss(result.answer) and not rescued
                 and asks_only_about_a_name(question)):
             logger.info("%s asked about a name alone — suggesting a topic",
