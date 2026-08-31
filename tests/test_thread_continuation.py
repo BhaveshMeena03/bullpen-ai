@@ -139,3 +139,45 @@ class TestChatterInAnAnsweredThread:
         gate = source.index("no question in a thread already answered")
         search = source.index("await self._index.search(")
         assert gate < search
+
+
+class TestTheGateSurvivesARestart:
+    """Render's disk is ephemeral, so every deploy hands the bot an empty
+    state file -- BotState says so itself. The thread gate asks whether
+    this account has already spoken in a conversation, and that memory
+    dies with the file. Inert after every deploy is inert exactly when it
+    matters, because the threads it should stay out of are still live.
+
+    The account's own timeline cannot be lost, and it is already read
+    once on a cold start for duplicate protection. The conversations come
+    back on the same read rather than a second one.
+    """
+
+    api = (ROOT / "app" / "x_api.py").read_text()
+    bot = (ROOT / "app" / "x_bot.py").read_text()
+
+    def test_the_timeline_read_asks_for_conversations(self):
+        assert '"tweet.fields": "referenced_tweets,conversation_id"' in self.api
+
+    def test_the_attribute_exists_before_the_read_runs(self):
+        """A caller reading it early must get an empty set, never an
+        AttributeError."""
+        assert "self.answered_conversations: set[str] = set()" in self.api
+
+    def test_a_failed_read_leaves_it_empty_rather_than_stale(self):
+        assert "self.answered_conversations = set()" in self.api
+
+    def test_the_bot_seeds_the_gate_from_it(self):
+        assert "conversation_replies.setdefault(conversation, 1)" in self.bot
+
+    def test_it_tolerates_a_client_without_the_attribute(self):
+        """Every test fake is such a client. Reading it directly took the
+        suite from 1029 passing to 72 failing."""
+        assert 'getattr(self._client, "answered_conversations", None)' in self.bot
+        assert "self._client.answered_conversations" not in self.bot
+
+    def test_it_seeds_one_not_a_real_count(self):
+        """The gate only asks whether we are in the room. The per-thread
+        cap is a separate ceiling and a restart must not retroactively
+        spend it."""
+        assert "setdefault(conversation, 1)" in self.bot

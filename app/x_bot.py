@@ -2073,6 +2073,22 @@ class MentionBot:
                 self.state.replied = sorted(already)[-500:]
                 logger.info("seeded %d already-answered mention(s) from X",
                             len(already))
+            # The thread gate asks whether this account has spoken in a
+            # conversation before, and that memory dies with the same
+            # wiped state file. Without this it is inert after every
+            # deploy -- which is exactly when it is needed, because the
+            # threads it is meant to stay out of are still live.
+            #
+            # Seeded to 1 rather than a true count: the gate only asks
+            # whether we are already in the room, and the per-thread cap
+            # is a separate ceiling that should not be retroactively
+            # spent by a restart.
+            spoken_in = getattr(self._client, "answered_conversations", None)
+            for conversation in (spoken_in or ()):
+                self.state.conversation_replies.setdefault(conversation, 1)
+            if spoken_in:
+                logger.info("seeded %d conversation(s) already spoken in",
+                            len(spoken_in))
 
             # Cold start. Render's disk is ephemeral, so this happens on
             # every deploy — not only the first ever run.

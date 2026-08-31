@@ -282,6 +282,10 @@ class XClient:
         # the wiring works; the post is the part that is public and paid.
         self._dry_run = dry_run
         self.spent_usd = 0.0
+        # Filled by replied_to(): the conversations this account has
+        # already spoken in. Declared here so a caller reading it before
+        # that runs gets an empty set rather than an AttributeError.
+        self.answered_conversations: set[str] = set()
 
     async def whoami(self) -> dict:
         """The authenticated account: {"id", "username", "name"}.
@@ -321,7 +325,7 @@ class XClient:
         """
         url = f"{API}/users/{self.bot_user_id}/tweets"
         params = {"max_results": str(max(5, min(limit, 100))),
-                  "tweet.fields": "referenced_tweets"}
+                  "tweet.fields": "referenced_tweets,conversation_id"}
         async with httpx.AsyncClient(timeout=30) as http:
             response = await http.get(
                 url, params=params,
@@ -333,9 +337,17 @@ class XClient:
             logger.warning("could not read own replies (%s) — duplicate "
                            "protection is degraded this cycle",
                            response.status_code)
+            self.answered_conversations = set()
             return set()
         posts = response.json().get("data") or []
         self.spent_usd += len(posts) * PRICE_OWNED_READ
+        # Conversations answered in, alongside the mention ids. Both are
+        # lost by the same wiped state file, and both are recoverable from
+        # the same read, so the caller gets them together rather than
+        # paying twice.
+        self.answered_conversations = {
+            post["conversation_id"] for post in posts
+            if post.get("conversation_id")}
         return {ref["id"]
                 for post in posts
                 for ref in (post.get("referenced_tweets") or [])
