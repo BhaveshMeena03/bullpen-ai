@@ -2344,6 +2344,33 @@ class MentionBot:
                         mention.id, earlier[:60])
             question = earlier
 
+        # A thread this account has already answered in is a different
+        # situation from a fresh summons. X carries its handle into every
+        # later reply there, so two people talking to each other both
+        # arrive looking tagged:
+        #
+        #   michael catt:  "It's 81 jobs to be specific"
+        #   the account:   "Around 45:25 ... AI will disrupt 50% of
+        #                   entry-level white-collar jobs"
+        #
+        # He was correcting a joke about a producer's workload. Retrieval
+        # matched "jobs" and answered about the labour market, under a
+        # post nobody had asked anything in.
+        #
+        # looks_like_a_question is permissive on purpose -- its comment
+        # says getting it wrong in the silent direction is what made the
+        # account look broken -- and that is right for someone tagging it
+        # deliberately. In a thread already answered the default flips:
+        # ask for a real question shape, and say nothing otherwise.
+        conversation = str(mention.conversation_id or mention.id)
+        if (self.state.conversation_replies.get(conversation, 0) > 0
+                and not asks_something(question)
+                and summary_request(question) is None
+                and not asks_for_the_latest(question)):
+            logger.info("%s: no question in a thread already answered "
+                        "(%r) — staying quiet", mention.id, question[:60])
+            return None
+
         if (len(question) < self._min_question
                 or not looks_like_a_question(question)):
             # Not a question, so retrieval would have nothing to work with.
@@ -2435,7 +2462,6 @@ class MentionBot:
         # thread already answered, say nothing rather than "I couldn't
         # find that". A genuine follow-up that finds something still
         # posts, and anyone who meant to ask can ask again.
-        conversation = str(mention.conversation_id or mention.id)
         already_here = self.state.conversation_replies.get(conversation, 0) > 0
         if already_here and is_a_miss(result.answer) and not rescued:
             logger.info("%s: miss on a thread already answered — likely an "

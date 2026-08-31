@@ -27,7 +27,22 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from app.x_bot import is_a_miss, question_from, salvage  # noqa: E402
+import pytest  # noqa: E402
+
+from app.x_bot import (  # noqa: E402
+    asks_for_the_latest,
+    asks_something,
+    is_a_miss,
+    question_from,
+    salvage,
+    summary_request,
+)
+
+
+def would_reply(asked: str) -> bool:
+    """The gate compose applies in a thread already answered."""
+    return (asks_something(asked) or summary_request(asked) is not None
+            or asks_for_the_latest(asked))
 
 ASIDE = ("@TheGreatCattsby @mbubbleSearch 🤣😂 it only answers from what "
          "was said on the broadcast sorry 😅")
@@ -83,3 +98,44 @@ class TestTheGate:
         """already_here is False when the account has not spoken there, so
         an honest "not in the archive" still reaches somebody who asked."""
         assert "conversation_replies.get(conversation, 0) > 0" in self.source
+
+
+class TestChatterInAnAnsweredThread:
+    """The reply that started this: michael catt wrote "It's 81 jobs to be
+    specific", correcting a joke about a producer's workload, and got an
+    answer about AI disrupting the labour market. He had not tagged
+    anything -- X carried the handle in."""
+
+    @pytest.mark.parametrize("chatter", [
+        "It's 81 jobs to be specific",
+        "lmao that's crazy",
+        "this is sick",
+        "yeah exactly",
+        "he really does work that hard",
+        "😂😂",
+    ])
+    def test_it_says_nothing(self, chatter):
+        assert not would_reply(chatter), chatter
+
+    @pytest.mark.parametrize("asked", [
+        "what did ansem say about zcash",
+        "what about hyperliquid",
+        "summarize episode 17",
+        "tldr episode 16",
+        "who is michael catt",
+        "summarize the latest episode",
+        "how much did bonk go to",
+    ])
+    def test_a_genuine_follow_up_still_lands(self, asked):
+        """Silencing these would be worse than the bug -- people do ask
+        second questions, and the summary paths do not read as questions
+        at all."""
+        assert would_reply(asked), asked
+
+    def test_the_gate_runs_before_retrieval(self):
+        """A thread this account is only standing in should cost nothing:
+        no embedding, no Pinecone query, no rerank, no model call."""
+        source = (ROOT / "app" / "x_bot.py").read_text()
+        gate = source.index("no question in a thread already answered")
+        search = source.index("await self._index.search(")
+        assert gate < search
