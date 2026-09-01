@@ -1365,6 +1365,15 @@ def format_highlight(highlight: dict, seed: str,
     return f"{lead}\n\n{fact}\n\n{stamp} · {title}".strip()
 
 
+# A cited answer at least this long in front of a stock phrase means the
+# phrase is qualifying an answer rather than standing in for one. Set where
+# it is because the shortest of the three suppressed replies ran 606
+# characters and the longest 1041, while the failures this guard was built
+# for -- "I don't have enough information", "I'm here to answer questions
+# about..." -- carry nothing in front of the phrase at all.
+_CAVEAT_MIN_BODY = 200
+
+
 def is_a_deflection(answer: str) -> bool:
     """Did the model decline rather than answer?
 
@@ -1374,11 +1383,27 @@ def is_a_deflection(answer: str) -> bool:
     question — a real answer to "what did X say" does not close with "could
     you ask about a specific moment?", and REPLY_STYLE already forbids it,
     which is exactly why a guard is needed rather than an instruction.
+
+    Where the phrase sits decides what it means. In front, it IS the reply.
+    After a cited answer it is the qualifier the prompt asks for, and three
+    answers of 606 to 1041 characters -- every one of them naming real
+    moments -- were held back for ending "the excerpts don't discuss other
+    locations" and "the excerpts don't specify what is being airdropped".
+    That is the honest close to a good answer, and the reader got a stock
+    fallback instead of any of it.
+
+    The same shape as hedging.strip_denial, which drops a LEADING denial
+    only when what follows cites something. This keeps a TRAILING one only
+    when what precedes it does.
     """
     text = (answer or "").strip()
     if not text:
         return True
-    if _DEFLECTION.search(text):
+    found = _DEFLECTION.search(text)
+    if found:
+        before = text[:found.start()].strip()
+        if len(before) >= _CAVEAT_MIN_BODY and _CITES_A_TIME.search(before):
+            return False
         return True
     tail = text.rstrip()[-160:]
     return tail.endswith("?")

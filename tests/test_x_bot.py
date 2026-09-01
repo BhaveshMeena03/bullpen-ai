@@ -1902,6 +1902,47 @@ def test_real_answers_are_not_mistaken_for_deflections(answer):
     assert not is_a_deflection(answer)
 
 
+# Every one of these is a real answer the sweep caught being withheld:
+# six hundred to a thousand characters, citing real moments, held back
+# because of the sentence it ends on. The qualifier is the honest part --
+# saying what the archive does NOT cover is what keeps the rest
+# trustworthy -- and the asker got a stock fallback instead of any of it.
+@pytest.mark.parametrize("answer", [
+    ("Around 1:17:40 in \"How to Get Rich Playing GTA 6\", a guest explains "
+     "Puerto Rico's tax structure: with a 4% federal income tax and 0% "
+     "capital gains tax, someone making the same income can effectively "
+     "make double the after-tax amount. They note the incentive was "
+     "extended to 2055.\n\nThe excerpts don't discuss broader tax benefits "
+     "of other specific locations beyond this Puerto Rico comparison."),
+    ("Around 1:55:48 in the July 31st episode, a guest discusses an airdrop "
+     "coming to X. They mention instructions will be posted \"very soon\" "
+     "and \"will be today\", though the exact timing depends on your time "
+     "zone. The team is working around the clock on issues users "
+     "report.\n\nHowever, the excerpts don't specify what exactly is being "
+     "airdropped — only that it is connected to Paybox and Moonpay."),
+])
+def test_a_qualifier_after_a_cited_answer_is_not_a_refusal(answer):
+    """Position decides meaning. In front, the stock phrase IS the reply;
+    after a cited answer it is qualifying one."""
+    from app.x_bot import is_a_deflection
+
+    assert not is_a_deflection(answer)
+
+
+@pytest.mark.parametrize("answer", [
+    # The same phrases with nothing in front of them: still refusals.
+    "The excerpts don't discuss that.",
+    "I don't have enough information about that in the transcripts.",
+    # A citation but no substance is not an answer either — this is the
+    # shape that reached a live reply with a link attached.
+    "Around 27:09. The excerpts don't specify anything further.",
+])
+def test_the_phrase_alone_is_still_a_refusal(answer):
+    from app.x_bot import is_a_deflection
+
+    assert is_a_deflection(answer)
+
+
 @pytest.mark.anyio
 async def test_a_deflection_reaches_no_one(tmp_path):
     client = FakeClient([[mention("1")],
