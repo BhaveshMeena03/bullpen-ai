@@ -93,21 +93,38 @@ SAME_NEIGHBOURHOOD_SECONDS = 240.0
 _ASK = """Here is a passage from a podcast about crypto and investing.
 
 Write ONE question that this passage answers, as a real listener would type
-it to a search box. Rules:
+it to a search box, and say which kind of question it is.
 
+Rules for the question:
 - It must be answerable from THIS passage alone.
-- Ask about the substance, never about the passage: no "in this clip",
-  no "according to the transcript", no "what does the speaker say".
+- Ask about the substance, never about the passage or the people saying
+  it: no "in this clip", no "according to the transcript", no "the
+  speaker", no "the host", no "the guest". A listener asking a search box
+  does not know who was talking.
 - Use the words a listener would use, not the transcript's words. If the
   passage says "Salana" the question says "Solana".
 - Lowercase, no trailing question mark, under 15 words.
-- If the passage is filler -- an ad read, crosstalk, a sign-off, nothing
-  anybody would search for -- reply with exactly: SKIP
+
+Then label it:
+- SPECIFIC if this passage is essentially the only place in a crypto
+  podcast archive that could answer it -- it names a person, company,
+  token, number, date or one particular event. "what did luca netz pay
+  for pudgy penguins" is SPECIFIC.
+- GENERAL if a dozen other passages across many episodes could answer it
+  just as well, because it asks about a recurring theme rather than a
+  particular moment. "why do most crypto projects fail" is GENERAL.
+
+Reply on one line as either
+    SPECIFIC: <question>
+or  GENERAL: <question>
+
+If the passage is filler -- an ad read, crosstalk, a sign-off, nothing
+anybody would search for -- reply with exactly: SKIP
 
 Passage:
 {passage}
 
-Question:"""
+Answer:"""
 
 
 def _stamp(seconds: float) -> str:
@@ -115,12 +132,19 @@ def _stamp(seconds: float) -> str:
     return f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}"
 
 
-async def _write_question(client, model: str, passage: str) -> str | None:
-    """One question for one passage, or None for a passage not worth asking."""
+async def _write_question(client, model: str,
+                          passage: str) -> tuple[str, str] | None:
+    """(kind, question) for one passage, or None for one not worth asking.
+
+    `kind` decides how the answer is judged, so it matters as much as the
+    question. A GENERAL question that comes back with a different passage
+    has not failed -- a dozen passages answer it equally well, and picking
+    one of them is the correct behaviour rather than a miss.
+    """
     try:
         reply = await client.messages.create(
             model=model,
-            max_tokens=60,
+            max_tokens=80,
             messages=[{"role": "user",
                        "content": _ASK.format(passage=passage[:2400])}],
         )
@@ -129,10 +153,24 @@ async def _write_question(client, model: str, passage: str) -> str | None:
         return None
     text = "".join(b.text for b in reply.content
                    if getattr(b, "type", "") == "text").strip()
-    text = text.strip().strip('"').rstrip("?").strip()
-    if not text or text.upper().startswith("SKIP") or len(text) < 12:
+    if text.upper().startswith("SKIP"):
         return None
-    return text
+
+    kind = "GENERAL"
+    for label in ("SPECIFIC", "GENERAL"):
+        if text.upper().startswith(label):
+            kind, text = label, text[len(label):].lstrip(":").strip()
+            break
+    text = text.strip().strip('"').rstrip("?").strip()
+    if not text or len(text) < 12:
+        return None
+    # A question naming the show rather than the subject was never a fair
+    # test: nobody types "what does the speaker say" into a search box.
+    if any(bad in text.lower() for bad in
+           ("the speaker", "the host", "the guest", "this clip",
+            "the passage", "the transcript", "the excerpt")):
+        return None
+    return kind, text
 
 
 def _classify(hits, episode_id: str, start: float) -> str:
@@ -213,27 +251,37 @@ async def main() -> int:
     async def one(episode_id: str, title: str, start: float,
                   text: str) -> None:
         async with gate:
-            question = await _write_question(client, model, text)
-            if not question:
+            written = await _write_question(client, model, text)
+            if not written:
                 return
+            kind, question = written
             try:
                 hits = await index.retrieve(question)
             except Exception as exc:                           # noqa: BLE001
-                rows.append({"question": question, "verdict": "ERROR",
+                rows.append({"question": question, "kind": kind,
+                             "verdict": "ERROR",
                              "error": str(exc), "at": _stamp(start),
                              "start_seconds": start, "episode_id": episode_id})
                 print(f"  ERROR  {question}\n         {exc}")
                 return
-            verdict = _classify(hits, episode_id, start)
+            found = _classify(hits, episode_id, start)
+            # Only a SPECIFIC question can fail by returning the wrong
+            # passage. For a GENERAL one a different passage is a different
+            # correct answer, and calling that a miss reported failures
+            # that were not failures -- eight of ten on the first run.
+            # What a GENERAL question can still fail is being refused, and
+            # that is decided further down, once there is an answer to read.
+            verdict = found if kind == "SPECIFIC" else "OPEN"
             rows.append({
-                "question": question, "verdict": verdict,
+                "question": question, "kind": kind, "verdict": verdict,
+                "found": found,
                 "at": _stamp(start), "start_seconds": start,
                 "episode_id": episode_id, "title": title,
                 "returned": [
                     {"episode_id": h.episode_id, "at": h.timestamp}
                     for h in hits[:6]],
             })
-            if verdict != "HIT":
+            if verdict in ("MISS", "NEAR"):
                 print(f"  {verdict:5}  {question}")
                 print(f"         should be {episode_id} {_stamp(start)}")
 
@@ -245,8 +293,12 @@ async def main() -> int:
     # what somebody screenshots. Capping the passing sample is what keeps
     # this cheap -- the expensive call is the answer, not the lookup.
     failed = [r for r in rows if r["verdict"] in ("MISS", "NEAR")]
+    # Every GENERAL question needs an answer, because being refused is the
+    # only way it can fail and that cannot be seen without one.
+    general = [r for r in rows if r["verdict"] == "OPEN"]
     passed = [r for r in rows if r["verdict"] == "HIT"]
-    checked = failed + rng.sample(passed, min(len(passed), max(20, args.count // 4)))
+    checked = failed + general + rng.sample(
+        passed, min(len(passed), max(20, args.count // 4)))
     if checked:
         print(f"\n  answering {len(checked)} ({len(failed)} that failed "
               f"retrieval, {len(checked) - len(failed)} that passed) to see "
@@ -263,32 +315,50 @@ async def main() -> int:
                 row["answer"] = result.answer
                 row["refused"] = bool(
                     is_a_miss(result.answer) or is_a_deflection(result.answer))
-                if row["refused"] and row["verdict"] == "HIT":
-                    # The worst kind: the passage was right there in front
-                    # of the model and it still said it could not find it.
-                    print(f"  REFUSED (but retrieval was fine)  "
+                if row["refused"]:
+                    # For a GENERAL question this IS the failure: the show
+                    # covers the topic in many places and the bot said it
+                    # could not find it. For a SPECIFIC one that retrieved
+                    # correctly it is worse -- the passage was in front of
+                    # the model and it still declined.
+                    where = ("retrieval was fine" if row["found"] == "HIT"
+                             else f"retrieval {row['found'].lower()}")
+                    print(f"  REFUSED [{row['kind']}, {where}]  "
                           f"{row['question']}")
                     print(f"         {row['answer'][:150]}")
 
         await asyncio.gather(*(answer(r) for r in checked))
 
-    counts = {v: sum(1 for r in rows if r["verdict"] == v)
-              for v in ("HIT", "NEAR", "MISS", "ERROR")}
     asked = len(rows)
+    specific = [r for r in rows if r["kind"] == "SPECIFIC"]
+    generals = [r for r in rows if r["kind"] == "GENERAL"]
     refused = [r for r in rows if r.get("refused")]
-    refused_despite = [r for r in refused if r["verdict"] == "HIT"]
+
     print("\n" + "=" * 68)
     print(f"  asked {asked} in {time.time() - began:.0f}s")
-    print("\n  retrieval — did the source passage come back?")
-    for name in ("HIT", "NEAR", "MISS", "ERROR"):
-        n = counts[name]
-        if asked:
-            print(f"    {name:6} {n:4}  {100 * n / asked:5.1f}%")
-    if checked:
-        print(f"\n  answers — of {len(checked)} generated:")
-        print(f"    refused                    {len(refused):4}")
-        print(f"      of those, retrieval was fine {len(refused_despite):4}"
-              f"   <- prompt problem, not a lookup problem")
+
+    if specific:
+        print(f"\n  SPECIFIC ({len(specific)}) — one passage answers it, so "
+              f"the passage has to come back")
+        for name in ("HIT", "NEAR", "MISS", "ERROR"):
+            n = sum(1 for r in specific if r["verdict"] == name)
+            print(f"    {name:6} {n:4}  {100 * n / len(specific):5.1f}%")
+
+    if generals:
+        # A different passage is a different right answer here, so the only
+        # failure is a refusal on a subject the show returns to constantly.
+        bad = sum(1 for r in generals if r.get("refused"))
+        print(f"\n  GENERAL ({len(generals)}) — many passages answer it, so "
+              f"only a refusal is a failure")
+        print(f"    answered {len(generals) - bad:4}  "
+              f"{100 * (len(generals) - bad) / len(generals):5.1f}%")
+        print(f"    refused  {bad:4}  {100 * bad / len(generals):5.1f}%"
+              f"   <- the show covers this and we said we could not find it")
+
+    hard = [r for r in refused if r.get("found") == "HIT"]
+    if hard:
+        print(f"\n  {len(hard)} refused with the right passage already "
+              f"retrieved — a prompt problem, not a lookup problem")
     print("=" * 68)
 
     LOGS.mkdir(parents=True, exist_ok=True)
@@ -298,9 +368,12 @@ async def main() -> int:
         for row in sorted(rows, key=lambda r: r["start_seconds"]):
             fh.write(json.dumps(row) + "\n")
     print(f"\n  log: {out}")
-    if counts["MISS"]:
-        print(f"  {counts['MISS']} passage(s) cannot be found by a question "
+    unreachable = sum(1 for r in specific if r["verdict"] == "MISS")
+    if unreachable:
+        print(f"  {unreachable} passage(s) cannot be found by a question "
               f"written from them — grep the log for MISS")
+    if refused:
+        print(f"  {len(refused)} refusal(s) — grep the log for refused")
     return 0
 
 
