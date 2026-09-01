@@ -1135,6 +1135,61 @@ def looks_like_a_question(text: str) -> bool:
     return bool(re.search(r"[a-z0-9]{3}", text, re.I))
 
 
+# "that episode", "the same one" — a reference back to whatever this account
+# just cited, which the index cannot resolve because every question is
+# searched cold. Asked "what else did ansem call in that episode" right
+# after a reply about Market Bubble #4, it answered about the August 20
+# broadcast: the phrase names no episode, so retrieval ranked freely and
+# landed three months away.
+_BACK_REFERENCE = re.compile(
+    r"""(?ix)\b
+    (?: (?:that|this|the\ same|the\ one|said|^)\s+
+        (?:episode|ep|show|broadcast|one|pod|podcast)
+      | in\ (?:it|that|there)
+      | same\ (?:episode|ep|show|broadcast)
+    )\b""")
+
+
+def episode_label(hits) -> str | None:
+    """A name for the episode an answer came from, for the next question.
+
+    The top passage rather than the whole set: the answer is written from
+    all of them, but the one that ranked first is the one it is about, and a
+    thread that wanders to a second episode should follow the answer rather
+    than the first thing ever cited in it.
+
+    Prefers the show's own numbering, because that is how people refer to
+    these — "ep #4", not the title, which for the live broadcasts is a
+    hundred characters of guest names.
+    """
+    for hit in (hits or [])[:1]:
+        title = getattr(hit, "title", "") or ""
+        numbered = re.search(
+            r"(?i)market\s+bubble\s*(?:ep(?:isode)?)?\s*#?\s*(\d{1,2})", title)
+        if numbered:
+            return f"Market Bubble #{numbered.group(1)}"
+        # An unnumbered broadcast: its own title, trimmed of the sponsor
+        # tail every one of them carries.
+        clean = re.split(r"\s*[-–—]\s*Presented by", title)[0].strip()
+        if clean:
+            return clean[:70]
+    return None
+
+
+def resolve_back_reference(question: str, episode: str | None) -> str:
+    """Point "that episode" at the episode this account just cited.
+
+    Rewrites the words rather than filtering retrieval, because the query is
+    what gets embedded: "what else did ansem call in Market Bubble #4" is a
+    question the index can answer, and a metadata filter bolted on beside it
+    is not. Unchanged when there is nothing remembered, so a cold start
+    degrades to exactly the behaviour that existed before this.
+    """
+    if not question or not episode or not _BACK_REFERENCE.search(question):
+        return question
+    return _BACK_REFERENCE.sub(f"in {episode}", question, count=1)
+
+
 # Words that are follow-ups in a thread rather than things to search for.
 # Each of these alone would otherwise be sent to the index as a topic.
 _FRAGMENTS = frozenset({
@@ -1966,6 +2021,14 @@ class BotState:
     # compliment, and the bot answered it with an unrelated fact about
     # OnlyFans earnings — in a thread where someone was asking it to retry.
     last_question: dict = field(default_factory=dict)
+    # The episode this account last cited in each conversation, so "that
+    # episode" means the one it just named. Asked "what else did ansem call
+    # in that episode" straight after a reply about Market Bubble #4, it
+    # answered about a different episode three months later: every question
+    # is searched cold, so a back-reference pointed at nothing and retrieval
+    # picked whatever ranked best. Lost on deploy like the rest of this
+    # file, which only costs the follow-up its context.
+    last_episode: dict = field(default_factory=dict)
     spent_usd: float = 0.0
     # Spend is tracked per UTC day as well as cumulatively, because the
     # reply cap does not bound it. Replies are the expensive part but not
@@ -2073,6 +2136,8 @@ class MentionBot:
         # audience. A stranger getting no reply costs nothing. One of
         # them getting no reply is the only failure here that does.
         self._priority = set(priority_authors or ())
+        # Set by compose, committed by _answer once a reply is posted.
+        self._cited_episode: str | None = None
         self._site = site
         self._token_label = token_label
         self._state_path = state_path
@@ -2397,6 +2462,9 @@ class MentionBot:
         return max(matches, key=lambda s: len(s.get("summary", "")))
 
     async def compose(self, mention: Mention) -> str | None:
+        # Cleared per mention: a thread that gets no answer must not
+        # inherit the episode from whatever was answered before it.
+        self._cited_episode = None
         """The reply this mention would get, or None to stay quiet.
 
         Separate from posting so a reply can be read before it is sent.
@@ -2542,9 +2610,19 @@ class MentionBot:
         # attempt is what went wrong.
         self.state.last_question[str(mention.author_id)] = question
 
+        # "that episode" means the one this account just cited in this
+        # thread. Without this the follow-up is searched cold and the phrase
+        # names nothing, so retrieval ranks freely — which is how a question
+        # about Market Bubble #4 was answered from a broadcast in August.
+        asked = resolve_back_reference(
+            question, self.state.last_episode.get(str(mention.conversation_id)))
+        if asked != question:
+            logger.info("%s: resolved a back-reference -> %r",
+                        mention.id, asked)
+
         priority = mention.author_id in self._priority
         result = await self._index.search(
-            question, instruction=reply_style(self._post_limit))
+            asked, instruction=reply_style(self._post_limit))
 
         # Ask once more before giving up. The same question has produced a
         # flat "I couldn't find that" one minute and a good cited answer the
@@ -2557,7 +2635,7 @@ class MentionBot:
             logger.info("%s missed on the first pass — asking again",
                         mention.id)
             retry = await self._index.search(
-                question, instruction=reply_style(self._post_limit))
+                asked, instruction=reply_style(self._post_limit))
             if not is_a_miss(retry.answer):
                 result = retry
 
@@ -2685,6 +2763,10 @@ class MentionBot:
                              limit=room)
         if not reply:
             return None
+        # Handed to _answer, which commits it once the reply is actually
+        # posted. Taken from the passages the answer was written from rather
+        # than parsed back out of the prose, which would only be a guess.
+        self._cited_episode = episode_label(result.hits)
         if lead:
             logger.info("%s asked a meta question alongside a real one — "
                         "answering both", mention.id)
@@ -2729,6 +2811,14 @@ class MentionBot:
         posted = await self._client.reply(
             text, mention.id, allow_link=bool(_URL_SHAPED.search(text)))
         logger.info("replied to %s -> %s", mention.id, posted or "dry run")
+
+        # What this thread is now about, so the next "that episode" in it
+        # resolves to the episode just named rather than being searched cold.
+        # Committed only once something has actually been posted: a thread
+        # nobody was answered in has no episode to refer back to.
+        if self._cited_episode:
+            self.state.last_episode[str(mention.conversation_id)] = \
+                self._cited_episode
 
         # After posting, never before: the log is for reading later and is
         # not worth one second of latency in front of somebody waiting for

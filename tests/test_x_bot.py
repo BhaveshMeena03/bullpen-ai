@@ -3450,3 +3450,94 @@ def test_a_question_with_a_subject_still_gets_answered(real):
     from app.x_bot import looks_like_a_question
 
     assert looks_like_a_question(real)
+
+
+class TestThatEpisodeMeansTheOneJustCited:
+    """Posted, in a thread Ansem was in.
+
+    The bot replied about Market Bubble #4 (22 May), was asked "what else
+    did ansem call in that episode", and answered about the 20 August
+    broadcast — "stone bottom, picotick to the day". Nothing it said was
+    false. It was three months from the episode being asked about.
+
+    Every question is searched cold, so "that episode" named nothing and
+    retrieval ranked freely.
+    """
+
+    def test_the_reference_is_pointed_at_the_remembered_episode(self):
+        from app.x_bot import resolve_back_reference
+
+        out = resolve_back_reference(
+            "what else did ansem call in that episode", "Market Bubble #4")
+        assert "Market Bubble #4" in out
+        assert "that episode" not in out
+
+    @pytest.mark.parametrize("phrasing", [
+        "what else did he call in that episode",
+        "anything else from that ep",
+        "who else was on the same episode",
+        "what else did they say in it",
+        "any other calls in that broadcast",
+    ])
+    def test_the_phrasings_people_actually_use(self, phrasing):
+        from app.x_bot import resolve_back_reference
+
+        assert "Market Bubble #4" in resolve_back_reference(
+            phrasing, "Market Bubble #4")
+
+    def test_nothing_remembered_changes_nothing(self):
+        """A cold start must degrade to exactly the old behaviour."""
+        from app.x_bot import resolve_back_reference
+
+        q = "what else did ansem call in that episode"
+        assert resolve_back_reference(q, None) == q
+
+    @pytest.mark.parametrize("standalone", [
+        "what did ansem say about zcash",
+        "summarize episode 11",
+        "what did banks say about GTA6",
+    ])
+    def test_a_question_naming_its_own_subject_is_untouched(self, standalone):
+        from app.x_bot import resolve_back_reference
+
+        assert resolve_back_reference(standalone, "Market Bubble #4") == standalone
+
+
+class TestTheEpisodeLabel:
+    def _hit(self, title):
+        return type("H", (), {"title": title})()
+
+    def test_the_show_numbering_is_preferred(self):
+        """"ep #4" is how people refer to these."""
+        from app.x_bot import episode_label
+
+        assert episode_label([self._hit(
+            "Why Ansem Thinks Ethereum Is Done.. | Market Bubble #4")]) \
+            == "Market Bubble #4"
+
+    def test_an_unnumbered_broadcast_keeps_its_own_name(self):
+        """Half the archive is live broadcasts with no episode number, and
+        their titles carry a sponsor tail nobody says out loud."""
+        from app.x_bot import episode_label
+
+        got = episode_label([self._hit(
+            "LIVE W/ LUCA NETZ & GPT-LIVE: Market Bubble Ep 10 - "
+            "Presented by @Polymarket")])
+        assert "Presented by" not in got
+        assert "Market Bubble #10" == got
+
+    def test_nothing_retrieved_remembers_nothing(self):
+        from app.x_bot import episode_label
+
+        assert episode_label([]) is None
+        assert episode_label(None) is None
+
+
+def test_the_bot_resolves_before_it_searches():
+    """The rewritten question is what gets embedded; resolving after the
+    search would change nothing."""
+    import pathlib
+    source = (pathlib.Path(__file__).resolve().parent.parent
+              / "app" / "x_bot.py").read_text()
+    assert source.index("resolve_back_reference(") < source.index(
+        "result = await self._index.search(")
