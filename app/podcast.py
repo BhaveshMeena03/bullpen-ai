@@ -64,6 +64,13 @@ def host_named_in(query: str) -> str | None:
 
 NAMESPACE = "podcast"
 
+# How many exact-token matches may be put in front of the reranker, across
+# the query and every alternative spelling of it. Matches TermIndex.lookup's
+# own cap so that expanding a query cannot flood the pool: before spelling
+# expansion existed one lookup contributed at most this many, and it still
+# does.
+_EXACT_MATCH_CAP = 8
+
 REFUSAL_ANSWER = ("I can't help with that one — try asking about "
                   "something discussed on the show.")
 
@@ -420,14 +427,29 @@ class PodcastIndex:
         the behaviour that existed before this — retrieval quality is the
         product, and an addition that can subtract is not worth having.
         """
-        ids = self._terms.lookup(query)
         # This index matches letters, so it has holes exactly where the
         # captions do: "Solana" appears as "Salana" in 39% of the archive
         # and this lookup cannot see any of it. The embeddings bridge that
         # on their own; the term index needs the spellings spelled out.
-        for spelling in names.expand(query):
-            ids = ids or set()
-            ids |= self._terms.lookup(spelling) or set()
+        #
+        # lookup() returns a LIST, rarest first and already capped -- that
+        # order is the whole ranking, so these are appended rather than
+        # unioned. Base spellings keep the front: they matched the words
+        # actually asked for, and a mangling only earns a slot the query
+        # itself left empty.
+        try:
+            ids = list(self._terms.lookup(query))
+            seen = set(ids)
+            for spelling in names.expand(query):
+                for vector_id in self._terms.lookup(spelling):
+                    if vector_id not in seen:
+                        seen.add(vector_id)
+                        ids.append(vector_id)
+            ids = ids[:_EXACT_MATCH_CAP]
+        except Exception as exc:                              # noqa: BLE001
+            logger.warning("exact-match lookup failed (%s) — continuing with "
+                           "the vector results alone", exc)
+            return hits
         if not ids:
             return hits
 
