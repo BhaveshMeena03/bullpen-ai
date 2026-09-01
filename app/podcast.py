@@ -20,7 +20,7 @@ import voyageai
 from anthropic import AsyncAnthropic
 from pinecone import Pinecone
 
-from . import names
+from . import hedging, names
 from .config import get_settings
 from .embeddings import embed_query, embed_texts, rerank_order
 from .schemas import (
@@ -63,6 +63,10 @@ def host_named_in(query: str) -> str | None:
     return found[0] if len(found) == 1 else None
 
 NAMESPACE = "podcast"
+
+# End of the first sentence, which is as much as the stream needs before it
+# can tell a denial from an answer.
+_SENTENCE_BREAK = re.compile(r"[.!?]\s")
 
 # How many exact-token matches may be put in front of the reranker, across
 # the query and every alternative spelling of it. Matches TermIndex.lookup's
@@ -780,18 +784,79 @@ class PodcastIndex:
         answer = "".join(
             b.text for b in response.content if b.type == "text"
         )
+        # Same repair the stream above does, so the two endpoints cannot
+        # disagree about what the answer to a question is. A real refusal
+        # cites nothing and is left whole.
+        answer, removed = hedging.strip_denial(answer)
+        if removed:
+            logger.info("dropped a denial the answer contradicts: %r",
+                        removed[:80])
         return PodcastSearchResponse(answer=answer, hits=hits, model=response.model)
 
+    # Enough of the opening to tell a denial from an answer. One sentence is
+    # usually far less than this; the cap is only so a model that writes no
+    # early full stop cannot stall the stream.
+    _DENIAL_PEEK_CHARS = 240
+
     async def answer_stream(self, query: str, hits: list[PodcastHit]):
-        """Yield answer text deltas for already-retrieved hits (SSE path)."""
+        """Yield answer text deltas for already-retrieved hits (SSE path).
+
+        An answer that opens by denying what it then goes on to say is held
+        back and repaired before any of it is shown. The X bot has done this
+        since hedging.py existed, but it ran only there, so the website —
+        the surface people are actually sent to — still opened with "I
+        couldn't find that in the episodes I've indexed" and then answered
+        the question underneath it. A reader takes the first line and
+        scrolls.
+
+        It cannot be fixed after the fact here the way it is on X, because
+        the denial has already been streamed by the time the contradicting
+        citation arrives. So the opening is examined first, and only an
+        answer that starts with a denial waits for the rest before anything
+        is sent. Every other answer streams exactly as it did.
+        """
         client = self._anthropic.with_options(
             timeout=self._settings.search_timeout_seconds
         )
+        opening = ""
+        decided = False        # have we judged the opening yet?
+        holding = False        # opened with a denial, so buffer it all
+        buffer = ""
+
         async with client.beta.messages.stream(
             **self._build_request(query, hits)
         ) as stream:
             async for text in stream.text_stream:
-                yield text
+                if not decided:
+                    opening += text
+                    if not (_SENTENCE_BREAK.search(opening)
+                            or len(opening) >= self._DENIAL_PEEK_CHARS):
+                        continue
+                    decided = True
+                    if hedging.opens_with_denial(opening):
+                        holding, buffer = True, opening
+                    else:
+                        yield opening
+                    continue
+                if holding:
+                    buffer += text
+                else:
+                    yield text
+
+            if not decided:
+                # The whole answer was shorter than one sentence.
+                decided, buffer = True, opening
+                holding = hedging.opens_with_denial(opening)
+                if not holding:
+                    yield opening
+
+            if holding:
+                repaired, removed = hedging.strip_denial(buffer)
+                if removed:
+                    logger.info("dropped a denial the answer contradicts: %r",
+                                removed[:80])
+                yield repaired
+
             final = await stream.get_final_message()
         self._record(final.model, final.usage)
         if final.stop_reason == "refusal":

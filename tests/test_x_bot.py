@@ -3415,3 +3415,38 @@ def test_praise_still_reaches_the_pleasantry_branch():
 
     assert is_a_pleasantry(question_from("@mbubbleSearch gm king"))
     assert is_a_pleasantry(question_from("yoo @mbubbleSearch this is genius"))
+
+
+# @ProfTokold wrote "@Banks @blknoiz06 thoughts?" under one of the account's
+# own posts. X carries every handle in a thread into the reply, so the bot's
+# own handle was in front of a question addressed to two other people. It
+# stripped the handles, found "thoughts?", and answered.
+#
+# Retrieval returns its top passages for any input at all, so a prompt with
+# no subject still produces a confident, cited paragraph about something.
+# That one read well by luck.
+@pytest.mark.parametrize("bare", [
+    "thoughts?", "thoughts", "your thoughts?", "any thoughts on this?",
+    "opinion?", "opinions", "wdyt", "what do you think?",
+    "what's your take", "thoughts on it?", "views?", "any comments?",
+])
+def test_a_request_for_an_opinion_names_nothing_to_look_up(bare):
+    from app.x_bot import looks_like_a_question
+
+    assert not looks_like_a_question(bare)
+
+
+@pytest.mark.parametrize("real", [
+    # The same words WITH a subject are ordinary questions.
+    "what do you think about solana",
+    "thoughts on ansem's zcash call",
+    "what did ansem say about hyperliquid",
+    # One word is a normal way to use a search engine and must survive.
+    "kimchi?",
+    "zcash",
+    "summarize episode 11",
+])
+def test_a_question_with_a_subject_still_gets_answered(real):
+    from app.x_bot import looks_like_a_question
+
+    assert looks_like_a_question(real)

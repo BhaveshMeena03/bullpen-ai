@@ -1118,6 +1118,11 @@ def looks_like_a_question(text: str) -> bool:
     # than being searched for as topics.
     if len(words) <= _PLEASANTRY_MAX_WORDS and _PLEASANTRY.match(text):
         return False
+    # A question mark is not a question. "thoughts?" names nothing to look
+    # up, and retrieval will hand back six passages about something for any
+    # input at all.
+    if _NO_SUBJECT.match(text):
+        return False
     # One word is a perfectly normal way to use a search engine — "kimchi?",
     # "zcash", "hyperliquid" — and requiring two got them silence. Four
     # characters or more, and not a thread fragment: "more" and "source?"
@@ -1137,7 +1142,36 @@ _FRAGMENTS = frozenset({
     "proof", "link", "links", "yes", "yeah", "nope", "okay", "sure", "really",
     "seriously", "wrong", "right", "same", "this", "that", "them", "next",
     "continue", "explain", "elaborate", "details", "context",
+    # Asking for an opinion names no subject to look one up about.
+    "thoughts", "thought", "opinion", "opinions", "wdyt", "views",
 })
+
+# A request for an opinion with no subject attached. Somebody wrote
+# "@Banks @blknoiz06 thoughts?" under one of the account's own posts; X
+# carries every handle in the thread into the reply, so the bot read a
+# question addressed to two other people, and answered it.
+#
+# Nothing was asked, but retrieval always returns its top passages for any
+# input at all, and the model writes a confident cited paragraph about
+# whatever comes back. That reply happened to be coherent. It had no reason
+# to be.
+#
+# Anchored to the whole string on purpose. "what do you think about solana"
+# names a subject and must still be answered; only the bare forms match.
+_NO_SUBJECT = re.compile(
+    r"""(?ix)^\W*
+    (?: (?:any|your|ur|some|ppl|people)?\s*
+        (?:thoughts?|opinions?|views?|takes?)
+        (?:\s+on\s+(?:this|it|that|these))?
+      | wdyt
+      | what(?:'?s| is| are)?\s+(?:your|ur|the)?\s*
+        (?:thoughts?|opinions?|take|takes)
+        (?:\s+on\s+(?:this|it|that))?
+      | (?:so\s+)?what\s+do\s+(?:you|u)\s+think
+        (?:\s+(?:about|of)\s+(?:this|it|that))?
+      | (?:any\s+)?comments?
+    )
+    \W*$""")
 
 
 # Question words and auxiliaries. Their absence, in a short message, is

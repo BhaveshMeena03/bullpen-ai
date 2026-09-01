@@ -143,3 +143,40 @@ class TestItRunsInTheReplyPath:
         """Silently editing a public reply is not acceptable; this has to
         be greppable afterwards."""
         assert "dropped a denial the answer contradicts" in self.source
+
+
+class TestTheWebsiteGetsTheSameRepair:
+    """The X bot has stripped these since this module existed. The website
+    did not, and the website is the surface people are sent to -- so the
+    same answer read "I couldn't find that in the episodes I've indexed"
+    there and read correctly on X.
+
+    It cannot be repaired after the fact on the site, because the site
+    streams: the denial is on screen before the sentence contradicting it
+    has been written. So the opening is judged first, and only an answer
+    that opens with a denial waits.
+    """
+
+    def test_the_opening_is_recognised_before_the_rest_arrives(self):
+        from app.hedging import opens_with_denial
+
+        assert opens_with_denial("I couldn't find that in the episodes")
+        assert opens_with_denial("I don't see a direct statement about")
+
+    @pytest.mark.parametrize("opening", [
+        "Around 27:09 in Market Bubble #4, Ansem named David Hoffman",
+        "FaZe Banks asks and Ansem answers.",
+    ])
+    def test_a_real_answer_is_not_held_back(self, opening):
+        """Every answer that does not open with a denial must stream exactly
+        as it did before -- the wait is only paid by the broken ones."""
+        from app.hedging import opens_with_denial
+
+        assert not opens_with_denial(opening)
+
+    def test_both_endpoints_call_it(self):
+        """The streamed and the non-streamed answer cannot disagree about
+        what the answer to a question is."""
+        source = (ROOT / "app" / "podcast.py").read_text()
+        assert "hedging.opens_with_denial" in source   # the SSE path
+        assert "hedging.strip_denial" in source        # the plain path

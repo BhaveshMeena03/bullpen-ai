@@ -79,6 +79,22 @@ def _tidy(text: str) -> str:
     return text
 
 
+def opens_with_denial(text: str) -> bool:
+    """Does this text START with a denial, before we know how it ends?
+
+    For the streamed answer, which is the one the website shows. There the
+    denial is on screen before the sentence that contradicts it has been
+    written, so the after-the-fact strip_denial below cannot help: by the
+    time there is a citation to check against, the reader has already read
+    "I couldn't find that" and gone.
+
+    So the stream holds back an answer that opens this way, and decides
+    once the whole thing has arrived. Only answers that open with a denial
+    pay that wait, and those are exactly the broken ones.
+    """
+    return bool(_DENIAL.search((text or "").strip()))
+
+
 def strip_denial(answer: str) -> tuple[str, str | None]:
     """Remove a leading denial the answer itself disproves.
 
