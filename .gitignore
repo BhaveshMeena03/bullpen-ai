@@ -41,3 +41,4 @@ audio/
 # and it is the part that took a human ear to produce.
 data/speakers/
 .claude/
+data/sweeps/
