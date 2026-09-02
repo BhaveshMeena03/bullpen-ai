@@ -45,28 +45,30 @@
     letter-spacing:.01em;text-align:center;padding:9px 12px;margin:0 -16px;
     border-bottom:1px solid rgba(255,255,255,.05)}
   .wrap{width:100%;max-width:820px;padding:56px 0 80px}
-  /* Centred until there is something to show, which is how every search
-     engine people already know behaves: the box is the page. Everything
-     below — answers, summaries — stays left-aligned, because prose read
-     down a centred column is unreadable. */
-  .topbar{display:flex;align-items:center;justify-content:center;
+  /* The hero below is centred — the box is the page, which is how every
+     search engine people already know behaves. The bar above it is not:
+     name on the left, prices on the right, the way a header carries its
+     utilities. Centred prices sat between the name and the headline and
+     read as part of the pitch rather than as instruments. */
+  .topbar{display:flex;align-items:center;justify-content:space-between;
     gap:14px;margin-bottom:34px;flex-wrap:wrap}
   .brand{font-weight:800;font-size:15px;letter-spacing:.5px}
   .brand span{color:var(--green)}
   /* Reads as a feature, not a footnote: filled, green, on the right. */
   @media(max-width:560px){
-    .topbar{flex-direction:column;align-items:flex-start;gap:10px}
+    .topbar{flex-direction:column;align-items:flex-start;gap:12px}
+    .ticks{justify-content:flex-start}
   }
   /* Live prices for the two coins this project is attached to, and the one
      everything on the show is priced against. Hidden until it has real
      numbers: a price strip showing "--" is worse than no price strip, and
      a stale one is worse than both. */
-  .ticks{display:flex;justify-content:center;flex-wrap:wrap;gap:9px;
-    margin:-18px 0 30px}
+  .ticks{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:7px;
+    margin:0}
   .ticks[hidden]{display:none}
-  .tick{display:inline-flex;align-items:baseline;gap:8px;
+  .tick{display:inline-flex;align-items:baseline;gap:7px;
     background:var(--panel);border:1px solid var(--line);border-radius:999px;
-    padding:7px 15px;font-size:13px;color:var(--muted);
+    padding:5px 12px;font-size:12px;color:var(--muted);
     text-decoration:none;white-space:nowrap;
     transition:border-color .15s,transform .15s}
   .tick:hover{border-color:#2f3947;transform:translateY(-1px)}
@@ -74,11 +76,10 @@
   .tick .px{color:var(--text);font-variant-numeric:tabular-nums}
   .tick .ch{font-variant-numeric:tabular-nums;font-weight:600}
   .tick .up{color:var(--green)} .tick .dn{color:#ff6b6b}
-  /* The project's own coin, which is the one Bunny asked to see here.
-     Clicking copies the mint rather than opening a chart. */
-  .tick.own{border-color:#16c78455;cursor:pointer}
+  /* The project's own coin, marked green so it reads as ours among the
+     two it sits beside. It opens its chart like the others do. */
+  .tick.own{border-color:#16c78455}
   .tick.own .sym{color:var(--green)}
-  .tick .copied{color:var(--green);font-weight:600}
 
   h1{font-family:"Instrument Serif",Georgia,"Times New Roman",serif;
     font-size:54px;font-weight:400;line-height:1.08;margin-bottom:14px;
@@ -281,11 +282,10 @@
 <div class="wrap">
   <div class="topbar">
     <div class="brand">MARKET <span>BUBBLE</span> · search</div>
-
+    <!-- Populated by the block at the bottom of this file, and left hidden
+         if anything about that fails. -->
+    <div class="ticks" id="ticks" hidden></div>
   </div>
-  <!-- Populated by the block at the bottom of this file, and left hidden if
-       anything about that fails. -->
-  <div class="ticks" id="ticks" hidden></div>
 
   <h1>Ask the <em>Market Bubble</em> broadcast anything.</h1>
   <p class="sub">Search every episode by meaning, not keywords — and jump
@@ -1173,12 +1173,15 @@ function airedLabel(iso){
     var px = money(pair.priceUsd);
     if(!px) return null;
     var ch = Number((pair.priceChange || {}).h24);
-    var el = document.createElement(t.own ? "button" : "a");
+    /* All three open their chart, including this project's own coin. It
+       used to copy the mint instead, which meant the one pill people would
+       actually want to click behaved differently from the two beside it —
+       and the chart it opens carries the mint anyway, with a copy button
+       next to it. One behaviour, fewer ways to be surprised. */
+    var el = document.createElement("a");
     el.className = "tick" + (t.own ? " own" : "");
-    if(!t.own){
-      el.href = pair.url || ("https://dexscreener.com/solana/" + t.mint);
-      el.target = "_blank"; el.rel = "noopener noreferrer";
-    }
+    el.href = pair.url || ("https://dexscreener.com/solana/" + t.mint);
+    el.target = "_blank"; el.rel = "noopener noreferrer";
     var chunk = '<span class="sym">$' + t.sym + '</span>' +
                 '<span class="px">' + px + '</span>';
     if(isFinite(ch)){
@@ -1187,19 +1190,6 @@ function airedLabel(iso){
     }
     el.innerHTML = chunk;
 
-    if(t.own){
-      el.title = "copy contract address";
-      el.addEventListener("click", function(){
-        var done = function(){
-          var was = el.innerHTML;
-          el.innerHTML = '<span class="copied">contract copied</span>';
-          setTimeout(function(){ el.innerHTML = was; }, 1400);
-        };
-        if(navigator.clipboard && navigator.clipboard.writeText){
-          navigator.clipboard.writeText(t.mint).then(done, function(){});
-        }
-      });
-    }
     return el;
   }
 
