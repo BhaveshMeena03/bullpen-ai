@@ -258,16 +258,16 @@ def make_wide_overlay(title: str, stamp: str, path: Path,
     # row; behind text this size the difference is not visible.
     # Opaque enough to actually cover. At 165 the broadcast's own
     # "LOS ANGELES 1:42 PM PT" read straight through the credit.
-    scrim = Image.new("RGBA", (width, int(104 * k)), (0, 0, 0, 225))
+    scrim = Image.new("RGBA", (width, int(74 * k)), (0, 0, 0, 225))
     img.paste(scrim, (0, int(7 * k)), scrim)
 
     # Shrink to fit rather than crop. Taking the first wrapped line cut
     # "Why Ansem Thinks Ethereum Is Done.. | Market" and threw away the
     # episode number, which is the half a reader needs.
-    foot_font = _font(FONT_CANDIDATES_REGULAR, int(26 * k))
+    foot_font = _font(FONT_CANDIDATES_REGULAR, int(24 * k))
     room = width - 68 * k - draw.textlength(
         f"{stamp}  ·  search.lexthedev.com", font=foot_font) - 40 * k
-    for pt in (50, 45, 40, 36, 32):
+    for pt in (36, 33, 30, 27, 24):
         font = _font(FONT_CANDIDATES_BOLD, int(pt * k))
         if draw.textlength(title, font=font) <= room:
             break
@@ -276,7 +276,7 @@ def make_wide_overlay(title: str, stamp: str, path: Path,
         shown = shown[:-2]
     if shown != title:
         shown = shown.rstrip(" .|-") + "…"
-    draw.text((34 * k, (104 * k - pt * k) / 2 + 7 * k), shown,
+    draw.text((34 * k, (74 * k - pt * k) / 2 + 7 * k), shown,
               font=font, fill="#e6e8ea")
 
     # In the top band beside the title, not along the bottom. The
@@ -285,7 +285,7 @@ def make_wide_overlay(title: str, stamp: str, path: Path,
     # things at once — and the captions have to live there too.
     foot = f"{stamp}  ·  search.lexthedev.com"
     fw = draw.textlength(foot, font=foot_font)
-    draw.text((width - fw - 34 * k, (104 * k - 26 * k) / 2 + 7 * k),
+    draw.text((width - fw - 34 * k, (74 * k - 24 * k) / 2 + 7 * k),
               foot, font=foot_font, fill=GREEN)
 
     img.save(path)
