@@ -57,6 +57,29 @@
   @media(max-width:560px){
     .topbar{flex-direction:column;align-items:flex-start;gap:10px}
   }
+  /* Live prices for the two coins this project is attached to, and the one
+     everything on the show is priced against. Hidden until it has real
+     numbers: a price strip showing "--" is worse than no price strip, and
+     a stale one is worse than both. */
+  .ticks{display:flex;justify-content:center;flex-wrap:wrap;gap:9px;
+    margin:-18px 0 30px}
+  .ticks[hidden]{display:none}
+  .tick{display:inline-flex;align-items:baseline;gap:8px;
+    background:var(--panel);border:1px solid var(--line);border-radius:999px;
+    padding:7px 15px;font-size:13px;color:var(--muted);
+    text-decoration:none;white-space:nowrap;
+    transition:border-color .15s,transform .15s}
+  .tick:hover{border-color:#2f3947;transform:translateY(-1px)}
+  .tick .sym{color:var(--text);font-weight:700;letter-spacing:.02em}
+  .tick .px{color:var(--text);font-variant-numeric:tabular-nums}
+  .tick .ch{font-variant-numeric:tabular-nums;font-weight:600}
+  .tick .up{color:var(--green)} .tick .dn{color:#ff6b6b}
+  /* The project's own coin, which is the one Bunny asked to see here.
+     Clicking copies the mint rather than opening a chart. */
+  .tick.own{border-color:#16c78455;cursor:pointer}
+  .tick.own .sym{color:var(--green)}
+  .tick .copied{color:var(--green);font-weight:600}
+
   h1{font-family:"Instrument Serif",Georgia,"Times New Roman",serif;
     font-size:54px;font-weight:400;line-height:1.08;margin-bottom:14px;
     letter-spacing:-.015em;text-align:center}
@@ -260,6 +283,10 @@
     <div class="brand">MARKET <span>BUBBLE</span> · search</div>
 
   </div>
+  <!-- Populated by the block at the bottom of this file, and left hidden if
+       anything about that fails. -->
+  <div class="ticks" id="ticks" hidden></div>
+
   <h1>Ask the <em>Market Bubble</em> broadcast anything.</h1>
   <p class="sub">Search every episode by meaning, not keywords — and jump
   straight to the moment they said it.</p>
@@ -1093,6 +1120,116 @@ function airedLabel(iso){
   // Shareable links: /demo/podcast.html?q=... auto-runs the search.
   var shared=new URLSearchParams(location.search).get("q");
   if(shared){ q.value=shared; search(); }
+})();
+</script>
+
+<script>
+/* Live prices, from DexScreener by mint address.
+ *
+ * Both mints were checked against the posts they came from before they were
+ * written here -- MBS against this project's own announcement, ANSEM against
+ * a post Ansem himself reposted -- because a wrong character in one of these
+ * sends somebody's money to a different coin. They are not guesses and they
+ * are not to be edited from memory.
+ *
+ * Fails closed, always. The strip starts hidden and is only shown once every
+ * row has a real number in it: a price of "--" on a page that is asking to
+ * be taken seriously is worse than no prices at all, and a stale one is
+ * worse than both. One request, no key, no dependency.
+ */
+(function(){
+  var TOKENS = [
+    // Ansem's coin first, deliberately.
+    {sym:"ANSEM", mint:"9cRCn9rGT8V2imeM2BaKs13yhMEais3ruM3rPvTGpump"},
+    {sym:"SOL",   mint:"So11111111111111111111111111111111111111112"},
+    {sym:"MBS",   mint:"8VjFid8BVGcTPpUzf4PAWsA5nHJ5h2GQNXPEjyr2mF7t", own:true}
+  ];
+  var box = document.getElementById("ticks");
+  if(!box) return;
+
+  function money(n){
+    n = Number(n);
+    if(!isFinite(n) || n <= 0) return null;
+    if(n >= 100) return "$" + n.toFixed(0);
+    if(n >= 1)   return "$" + n.toFixed(2);
+    if(n >= 0.01) return "$" + n.toFixed(3);
+    // Sub-cent coins: enough significant figures to be a price rather
+    // than a row of zeroes.
+    return "$" + n.toPrecision(3);
+  }
+
+  /* The deepest pool, not the first one returned. A new token has a dozen
+     pairs and the thin ones carry prices that are not real. */
+  function best(pairs){
+    var top = null, deepest = -1;
+    (pairs || []).forEach(function(p){
+      var liq = Number((p.liquidity || {}).usd || 0);
+      if(liq > deepest){ deepest = liq; top = p; }
+    });
+    return top;
+  }
+
+  function row(t, pair){
+    var px = money(pair.priceUsd);
+    if(!px) return null;
+    var ch = Number((pair.priceChange || {}).h24);
+    var el = document.createElement(t.own ? "button" : "a");
+    el.className = "tick" + (t.own ? " own" : "");
+    if(!t.own){
+      el.href = pair.url || ("https://dexscreener.com/solana/" + t.mint);
+      el.target = "_blank"; el.rel = "noopener noreferrer";
+    }
+    var chunk = '<span class="sym">$' + t.sym + '</span>' +
+                '<span class="px">' + px + '</span>';
+    if(isFinite(ch)){
+      chunk += '<span class="ch ' + (ch >= 0 ? "up" : "dn") + '">' +
+               (ch >= 0 ? "+" : "") + ch.toFixed(1) + '%</span>';
+    }
+    el.innerHTML = chunk;
+
+    if(t.own){
+      el.title = "copy contract address";
+      el.addEventListener("click", function(){
+        var done = function(){
+          var was = el.innerHTML;
+          el.innerHTML = '<span class="copied">contract copied</span>';
+          setTimeout(function(){ el.innerHTML = was; }, 1400);
+        };
+        if(navigator.clipboard && navigator.clipboard.writeText){
+          navigator.clipboard.writeText(t.mint).then(done, function(){});
+        }
+      });
+    }
+    return el;
+  }
+
+  /* One request per mint, not one request for all three. The batched form
+     of this endpoint caps its reply at thirty pairs, and ANSEM and SOL have
+     enough pools between them to fill that on their own -- so MBS, the coin
+     this strip exists to show, came back missing every time. */
+  function load(){
+    Promise.all(TOKENS.map(function(t){
+      return fetch("https://api.dexscreener.com/latest/dex/tokens/" + t.mint,
+                   {cache:"no-store"})
+        .then(function(r){ return r.ok ? r.json() : null; })
+        .then(function(d){
+          var top = d && best(d.pairs);
+          return top ? row(t, top) : null;
+        })
+        .catch(function(){ return null; });
+    })).then(function(built){
+      // All or nothing: a strip missing the coin somebody came to see reads
+      // as broken rather than partial.
+      if(built.some(function(el){ return !el; })) return;
+      box.innerHTML = "";
+      built.forEach(function(el){ box.appendChild(el); });
+      box.hidden = false;
+    });
+  }
+
+  load();
+  // Slow on purpose. These are here for orientation, not for trading off.
+  setInterval(load, 60000);
 })();
 </script>
 </body>
