@@ -234,15 +234,81 @@ def make_backdrop(title: str, stamp: str, path: Path,
     img.save(path)
 
 
-def make_caption(text: str, path: Path, size: int = DEFAULT_SIZE) -> None:
+def make_wide_overlay(title: str, stamp: str, path: Path,
+                      width: int = 1920, height: int = 1080) -> None:
+    """Title and credit painted ON the picture, for a 16:9 clip.
+
+    The square layout parks the video in a band and fills the space above
+    and below it with a title and a credit. That reads well in a feed, and
+    it means anything playing the file in a 16:9 window pillarboxes it —
+    black down both sides, which is what people actually notice.
+
+    Here the picture fills the frame and the text sits on top of it. The
+    only furniture is a scrim behind each line, dark enough to read against
+    a bright frame and short enough to leave the faces alone.
+    """
+    from PIL import Image, ImageDraw
+
+    k = width / 1920                 # 1.0 at 1080p, and scales from there
+    img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([0, 0, width, int(7 * k)], fill=GREEN)
+
+    # A gradient would be nicer than a flat band and costs a loop over every
+    # row; behind text this size the difference is not visible.
+    # Opaque enough to actually cover. At 165 the broadcast's own
+    # "LOS ANGELES 1:42 PM PT" read straight through the credit.
+    scrim = Image.new("RGBA", (width, int(104 * k)), (0, 0, 0, 225))
+    img.paste(scrim, (0, int(7 * k)), scrim)
+
+    # Shrink to fit rather than crop. Taking the first wrapped line cut
+    # "Why Ansem Thinks Ethereum Is Done.. | Market" and threw away the
+    # episode number, which is the half a reader needs.
+    foot_font = _font(FONT_CANDIDATES_REGULAR, int(26 * k))
+    room = width - 68 * k - draw.textlength(
+        f"{stamp}  ·  search.lexthedev.com", font=foot_font) - 40 * k
+    for pt in (50, 45, 40, 36, 32):
+        font = _font(FONT_CANDIDATES_BOLD, int(pt * k))
+        if draw.textlength(title, font=font) <= room:
+            break
+    shown = title
+    while draw.textlength(shown, font=font) > room and len(shown) > 12:
+        shown = shown[:-2]
+    if shown != title:
+        shown = shown.rstrip(" .|-") + "…"
+    draw.text((34 * k, (104 * k - pt * k) / 2 + 7 * k), shown,
+              font=font, fill="#e6e8ea")
+
+    # In the top band beside the title, not along the bottom. The
+    # broadcast runs its own logo, chyron and ticker across the lower third
+    # of every frame, so anything put down there is competing with three
+    # things at once — and the captions have to live there too.
+    foot = f"{stamp}  ·  search.lexthedev.com"
+    fw = draw.textlength(foot, font=foot_font)
+    draw.text((width - fw - 34 * k, (104 * k - 26 * k) / 2 + 7 * k),
+              foot, font=foot_font, fill=GREEN)
+
+    img.save(path)
+
+
+def make_caption(text: str, path: Path, size: int = DEFAULT_SIZE,
+                 height: int | None = None) -> None:
     from PIL import Image, ImageDraw
 
     k = size / DEFAULT_SIZE
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    height = height or size
+    img = Image.new("RGBA", (size, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     font = _font(FONT_CANDIDATES_BOLD, int(35 * k))
     lines = _wrap(draw, text, font, size - 100 * k)[:3]
-    y = size - 168 * k - (len(lines) - 1) * 40 * k
+    # Measured up from the bottom of whatever frame this is. On the square
+    # the gap under the picture is where the caption lives, so it is deep.
+    # On a 16:9 frame the picture goes to the edge and the same gap would
+    # park the words across the faces. They go to the very bottom instead,
+    # over the broadcast's own ticker, which is the one strip of that
+    # frame nothing is lost by covering.
+    pad = (168 * k) if height >= size else (0.115 * height)
+    y = height - pad - (len(lines) - 1) * 40 * k
     for line in lines:
         w = draw.textlength(line, font=font)
         _outlined(draw, ((size - w) / 2, y), line, font, "white",
@@ -310,14 +376,33 @@ def fetch_section(url: str, start: float, end: float, dest: Path,
 
 
 def render(source: Path, captions, backdrop: Path, workdir: Path,
-           out: Path, size: int = DEFAULT_SIZE, best: bool = False) -> None:
+           out: Path, size: int = DEFAULT_SIZE, best: bool = False,
+           wide: bool = False) -> None:
+    """Compose the clip.
+
+    Square by default: the picture sits in a band with the title above it
+    and the credit below. `wide` fills a 16:9 frame with the picture and
+    lays the same text over it, which is the layout to use when the clip
+    will be watched rather than scrolled past — a square file pillarboxes
+    in any 16:9 player, and the black down both sides is the first thing
+    anyone notices.
+    """
+    height = int(size * 9 / 16) if wide else size
     inputs = ["-i", str(source), "-loop", "1", "-i", str(backdrop)]
-    steps = [f"[0:v]scale={size}:-2[vid]",
-             "[1:v][vid]overlay=(W-w)/2:(H-h)/2:shortest=1[base]"]
+    if wide:
+        # Cover, not fit: fill the frame and crop the overflow rather than
+        # leaving a bar. The source is already 16:9, so this crops nothing
+        # in practice and protects the frame if one ever is not.
+        steps = [f"[0:v]scale={size}:{height}:force_original_aspect_ratio="
+                 f"increase,crop={size}:{height}[vid]",
+                 "[vid][1:v]overlay=0:0:shortest=1[base]"]
+    else:
+        steps = [f"[0:v]scale={size}:-2[vid]",
+                 "[1:v][vid]overlay=(W-w)/2:(H-h)/2:shortest=1[base]"]
     label = "base"
     for i, (start, end, text) in enumerate(captions):
         png = workdir / f"cap{i:04d}.png"
-        make_caption(text, png, size)
+        make_caption(text, png, size, height)
         inputs += ["-i", str(png)]
         nxt = f"c{i}"
         steps.append(f"[{label}][{i + 2}:v]overlay=0:0:"

@@ -33,6 +33,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from app.clipper import (  # noqa: E402
+    make_wide_overlay,  # noqa: E402
     build_captions,
     fetch_section,
     ffmpeg_available,
@@ -89,10 +90,18 @@ def main() -> None:
     # the picture at the size it arrives in and encodes for quality
     # rather than to a bitrate. Slower, larger, and the one to use for a
     # clip that is going out in public.
-    ap.add_argument("--best", action="store_true",
-                    help="1920 canvas, no downscale, x264 CRF 18")
+    # Highest quality and 16:9 are what a clip going out in public wants,
+    # every time, so they are the default rather than something to
+    # remember. The opt-outs exist for a quick look at a moment.
+    ap.add_argument("--fast", action="store_true",
+                    help="hardware encode at a fixed bitrate, for a look")
+    # A square file pillarboxes in any 16:9 player and the black down both
+    # sides is the first thing anyone notices.
+    ap.add_argument("--square", action="store_true",
+                    help="square canvas with the title in a band above")
     ap.add_argument("--out", help="output file (default: ~/Desktop)")
     args = ap.parse_args()
+    args.best, args.wide = not args.fast, not args.square
     if args.best and "--height" not in sys.argv:
         args.height = 1920
 
@@ -137,11 +146,16 @@ def main() -> None:
         fetch_section(episode["url"], start, end, source, height=args.height)
 
         backdrop = work / "backdrop.png"
-        make_backdrop(episode["title"], stamp(start), backdrop, args.height)
+        if args.wide:
+            make_wide_overlay(episode["title"], stamp(start), backdrop,
+                              args.height, int(args.height * 9 / 16))
+        else:
+            make_backdrop(episode["title"], stamp(start), backdrop,
+                          args.height)
 
         print(f"  rendering {len(captions)} caption(s)…")
         render(source, captions, backdrop, work, out, args.height,
-               best=args.best)
+               best=args.best, wide=args.wide)
 
     size_mb = out.stat().st_size / 1_048_576
     print(f"\n  {out}")
