@@ -29,6 +29,30 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+
+def writable_path(preferred: Path) -> Path:
+    """`preferred` if its directory takes a write, else the temp directory.
+
+    The image ships at /srv with a read-only data directory, so the obvious
+    path raises PermissionError on every single save — once per answered
+    question, each one a warning line. The ledger survives that (it keeps
+    counting in memory, and the ANALYTICS lines are the durable record), but
+    the noise buries real warnings in the log.
+
+    Same probe the bot state uses, for the same reason. Losing the file is
+    already expected on an ephemeral disk; being unable to write it at all
+    is not worth a warning per request.
+    """
+    try:
+        preferred.parent.mkdir(parents=True, exist_ok=True)
+        probe = preferred.parent / ".write-test"
+        probe.touch()
+        probe.unlink()
+        return preferred
+    except OSError:
+        return Path(tempfile.gettempdir()) / preferred.name
+
+
 # USD per million tokens, from Anthropic's published pricing. Cache reads are
 # 0.1x the input rate; cache writes are 1.25x.
 #

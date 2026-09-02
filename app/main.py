@@ -66,7 +66,7 @@ from .security import (
     require_admin,
 )
 from .summaries import SummaryStore
-from .usage import UsageLedger
+from .usage import UsageLedger, writable_path
 
 logging.basicConfig(level=logging.INFO)
 
@@ -289,10 +289,11 @@ async def _run_x_bot(app: FastAPI, settings) -> None:
 async def lifespan(app: FastAPI):
     # Build heavyweight clients once, at startup, and share them.
     app.state.retriever = Retriever()
-    # Written next to the data files, so it survives a restart. A redeploy
-    # on an ephemeral filesystem still clears it — the ANALYTICS usage log
-    # lines are the durable record.
-    app.state.usage = UsageLedger(path=_ROOT / "data" / ".usage.json")
+    # Next to the data files when that is writable, the temp directory when
+    # it is not (it is not, in the container). Either way a redeploy clears
+    # it — the ANALYTICS usage log lines are the durable record.
+    app.state.usage = UsageLedger(
+        path=writable_path(_ROOT / "data" / ".usage.json"))
     app.state.agent = ConciergeAgent(ledger=app.state.usage)
     app.state.clawpump_agent = ClawPumpAgent(ledger=app.state.usage)
     app.state.pipeline = IngestionPipeline()
