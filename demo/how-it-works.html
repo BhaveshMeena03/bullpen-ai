@@ -5,11 +5,17 @@
   The explainer behind the product demo. Every number on this page is read
   from the real system, not rounded for effect:
 
-    32 transcripts, 24 uploads + 8 live X broadcasts   data/episodes.json
-    86 hours, 65,381 lines                             same
-    2,538 passages, 17,717 exact terms                 data/term_index.json
+    26 shows, 17 uploads + 9 live X broadcasts         data/episodes.json
+    70 hours, 60,362 lines                             same
+    2,635 passages, 18,352 exact terms                 data/term_index.json
+
     voyage-3.5 / 1024 dims, rerank-2.5-lite            app/config.py
     12 candidates narrowed to 6, claude-haiku-4-5      same
+
+  The show counts are DEDUPED. 34 transcripts are indexed, but eight of the
+  YouTube uploads are cut-down re-posts of a live broadcast that is already
+  in the index, so counting all 34 reports the same speech twice and inflates
+  the hours by about 30%. Quote the deduped numbers publicly.
 
   Driven by scripts/make_tech_demo.mjs, which reveals one stage at a time
   and records frames. Kept as a page rather than a video editor timeline so
@@ -76,8 +82,8 @@
       <div class="n">1</div>
       <div>
         <p class="t">Transcribe every broadcast</p>
-        <p class="d"><b>32</b> shows — 24 YouTube uploads and
-          <b>8 live X broadcasts</b>. 86 hours, 65,381 lines.</p>
+        <p class="d"><b>26</b> shows — 17 YouTube uploads and
+          <b>9 live X broadcasts</b>. 70 hours, 60,362 lines.</p>
       </div>
       <div class="tag">Whisper, run locally</div>
     </div>
@@ -86,7 +92,7 @@
       <div class="n">2</div>
       <div>
         <p class="t">Cut into overlapping passages</p>
-        <p class="d"><b>2,538</b> windows. They overlap, so an answer that
+        <p class="d"><b>2,635</b> windows. They overlap, so an answer that
           straddles a boundary is still findable.</p>
       </div>
       <div class="tag">every line keeps its timestamp</div>
@@ -106,7 +112,7 @@
       <div class="n">4</div>
       <div>
         <p class="t">Index the rare words exactly</p>
-        <p class="d"><b>17,717</b> names and numbers matched literally.
+        <p class="d"><b>18,352</b> names and numbers matched literally.
           "54 million" barely moves a vector, but it is the question.</p>
       </div>
       <div class="tag">the half meaning-search misses</div>
