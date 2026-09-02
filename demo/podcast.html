@@ -69,15 +69,6 @@
   @media(max-width:560px){
     .topbar{flex-direction:column;align-items:center;gap:12px}
   }
-  /* Narrower than this the disclosure wraps to two or three lines and
-     reaches the right edge, so the prices come out of the corner and
-     sit under it. */
-  @media(max-width:1150px){
-    .banner{display:flex;flex-direction:column;align-items:center;
-      gap:7px}
-    .ticks{position:static;transform:none;flex-wrap:wrap;
-      justify-content:center}
-  }
   /* Live prices for the two coins this project is attached to, and the one
      everything on the show is priced against. Hidden until it has real
      numbers: a price strip showing "--" is worse than no price strip, and
@@ -99,6 +90,16 @@
      two it sits beside. It opens its chart like the others do. */
   .tick.own{border-color:#16c78455}
   .tick.own .sym{color:var(--green)}
+  /* Narrower than this the disclosure wraps and reaches the right edge,
+     so the prices come out of the corner and sit under it. This has to
+     follow the rules above rather than precede them: at equal specificity
+     the later rule wins, and when it was written first the prices stayed
+     pinned on every width. */
+  @media(max-width:1000px){
+    .banner{display:flex;flex-direction:column;align-items:center;gap:7px}
+    .ticks{position:static;transform:none;flex-wrap:wrap;
+      justify-content:center}
+  }
 
   h1{font-family:"Instrument Serif",Georgia,"Times New Roman",serif;
     font-size:54px;font-weight:400;line-height:1.08;margin-bottom:14px;
@@ -294,9 +295,13 @@
 </head>
 <body>
 <div class="banner">
-  <span class="note">Searches auto-generated captions from public Market Bubble
-  episodes · informational, not financial advice · an independent project,
-  not affiliated.</span>
+  <!-- Shorter than it was, and every claim it made is still here: the
+       captions are machine-made, this is not advice, and it is nobody's
+       official anything. The long version could not be centred on the page
+       and clear of the prices at the same time, and of the two the
+       disclosure is the one that has to stay legible. -->
+  <span class="note">Auto-generated captions · not financial advice ·
+  independent project, not affiliated</span>
   <!-- Shares the disclosure's row, hard right, so the wordmark below keeps
        the centre to itself. Populated by the block at the bottom of this
        file and left hidden if anything about that fails. -->
