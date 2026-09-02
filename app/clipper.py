@@ -297,9 +297,14 @@ def make_caption(text: str, path: Path, size: int = DEFAULT_SIZE,
 
     k = size / DEFAULT_SIZE
     height = height or size
+    # Type is sized against the SHORT edge, not the width. Scaling it off
+    # the width put 93px lettering on a 1080-tall frame — nearly a tenth of
+    # the picture, when a subtitle wants about a twentieth. On the square,
+    # where the two are equal, nothing changes.
+    kt = min(size, height) / DEFAULT_SIZE
     img = Image.new("RGBA", (size, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    font = _font(FONT_CANDIDATES_BOLD, int(35 * k))
+    font = _font(FONT_CANDIDATES_BOLD, int(35 * kt))
     lines = _wrap(draw, text, font, size - 100 * k)[:3]
     # Measured up from the bottom of whatever frame this is. On the square
     # the gap under the picture is where the caption lives, so it is deep.
@@ -307,13 +312,30 @@ def make_caption(text: str, path: Path, size: int = DEFAULT_SIZE,
     # park the words across the faces. They go to the very bottom instead,
     # over the broadcast's own ticker, which is the one strip of that
     # frame nothing is lost by covering.
-    pad = (168 * k) if height >= size else (0.115 * height)
-    y = height - pad - (len(lines) - 1) * 40 * k
+    pad = (168 * k) if height >= size else (0.10 * height)
+    step = 44 * kt
+    y = height - pad - (len(lines) - 1) * step
+
+    # A soft panel behind the words, only on the wide frame. There the
+    # captions sit on the picture, and the broadcast's ticker underneath
+    # them is bright, busy and moving — an outline alone has to fight it
+    # every frame. On the square they sit on flat backdrop and need
+    # nothing, which is what the outline was written for.
+    if height < size and lines:
+        widest = max(draw.textlength(ln, font=font) for ln in lines)
+        bx, by = 34 * kt, 16 * kt
+        panel = Image.new(
+            "RGBA",
+            (int(widest + bx * 2), int(len(lines) * step + by * 2)),
+            (0, 0, 0, 110))
+        img.paste(panel,
+                  (int((size - widest) / 2 - bx), int(y - by)), panel)
+
     for line in lines:
         w = draw.textlength(line, font=font)
         _outlined(draw, ((size - w) / 2, y), line, font, "white",
-                  outline=max(2, int(3 * k)))
-        y += 40 * k
+                  outline=max(2, int(2.5 * kt)))
+        y += step
     img.save(path)
 
 
