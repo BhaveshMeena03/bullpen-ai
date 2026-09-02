@@ -45,26 +45,31 @@
     letter-spacing:.01em;text-align:center;padding:9px 12px;margin:0 -16px;
     border-bottom:1px solid rgba(255,255,255,.05)}
   .wrap{width:100%;max-width:820px;padding:56px 0 80px}
-  /* The hero below is centred — the box is the page, which is how every
-     search engine people already know behaves. The bar above it is not:
-     name on the left, prices on the right, the way a header carries its
-     utilities. Centred prices sat between the name and the headline and
-     read as part of the pitch rather than as instruments. */
-  .topbar{display:flex;align-items:center;justify-content:space-between;
+  /* Centred, with the hero below it — the box is the page, which is how
+     every search engine people already know behaves. The prices are not in
+     here: they sit in the top corner of the window, clear of the name. */
+  .topbar{display:flex;align-items:center;justify-content:center;
     gap:14px;margin-bottom:34px;flex-wrap:wrap}
   .brand{font-weight:800;font-size:15px;letter-spacing:.5px}
   .brand span{color:var(--green)}
   /* Reads as a feature, not a footnote: filled, green, on the right. */
   @media(max-width:560px){
-    .topbar{flex-direction:column;align-items:flex-start;gap:12px}
-    .ticks{justify-content:flex-start}
+    .topbar{flex-direction:column;align-items:center;gap:12px}
+  }
+  /* The disclosure is centred and long, so below this the pinned prices
+     would be sitting on top of it. They drop into the flow instead,
+     centred under it, which is a layout rather than an overlap. */
+  @media(max-width:1180px){
+    .ticks{position:static;justify-content:center;margin:10px 0 -14px}
   }
   /* Live prices for the two coins this project is attached to, and the one
      everything on the show is priced against. Hidden until it has real
      numbers: a price strip showing "--" is worse than no price strip, and
      a stale one is worse than both. */
-  .ticks{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:7px;
-    margin:0}
+  /* Pinned to the top corner of the window, on the disclosure line, so the
+     wordmark keeps the centre to itself. */
+  .ticks{position:absolute;top:6px;right:16px;z-index:3;
+    display:flex;justify-content:flex-end;flex-wrap:wrap;gap:7px;margin:0}
   .ticks[hidden]{display:none}
   .tick{display:inline-flex;align-items:baseline;gap:7px;
     background:var(--panel);border:1px solid var(--line);border-radius:999px;
@@ -279,12 +284,14 @@
   informational, not financial advice · an independent project, not affiliated.
 </div>
 
+<!-- Pinned to the window's top-right corner, outside the column, so the
+     wordmark keeps the centre. Populated by the block at the bottom of this
+     file and left hidden if anything about that fails. -->
+<div class="ticks" id="ticks" hidden></div>
+
 <div class="wrap">
   <div class="topbar">
     <div class="brand">MARKET <span>BUBBLE</span> · search</div>
-    <!-- Populated by the block at the bottom of this file, and left hidden
-         if anything about that fails. -->
-    <div class="ticks" id="ticks" hidden></div>
   </div>
 
   <h1>Ask the <em>Market Bubble</em> broadcast anything.</h1>
