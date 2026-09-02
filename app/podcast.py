@@ -793,10 +793,13 @@ class PodcastIndex:
                         removed[:80])
         return PodcastSearchResponse(answer=answer, hits=hits, model=response.model)
 
-    # Enough of the opening to tell a denial from an answer. One sentence is
-    # usually far less than this; the cap is only so a model that writes no
-    # early full stop cannot stall the stream.
-    _DENIAL_PEEK_CHARS = 240
+    # How much of the opening to hold before deciding. Every denial this has
+    # ever produced announces itself in the first fifteen characters -- "I
+    # couldn't find", "I don't see", "There is no specific" -- so the whole
+    # first sentence is far more than is needed to tell them apart, and
+    # waiting for one delayed every answer that was never broken. Sixty-four
+    # characters is about a fifth of a second of tokens.
+    _DENIAL_PEEK_CHARS = 64
 
     async def answer_stream(self, query: str, hits: list[PodcastHit]):
         """Yield answer text deltas for already-retrieved hits (SSE path).
@@ -829,8 +832,11 @@ class PodcastIndex:
             async for text in stream.text_stream:
                 if not decided:
                     opening += text
-                    if not (_SENTENCE_BREAK.search(opening)
-                            or len(opening) >= self._DENIAL_PEEK_CHARS):
+                    # Whichever comes first. A short answer that ends before
+                    # sixty-four characters still gets judged, by the branch
+                    # after the loop.
+                    if not (len(opening) >= self._DENIAL_PEEK_CHARS
+                            or _SENTENCE_BREAK.search(opening)):
                         continue
                     decided = True
                     if hedging.opens_with_denial(opening):
