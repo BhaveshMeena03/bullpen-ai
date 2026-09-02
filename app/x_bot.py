@@ -1076,6 +1076,36 @@ _PLEASANTRY = re.compile(
 # situation, and the opening word should not decide that.
 _PLEASANTRY_MAX_WORDS = 6
 
+# Cheering, which is not asking. "let's go" was already covered and "let's send
+# this to a million" was not, so it went to the index and came back with Ansem's
+# giveaway numbers under a post that had asked nothing. Given its own pattern
+# rather than added to the list above because these run longer than six words
+# and the length cap there exists for a different reason.
+_HYPE = re.compile(r"""(?ix)^\W*
+    # A ticker in front of the cheer is still a cheer: "$MBS let's send
+    # this to a million" was answered with the archive on Ansem's giveaways.
+    (?:\$?\w{2,6}\s+)?
+  (?:
+      (?: let'?s | lets | we )\s+ (?: go | send | run | ride | push | get | are )
+    | send \s+ (?: it | this )
+    | to \s+ the \s+ moon
+    | (?: we'?re | were ) \s+ so \s+ back
+    | (?: buy | ape | send ) \s+ (?:it|this|now)
+    | \$?\w+ \s+ (?:to|→) \s+ (?:a\s+)? (?:million|billion|zero|the\s+moon)
+  )\b""")
+
+# The account described rather than addressed. Somebody wrote a paragraph
+# telling their followers what this is — "@mbubbleSearch is a semantic search
+# engine for every episode, ask a question in plain English" — and got a
+# confident answer about an unrelated moment in an unrelated episode. That is
+# the worst possible reply to an unpaid endorsement.
+#
+# question_from strips the handle, so an endorsement arrives here having lost
+# its own subject: what is left opens with the verb. A real question does not
+# begin "is a search engine".
+_DESCRIBES_ITSELF = re.compile(
+    r"(?ix)^\W*(?: is | are | was | '?s )\s+(?: a | an | the | now | also )\b")
+
 
 # "try again", "again?", "retry", "one more time" — an instruction to redo
 # the last question rather than a new one. Short and bounded, because the
@@ -1117,6 +1147,13 @@ def looks_like_a_question(text: str) -> bool:
     # Social noise first, so "based" and "wow" keep getting a fact rather
     # than being searched for as topics.
     if len(words) <= _PLEASANTRY_MAX_WORDS and _PLEASANTRY.match(text):
+        return False
+    # Cheering, and a description of this account rather than a question for
+    # it. Both reach the same place a compliment does: a thank-you and a fact
+    # worth reading, which is the right answer to "let's send this to a
+    # million" and the only decent answer to somebody explaining what this is
+    # to their followers.
+    if _HYPE.match(text) or _DESCRIBES_ITSELF.match(text):
         return False
     # A question mark is not a question. "thoughts?" names nothing to look
     # up, and retrieval will hand back six passages about something for any

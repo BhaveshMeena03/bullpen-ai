@@ -3541,3 +3541,47 @@ def test_the_bot_resolves_before_it_searches():
               / "app" / "x_bot.py").read_text()
     assert source.index("resolve_back_reference(") < source.index(
         "result = await self._index.search(")
+
+
+# Every one of these was posted. Somebody cheered, somebody explained the
+# account to their followers, and each got a confident cited answer about an
+# unrelated moment in an unrelated episode.
+#
+# The worst was the endorsement: "@mbubbleSearch is a semantic search engine
+# for every episode, ask a question in plain English" — an unpaid recommendation
+# answered with a passage about an AI that asks you ten questions a morning.
+# There is a thank-you-and-a-fact path for exactly this, and none of them
+# reached it.
+@pytest.mark.parametrize("said", [
+    "$MBS Let's send this to a million",
+    "Let's send this to a million.",
+    "send it",
+    "to the moon",
+    "lets go",
+    "we're so back",
+    # An endorsement arrives having lost its subject to question_from, so what
+    # is left opens with the verb. A question does not begin "is a".
+    "is a semantic search engine for every episode. Ask a question in plain "
+    "English and it comes back with the exact timestamp.",
+    "is the best tool anyone has built on this show",
+])
+def test_cheering_and_endorsements_are_not_questions(said):
+    from app.x_bot import looks_like_a_question
+
+    assert not looks_like_a_question(said)
+
+
+@pytest.mark.parametrize("said", [
+    # The same words INSIDE a real question must survive. Anchoring is what
+    # separates these two lists.
+    "what did they say about sending sol to the moon",
+    "is there anything about pump.fun fees",
+    "what did ansem say about zcash",
+    "summarize episode 11",
+    "kimchi?",
+    "what did banks say about GTA6",
+])
+def test_a_real_question_is_untouched(said):
+    from app.x_bot import looks_like_a_question
+
+    assert looks_like_a_question(said)
