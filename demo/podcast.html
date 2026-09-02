@@ -68,14 +68,6 @@
   /* Reads as a feature, not a footnote: filled, green, on the right. */
   @media(max-width:560px){
     .topbar{flex-direction:column;align-items:center;gap:12px}
-    /* Measured: the three pills want 448px and a phone has 343, so they
-       wrapped two-and-one and read as an accident. The 24h change is the
-       widest part of each and the least load-bearing — the price is what
-       somebody glances at, and the change is one tap away on the chart
-       the pill opens. Dropping it fits all three on one line. */
-    .tick .ch{display:none}
-    .tick{font-size:11px;padding:4px 11px;gap:6px}
-    .ticks{gap:6px;flex-wrap:nowrap}
   }
   /* Live prices for the two coins this project is attached to, and the one
      everything on the show is priced against. Hidden until it has real
@@ -112,6 +104,20 @@
     .banner{display:flex;flex-direction:column;align-items:center;gap:7px}
     .ticks{position:static;transform:none;flex-wrap:wrap;
       justify-content:center}
+  }
+  /* Phones, and AFTER the rule above on purpose: that one sets flex-wrap
+     back to wrap, and at equal specificity the later rule wins. Written
+     before it, nowrap here never applied and the row still broke.
+
+     Measured: the three pills want 448px and a phone gives 343, so they
+     wrapped two-and-one and read as an accident. The 24h change is the
+     widest part of each and the least load-bearing — the price is what
+     somebody glances at, and the change is one tap away on the chart the
+     pill already opens. Without it they fit on one line with room over. */
+  @media(max-width:560px){
+    .tick .ch{display:none}
+    .tick{font-size:11px;padding:4px 11px;gap:6px}
+    .ticks{gap:6px;flex-wrap:nowrap;max-width:100%}
   }
 
   h1{font-family:"Instrument Serif",Georgia,"Times New Roman",serif;
