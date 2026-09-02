@@ -82,9 +82,19 @@ def main() -> None:
                     help="seconds of run-up before the moment, so it does "
                          "not open mid-word (default 3)")
     ap.add_argument("--height", type=int, default=1080,
-                    choices=[480, 720, 1080], help="output height")
+                    choices=[480, 720, 1080, 1920], help="output height")
+    # The broadcast is 1920 wide and the canvas is square, so a 1080
+    # canvas scales it down to 1080 across and throws away nearly half
+    # the horizontal detail before anything is even encoded. --best keeps
+    # the picture at the size it arrives in and encodes for quality
+    # rather than to a bitrate. Slower, larger, and the one to use for a
+    # clip that is going out in public.
+    ap.add_argument("--best", action="store_true",
+                    help="1920 canvas, no downscale, x264 CRF 18")
     ap.add_argument("--out", help="output file (default: ~/Desktop)")
     args = ap.parse_args()
+    if args.best and "--height" not in sys.argv:
+        args.height = 1920
 
     if not ffmpeg_available():
         sys.exit("ffmpeg is not on PATH — brew install ffmpeg")
@@ -130,7 +140,8 @@ def main() -> None:
         make_backdrop(episode["title"], stamp(start), backdrop, args.height)
 
         print(f"  rendering {len(captions)} caption(s)…")
-        render(source, captions, backdrop, work, out, args.height)
+        render(source, captions, backdrop, work, out, args.height,
+               best=args.best)
 
     size_mb = out.stat().st_size / 1_048_576
     print(f"\n  {out}")

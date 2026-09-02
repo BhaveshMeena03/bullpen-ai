@@ -92,7 +92,7 @@ def _font(candidates: list[str], size: int):
     return ImageFont.load_default()
 
 
-def _encoder(size: int = DEFAULT_SIZE) -> list[str]:
+def _encoder(size: int = DEFAULT_SIZE, best: bool = False) -> list[str]:
     """Hardware encode on a Mac, x264 on the server.
 
     Checked once against the actual binary rather than assumed from the
@@ -102,7 +102,19 @@ def _encoder(size: int = DEFAULT_SIZE) -> list[str]:
     Bitrate scales with the canvas. 2500k is right for 720 and visibly
     soft at 1080, and the only reason to hold 1080 down would be an egress
     bill that a local run does not have.
+
+    `best` drops the hardware path entirely and encodes for quality rather
+    than for a number of bits per second. VideoToolbox is fast and its
+    fixed-bitrate mode is the weaker of the two ways to encode this: a
+    static backdrop with a small moving panel spends its budget evenly
+    whether the frame needs it or not, so the faces get what is left. x264
+    at a constant quality spends bits where the picture is, and the render
+    is a few seconds slower for something that gets re-encoded once by X
+    and then watched. Only worth it for a clip that goes out publicly.
     """
+    if best:
+        return ["-c:v", "libx264", "-preset", "slow", "-crf", "18",
+                "-pix_fmt", "yuv420p", "-profile:v", "high", "-level", "4.2"]
     rate = f"{int(2500 * (size / DEFAULT_SIZE) ** 2)}k"
     try:
         out = subprocess.run(["ffmpeg", "-hide_banner", "-encoders"],
@@ -278,7 +290,7 @@ def fetch_section(url: str, start: float, end: float, dest: Path,
 
 
 def render(source: Path, captions, backdrop: Path, workdir: Path,
-           out: Path, size: int = DEFAULT_SIZE) -> None:
+           out: Path, size: int = DEFAULT_SIZE, best: bool = False) -> None:
     inputs = ["-i", str(source), "-loop", "1", "-i", str(backdrop)]
     steps = [f"[0:v]scale={size}:-2[vid]",
              "[1:v][vid]overlay=(W-w)/2:(H-h)/2:shortest=1[base]"]
@@ -294,8 +306,9 @@ def render(source: Path, captions, backdrop: Path, workdir: Path,
 
     result = subprocess.run(
         ["ffmpeg", "-y", *inputs, "-filter_complex", ";".join(steps),
-         "-map", f"[{label}]", "-map", "0:a?", *_encoder(size),
-         "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
+         "-map", f"[{label}]", "-map", "0:a?", *_encoder(size, best),
+         "-c:a", "aac", "-b:a", "192k" if best else "128k",
+         "-movflags", "+faststart",
          "-shortest", str(out)],
         capture_output=True, text=True, timeout=300)
     if result.returncode != 0:
