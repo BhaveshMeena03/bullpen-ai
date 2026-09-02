@@ -68,6 +68,14 @@
   /* Reads as a feature, not a footnote: filled, green, on the right. */
   @media(max-width:560px){
     .topbar{flex-direction:column;align-items:center;gap:12px}
+    /* Measured: the three pills want 448px and a phone has 343, so they
+       wrapped two-and-one and read as an accident. The 24h change is the
+       widest part of each and the least load-bearing — the price is what
+       somebody glances at, and the change is one tap away on the chart
+       the pill opens. Dropping it fits all three on one line. */
+    .tick .ch{display:none}
+    .tick{font-size:11px;padding:4px 11px;gap:6px}
+    .ticks{gap:6px;flex-wrap:nowrap}
   }
   /* Live prices for the two coins this project is attached to, and the one
      everything on the show is priced against. Hidden until it has real
