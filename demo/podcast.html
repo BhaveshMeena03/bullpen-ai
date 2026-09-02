@@ -90,12 +90,17 @@
      two it sits beside. It opens its chart like the others do. */
   .tick.own{border-color:#16c78455}
   .tick.own .sym{color:var(--green)}
-  /* Narrower than this the disclosure wraps and reaches the right edge,
-     so the prices come out of the corner and sit under it. This has to
-     follow the rules above rather than precede them: at equal specificity
-     the later rule wins, and when it was written first the prices stayed
-     pinned on every width. */
-  @media(max-width:1000px){
+  /* The prices only clear the centred disclosure above about 1400px, and
+     that is arithmetic rather than taste: the sentence is 454px wide and
+     centred, the prices are 457 and pinned right, so they meet at any
+     window narrower than the two of them plus the margin between. Below
+     it they sit under the sentence instead.
+
+     This has to follow the rules above rather than precede them. At equal
+     specificity the later rule wins, and written first it never applied
+     at all -- the prices stayed pinned at every width, including the ones
+     it existed to fix. */
+  @media(max-width:1400px){
     .banner{display:flex;flex-direction:column;align-items:center;gap:7px}
     .ticks{position:static;transform:none;flex-wrap:wrap;
       justify-content:center}
