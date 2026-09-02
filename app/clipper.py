@@ -62,8 +62,21 @@ MAX_JOBS_TRACKED = 200
 # yt-dlp negotiates the media URL as one client and hands it to ffmpeg,
 # which fetches it as itself; most clients tie the URL to the caller, so
 # ffmpeg gets a 403 and the download fails as "ffmpeg exited with code 8".
-# web_safari, web and tv refuse the format outright. mweb works.
-PLAYER_CLIENT = "mweb"
+# web_safari, web and tv refuse the format outright. mweb works — and that
+# is the whole reason it was chosen, which turned out to be the bug.
+#
+# mweb is served ONE progressive format: 640x360. Not a preference among
+# several, the only thing on offer. So every clip ever cut from a YouTube
+# episode was sourced at 360p and then scaled UP to a 720 or 1080 canvas,
+# and asking for a bigger canvas made it blurrier rather than sharper.
+# Nothing in the pipeline could have recovered it; the detail was never
+# downloaded.
+#
+# Empty means yt-dlp picks, and what it picks offers the real ladder up to
+# 1920x1080 60fps. The 403 this was working around comes from handing a
+# client-bound URL to ffmpeg, which only happens on the streaming path —
+# the download here writes a file first, so it does not apply.
+PLAYER_CLIENT = ""
 
 # Fonts have to be found on both a Mac and a slim Debian image; neither
 # has the other's. Missing fonts degrade to Pillow's bitmap default, which
@@ -275,11 +288,18 @@ def fetch_section(url: str, start: float, end: float, dest: Path,
     cmd = [_ytdlp_binary(), "--quiet", "--no-warnings",
            "--download-sections", f"*{start:.2f}-{end:.2f}",
            "--force-keyframes-at-cuts",
-           "-f", f"bv*[height<={height}]+ba/b[height<={height}]/b",
+           # H.264 first so the merge stays an mp4. Left to itself yt-dlp
+           # takes AV1 with Opus, which is a smaller download and a webm,
+           # and then everything downstream is decoding AV1 for no benefit
+           # — this gets re-encoded on the next line anyway.
+           "-f", (f"bv*[height<={height}][vcodec^=avc1]+ba[ext=m4a]/"
+                  f"bv*[height<={height}]+ba/b[height<={height}]/b"),
            "--concurrent-fragments", "16"]
     if is_youtube:
-        cmd += ["--extractor-args", f"youtube:player_client={PLAYER_CLIENT}",
-                "--remote-components", "ejs:github"]
+        if PLAYER_CLIENT:
+            cmd += ["--extractor-args",
+                    f"youtube:player_client={PLAYER_CLIENT}"]
+        cmd += ["--remote-components", "ejs:github"]
     if proxy:
         cmd += ["--proxy", proxy]
     cmd += ["-o", str(dest), url]
