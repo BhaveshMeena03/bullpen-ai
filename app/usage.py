@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
@@ -49,9 +50,29 @@ CACHE_READ_MULTIPLIER = 0.10
 CACHE_WRITE_MULTIPLIER = 1.25
 
 
+def _canonical(model: str) -> str:
+    """The name this table knows, from whatever the API called it back.
+
+    A proxy answers with its own naming. usepod returns
+    "anthropic/claude-haiku-4.5" where Anthropic returns
+    "claude-haiku-4-5-20251001" — a vendor prefix, and dots where this
+    table has dashes. Neither matched, so every proxied call was priced at
+    the mid-tier fallback of $3/$15 against Haiku's actual $1/$5, and the
+    spend ledger read about seven times the real number. A cost table that
+    is wrong in the expensive direction is worse than no cost table: it
+    argues against the cheaper route on made-up evidence.
+    """
+    name = (model or "").strip().lower()
+    if "/" in name:                       # vendor prefix, e.g. "anthropic/"
+        name = name.rsplit("/", 1)[-1]
+    # "claude-haiku-4.5" -> "claude-haiku-4-5", leaving date suffixes alone.
+    return re.sub(r"(\d)\.(\d)", r"\1-\2", name)
+
+
 def price_for(model: str) -> tuple[float, float]:
+    name = _canonical(model)
     for prefix in sorted(PRICES, key=len, reverse=True):
-        if model.startswith(prefix):
+        if name.startswith(prefix):
             return PRICES[prefix]
     # An unknown model is priced at the mid tier rather than zero. Zero would
     # make a new model look free, which is the failure that matters here.

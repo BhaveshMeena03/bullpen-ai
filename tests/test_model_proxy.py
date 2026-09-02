@@ -107,3 +107,55 @@ class TestTheFallbackIsHeldReady:
         opened = source.index("entered = await opener.__aenter__()")
         loop = source.index("async for text in stream.text_stream")
         assert opened < loop
+
+
+class TestTheProxyDoesNotBreakTheCostLedger:
+    """A proxy answers with its own naming, and the price table did not
+    recognise it — so every proxied call was billed in the ledger at the
+    mid-tier fallback of $3/$15 against Haiku's real $1/$5, about seven
+    times over. A cost table that errs expensive argues against the cheaper
+    route on invented evidence."""
+
+    @pytest.mark.parametrize("returned", [
+        "anthropic/claude-haiku-4.5",     # what usepod sends back
+        "claude-haiku-4-5-20251001",      # what Anthropic sends back
+        "claude-haiku-4-5",
+        "ANTHROPIC/CLAUDE-HAIKU-4.5",
+    ])
+    def test_every_spelling_prices_as_haiku(self, returned):
+        from app.usage import price_for
+
+        assert price_for(returned) == (1.00, 5.00)
+
+    def test_a_genuinely_unknown_model_still_falls_back(self):
+        """The fallback exists so a new model never looks free."""
+        from app.usage import price_for
+
+        assert price_for("some-model-nobody-has-priced") == (3.00, 15.00)
+
+
+class TestTheTokenStaysOutOfTheLogs:
+    def test_a_url_in_a_log_line_is_redacted(self, caplog):
+        import logging as _l
+
+        from app.main import _RedactProxyToken
+
+        rec = _l.LogRecord("x", _l.INFO, __file__, 1,
+                           "HTTP Request: POST %s 200 OK",
+                           ("https://api.usepod.ai/proxy/sup3rs3cret/v1/messages",),
+                           None)
+        _RedactProxyToken().filter(rec)
+        assert "sup3rs3cret" not in rec.getMessage()
+        assert "/proxy/<token>" in rec.getMessage()
+
+    def test_it_survives_percent_formatting(self):
+        """httpx passes the URL as an arg, not in the message, so filtering
+        only record.msg would have left it in every request line."""
+        import logging as _l
+
+        from app.main import _RedactProxyToken
+
+        rec = _l.LogRecord("x", _l.INFO, __file__, 1, "%s", 
+                           ("https://api.usepod.ai/proxy/leaky/v1/messages",), None)
+        _RedactProxyToken().filter(rec)
+        assert "leaky" not in rec.getMessage()

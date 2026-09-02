@@ -69,6 +69,45 @@ from .summaries import SummaryStore
 from .usage import UsageLedger
 
 logging.basicConfig(level=logging.INFO)
+
+
+class _RedactProxyToken(logging.Filter):
+    """Keep the inference proxy's token out of the logs.
+
+    usepod authenticates with a token in the URL PATH, and httpx logs every
+    request line at INFO — so the first live request wrote a working
+    credential into Render's log history, where it stays. Anything holding
+    it can spend the balance.
+
+    Filtering here rather than silencing httpx: the request lines are how
+    you tell which route answered, and a filter catches whatever else
+    decides to log a URL later. Applied to the root handler so it covers
+    every logger in the process, and to the record's args as well as its
+    message, because "%s" formatting keeps the URL in args until render.
+    """
+
+    _TOKEN = re.compile(r"(/proxy/)[^/\s\"']+")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.msg, str) and "/proxy/" in record.msg:
+            record.msg = self._TOKEN.sub(r"\1<token>", record.msg)
+        if record.args:
+            args = record.args
+            if isinstance(args, dict):
+                record.args = {
+                    k: (self._TOKEN.sub(r"\1<token>", v)
+                        if isinstance(v, str) and "/proxy/" in v else v)
+                    for k, v in args.items()}
+            else:
+                record.args = tuple(
+                    self._TOKEN.sub(r"\1<token>", a)
+                    if isinstance(a, str) and "/proxy/" in a else a
+                    for a in args)
+        return True
+
+
+for _handler in logging.getLogger().handlers:
+    _handler.addFilter(_RedactProxyToken())
 logger = logging.getLogger(__name__)
 
 # Lightweight usage counters (in-memory: reset on restart/redeploy — good
