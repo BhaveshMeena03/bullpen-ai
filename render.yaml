@@ -29,17 +29,26 @@ services:
       # These OVERRIDE the defaults in app/config.py — pydantic gives the
       # environment precedence. Change them here as well, or a code-only edit
       # silently does nothing in production.
+      # 12 was sized when a search cost $0.0044. It is a throughput limit,
+      # not a spend limit — the daily budget below is what bounds money —
+      # and at 12 a visitor clicking through the example questions could
+      # trip it while doing exactly what the page invites.
       - key: RATE_LIMIT_RPM
-        value: "12"
+        value: "30"
       - key: GLOBAL_RATE_LIMIT_RPM
-        value: "240"
+        value: "400"
       # A spend ceiling, not a safety limit: roughly $0.016 per search, so
       # this is the most the service can cost in a day. Raised from 3000 the
       # morning the podcast's hosts started sharing it — being told "closed"
       # is a worse outcome than the bill on the one day that matters. Lower
       # it again when the spike passes.
+      # Sized in requests, so it silently tightened when a request got
+      # cheaper. 6000 was $26/day at Anthropic's rates; on the proxy the
+      # same 6000 costs $10.54, so the ceiling that was accepted as
+      # reasonable now stops the service at 40% of the spend it was set to
+      # allow. 15000 restores the DOLLAR ceiling that was actually chosen.
       - key: DAILY_REQUEST_BUDGET
-        value: "6000"
+        value: "15000"
       # No single client may take more than this slice of the budget above.
       # 200 was sized against abuse, when the only question was whether one
       # attacker could drain the budget. The real risk now is a good day: at
@@ -53,8 +62,10 @@ services:
       # cache hits, which cost nothing and are now refunded rather than
       # charged. 400 with free answers no longer counted is a smaller real
       # allowance than 60 was, not a larger one.
+      # Same arithmetic: 400 requests was $1.76 of the budget, and is now
+      # $0.70. 1000 is the same slice of the same money.
       - key: PER_CLIENT_DAILY_BUDGET
-        value: "400"
+        value: "1000"
 
       # --- X mention bot -------------------------------------------------
       # Runs inside this service rather than a worker of its own: it shares
@@ -101,9 +112,9 @@ services:
       # reply mentioned it back, and nine messages later both were still
       # paying per message in somebody else's thread.
       - key: X_BOT_PER_THREAD_CAP
-        value: "3"
+        value: "5"
       - key: X_BOT_DAILY_REPLY_CAP
-        value: "300"
+        value: "500"
       # The ceiling the reply cap is not: a mention read costs $0.001
       # whether or not it is answered, and how often the account is tagged
       # is somebody else's decision. This bounds the day regardless.
@@ -147,7 +158,7 @@ services:
       # no repeats, so one person could take the whole daily 300. Priority
       # authors are exempt.
       - key: X_BOT_PER_AUTHOR_CAP
-        value: "8"
+        value: "11"
       # Premium accounts can post far past 280, and automated accounts get
       # the same allowance as human ones. Confirmed by posting one: a
       # 900-character reply went out fine. 1500 rather than the 25,000 the

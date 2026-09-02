@@ -133,6 +133,8 @@ class RateLimiter:
         return request.client.host if request.client else "unknown"
 
     async def __call__(self, request: Request) -> None:
+        if holds_admin_token(request):
+            return
         if not self.check(self._client_ip(request)):
             raise HTTPException(
                 status_code=429,
@@ -153,6 +155,13 @@ class GlobalRateLimit(RateLimiter):
         return rpm / 60.0, max(10, rpm // 2)
 
     async def __call__(self, request: Request) -> None:
+        # Same exemption as the per-IP limiter, and for the same reason:
+        # these two bound throughput. The daily budget and the per-client
+        # budget below them bound SPEND, and those stay on for everybody —
+        # a test that runs away should still hit a wall, and it should be
+        # the wall made of money.
+        if holds_admin_token(request):
+            return
         if not self.check("global"):
             raise HTTPException(
                 status_code=429,
@@ -327,6 +336,30 @@ global_rate_limit = GlobalRateLimit()
 daily_budget = DailyBudget()
 # Bounds what any ONE client can take out of that shared budget.
 per_client_daily = PerClientDailyBudget()
+
+
+def holds_admin_token(request: Request) -> bool:
+    """Is this us, testing our own service?
+
+    Load-testing the search endpoint against the per-IP limit measures the
+    limiter rather than the thing under test: two hundred questions came
+    back a hundred and ninety 429s, which proved the throttle works and
+    nothing about the route being tested.
+
+    Raising the public limit to make room would have handed the same
+    allowance to everyone, on endpoints that each cost a model call. This
+    exempts exactly one caller — whoever already holds ADMIN_TOKEN, which
+    can rewrite the knowledge base anyway, so it grants nothing new.
+
+    Compared with compare_digest, and only ever True when a token is
+    actually configured: an unset ADMIN_TOKEN must not turn every caller
+    sending an empty header into an unlimited one.
+    """
+    expected = get_settings().admin_token
+    if not expected:
+        return False
+    supplied = request.headers.get("x-admin-token") or ""
+    return bool(supplied) and secrets.compare_digest(supplied, expected)
 
 
 def _is_loopback(request: Request) -> bool:

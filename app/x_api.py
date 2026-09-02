@@ -437,8 +437,14 @@ class XClient:
             return None
         _raise_if_out_of_credits(response)
         response.raise_for_status()
-        # The published rate for this one, not the observed reply rate.
-        self.spent_usd += (PRICE_POST_WITH_URL if allow_link else PRICE_POST)
+        # The OBSERVED rate, which is the plain one whether or not the reply
+        # carries a link. The comment beside PRICE_POST_WITH_URL has said so
+        # for a while — "no longer used to estimate" — and this line went on
+        # using it anyway, booking $0.200 against a measured $0.015. Against
+        # a $12 daily ceiling that stopped the bot at about sixty replies, a
+        # twelfth of what the ceiling was set to allow, and raising the reply
+        # cap could not move it because the cap was never what bound.
+        self.spent_usd += PRICE_POST
         return (response.json().get("data") or {}).get("id")
 
     async def reply(self, text: str, to_post_id: str,
