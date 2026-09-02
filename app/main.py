@@ -12,6 +12,7 @@ import contextlib
 import json
 import logging
 import os
+import random
 import re
 import time
 from collections import Counter, deque
@@ -195,6 +196,25 @@ async def _run_x_bot(app: FastAPI, settings) -> None:
                 "badged accounts only" if settings.x_bot_verified_only
                 else "everyone")
 
+    # Stand back before the first poll, because for part of a deploy there
+    # are two of us.
+    #
+    # Render brings the new instance up and only signals the old one once
+    # this one is healthy, so for that window both are polling the same
+    # mentions. The guard in _answer re-reads the timeline immediately
+    # before posting, but it cannot help when both instances check before
+    # either has posted: @gvgnft asked one question on 1 September and got
+    # two different answers five seconds apart, mid-deploy.
+    #
+    # Waiting here costs a slower first reply after a deploy — the mention
+    # is still there, since since_id only advances past what was answered —
+    # and removes the overlap that causes it.
+    grace = settings.x_bot_startup_grace_seconds
+    if grace:
+        logger.info("x_bot: holding %ds before the first poll, so a "
+                    "deploy's outgoing instance is gone first", grace)
+        await asyncio.sleep(grace)
+
     while True:
         try:
             posted = await bot.tick(time.strftime("%Y-%m-%d", time.gmtime()))
@@ -216,8 +236,14 @@ async def _run_x_bot(app: FastAPI, settings) -> None:
             beat.failed()
             logger.exception("x_bot: poll failed (%d in a row) — continuing",
                              beat.consecutive_errors)
+        # Jittered, so two instances that do overlap drift apart instead of
+        # polling in lockstep. Two loops started seconds apart stay seconds
+        # apart forever on a fixed cadence, which is exactly the condition
+        # that let both of them read, compose and post inside the same five
+        # seconds.
         await asyncio.sleep(
-            MentionBot.pause_seconds(settings.x_bot_poll_seconds))
+            MentionBot.pause_seconds(settings.x_bot_poll_seconds)
+            * random.uniform(0.85, 1.15))
 
 
 @asynccontextmanager

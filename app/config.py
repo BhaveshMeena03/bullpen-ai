@@ -302,6 +302,14 @@ class Settings(BaseSettings):
     # achieve" is a documented suspension trigger. Twenty seconds plus
     # jitter is responsive without being uncanny.
     x_bot_poll_seconds: float = 20.0
+    # How long a freshly started instance waits before its first poll.
+    # Render's deploy runs the new container alongside the old until the
+    # new one is healthy, so for that window two of them poll the same
+    # mentions — which is how one question got two different answers five
+    # seconds apart. Costs a slower first reply after a deploy; the
+    # mention is not lost, because since_id only moves past what was
+    # actually answered.
+    x_bot_startup_grace_seconds: int = 90
     # Answered from here rather than from retrieval: the contract address
     # is a fact about the project, not something said on the podcast, and
     # it is the one answer that must never be paraphrased or half-right.
