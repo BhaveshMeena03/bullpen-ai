@@ -6,6 +6,9 @@ All secrets and tunables are sourced from the environment (or a local
 
 from functools import lru_cache
 
+import re
+from urllib.parse import urlparse
+
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -19,6 +22,13 @@ class Settings(BaseSettings):
 
     # --- Anthropic ---------------------------------------------------------
     anthropic_api_key: str
+    # Empty means Anthropic direct, which is what every surface does unless
+    # this is set. A proxy that speaks the same API — usepod routes
+    # claude-haiku-4-5 at $0.40/$2.00 against Anthropic's $1.00/$5.00 — can
+    # be put here instead, and only the podcast search reads it. The
+    # concierge answers Bullpen support questions and does not go through
+    # anybody else's account.
+    anthropic_base_url: str = ""
     # Swap via env with no code changes:
     #   ANTHROPIC_MODEL=claude-opus-4-8   stronger reasoning ($5/$25)
     #   ANTHROPIC_MODEL=claude-fable-5    max capability ($10/$50)
@@ -404,3 +414,39 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+# Anywhere but Anthropic gets a placeholder instead of the real key.
+#
+# usepod authenticates with a token inside the URL path and ignores the
+# Authorization header entirely, so sending the real key there would hand it
+# to a third party for nothing. Whether that is where we are going is decided
+# on the PARSED HOSTNAME and an exact match: "api.anthropic.com" is a
+# substring of api.anthropic.com.evil.example, and a substring test would send
+# the key straight to it.
+_PLACEHOLDER_KEY = "unused-the-proxy-authenticates-by-url"
+
+
+def anthropic_client_kwargs(settings: Settings) -> dict:
+    """Constructor arguments for an Anthropic client, direct or proxied."""
+    base = (settings.anthropic_base_url or "").strip()
+    if not base:
+        return {"api_key": settings.anthropic_api_key}
+    host = (urlparse(base).hostname or "").lower()
+    going_direct = host == "api.anthropic.com"
+    return {
+        "base_url": base,
+        "api_key": settings.anthropic_api_key if going_direct
+        else _PLACEHOLDER_KEY,
+    }
+
+
+def redact(text: str) -> str:
+    """Hide a proxy token in anything about to be printed or logged.
+
+    The token is a path segment, so it turns up in exception text, in stack
+    traces and in httpx's own request repr. Redacting BEFORE truncating
+    matters: cutting a URL to eighty characters can leave the token intact
+    and drop the part that made it look like a URL.
+    """
+    return re.sub(r"(/proxy/)[^/\s]+", r"\1<token>", text or "")

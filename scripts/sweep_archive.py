@@ -70,7 +70,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from app.config import get_settings          # noqa: E402
+from app.config import (  # noqa: E402
+    anthropic_client_kwargs,
+    get_settings,
+    redact,
+)
 from app.podcast import PodcastIndex, _windows  # noqa: E402
 from app.schemas import Episode              # noqa: E402
 from app.x_bot import is_a_deflection, is_a_miss  # noqa: E402
@@ -238,7 +242,9 @@ async def main() -> int:
     print(f"  asking {len(picked)}\n")
 
     from anthropic import AsyncAnthropic
-    client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+    # Same route as the answers, so the sweep measures one stack
+    # rather than two.
+    client = AsyncAnthropic(**anthropic_client_kwargs(settings))
     # The same small model the search itself uses. Writing a
     # question from a passage in front of it is easier than
     # answering one, so nothing bigger is warranted.

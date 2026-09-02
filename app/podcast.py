@@ -11,9 +11,11 @@ plumbing as the rest of the app.
 """
 
 import asyncio
+import contextlib
 import hashlib
 import logging
 import re
+import time
 from xml.sax.saxutils import escape, quoteattr
 
 import voyageai
@@ -21,7 +23,7 @@ from anthropic import AsyncAnthropic
 from pinecone import Pinecone
 
 from . import hedging, names
-from .config import get_settings
+from .config import anthropic_client_kwargs, get_settings, redact
 from .embeddings import embed_query, embed_texts, rerank_order
 from .schemas import (
     Episode,
@@ -61,6 +63,15 @@ def host_named_in(query: str) -> str | None:
     found = [name for name, pattern in _HOSTS_IN_QUESTION
              if pattern.search(query or "")]
     return found[0] if len(found) == 1 else None
+
+# How long to stop trying the model proxy after it fails. Long enough
+# that an outage is not re-tested on every visitor, short enough that
+# recovery needs no deploy.
+PROXY_COOLDOWN_SECONDS = 300
+
+# Named, so the fallback cannot inherit ANTHROPIC_BASE_URL from the
+# environment and end up pointing at the proxy it exists to escape.
+ANTHROPIC_DIRECT_URL = "https://api.anthropic.com"
 
 NAMESPACE = "podcast"
 
@@ -331,11 +342,63 @@ class PodcastIndex:
         settings = get_settings()
         self._settings = settings
         self._voyage = voyageai.AsyncClient(api_key=settings.voyage_api_key)
-        self._anthropic = AsyncAnthropic(api_key=settings.anthropic_api_key)
+        # Direct unless ANTHROPIC_BASE_URL names somewhere else. Only this
+        # surface reads it: the concierge answers Bullpen support questions
+        # and is not routed through a third party's account.
+        self._anthropic = AsyncAnthropic(**anthropic_client_kwargs(settings))
+        # Anthropic direct, held ready, and only when the line above is NOT
+        # already that. A proxy can run out of balance, get its token
+        # revoked, or simply stop answering, and every one of those looks
+        # like the site being down to somebody typing a question. This is
+        # the way back, and it needs no deploy: a redeploy on Render is a
+        # restart, and with the poll grace that is about three minutes of
+        # silence to fix something that should never have been visible.
+        #
+        # It carries the real key, which is exactly why the client above
+        # does not.
+        # base_url is named explicitly, and that is not decoration. The SDK
+        # reads ANTHROPIC_BASE_URL from the environment when it is not told
+        # otherwise — which is exactly how the proxy gets configured — so a
+        # client built with only a key inherits the proxy and the fallback
+        # quietly becomes a second route to the thing that just failed.
+        # Caught by pointing this at a dead token: the fallback returned the
+        # same 401.
+        self._fallback = None
+        if "base_url" in anthropic_client_kwargs(settings):
+            self._fallback = AsyncAnthropic(
+                api_key=settings.anthropic_api_key,
+                base_url=ANTHROPIC_DIRECT_URL,
+            )
+        # When the proxy last failed. Inside the cooldown every request goes
+        # straight to Anthropic rather than paying the timeout again — an
+        # outage should cost one slow answer, not one per visitor.
+        self._proxy_failed_at = 0.0
         self._index = None
         # Loaded once. Absent or unreadable means every lookup returns
         # nothing and search behaves exactly as it did before.
         self._terms = TermIndex()
+
+    def _llm(self):
+        """The client to try first, and whether a fallback is still held.
+
+        Inside the cooldown after a failure this hands back Anthropic
+        directly, so a proxy that is down costs one slow answer rather than
+        one per visitor for as long as it stays down.
+        """
+        if self._fallback is None:
+            return self._anthropic, False
+        cooling = (time.monotonic() - self._proxy_failed_at
+                   < PROXY_COOLDOWN_SECONDS)
+        if cooling:
+            return self._fallback, False
+        return self._anthropic, True
+
+    def _proxy_broke(self, exc: Exception) -> None:
+        self._proxy_failed_at = time.monotonic()
+        logger.error(
+            "podcast: the model proxy failed (%s) — answering on Anthropic "
+            "direct, and skipping the proxy for %ds",
+            redact(str(exc))[:200], PROXY_COOLDOWN_SECONDS)
 
     @property
     def index(self):
@@ -769,12 +832,19 @@ class PodcastIndex:
         guest and missing them.
         """
         hits = await self.retrieve(query, top_k)
-        client = self._anthropic.with_options(
-            timeout=self._settings.search_timeout_seconds
-        )
-        response = await client.beta.messages.create(
-            **self._build_request(query, hits, instruction)
-        )
+        primary, can_fall_back = self._llm()
+        request = self._build_request(query, hits, instruction)
+        try:
+            response = await primary.with_options(
+                timeout=self._settings.search_timeout_seconds
+            ).beta.messages.create(**request)
+        except Exception as exc:                              # noqa: BLE001
+            if not can_fall_back:
+                raise
+            self._proxy_broke(exc)
+            response = await self._fallback.with_options(
+                timeout=self._settings.search_timeout_seconds
+            ).beta.messages.create(**request)
         self._record(response.model, response.usage)
         if response.stop_reason == "refusal":
             return PodcastSearchResponse(
@@ -818,17 +888,37 @@ class PodcastIndex:
         answer that starts with a denial waits for the rest before anything
         is sent. Every other answer streams exactly as it did.
         """
-        client = self._anthropic.with_options(
-            timeout=self._settings.search_timeout_seconds
-        )
+        primary, can_fall_back = self._llm()
+        request = self._build_request(query, hits)
+
+        # Opening the stream is where a broken proxy shows itself — a bad
+        # token, an empty balance, nothing listening. Falling back here is
+        # safe because not a byte has reached the reader yet. Once text is
+        # flowing the offer is withdrawn: restarting mid-answer would
+        # either repeat what was already on screen or splice two different
+        # answers together, and a visible failure beats a quiet lie.
+        try:
+            opener = primary.with_options(
+                timeout=self._settings.search_timeout_seconds
+            ).beta.messages.stream(**request)
+            entered = await opener.__aenter__()
+        except Exception as exc:                              # noqa: BLE001
+            if not can_fall_back:
+                raise
+            self._proxy_broke(exc)
+            opener = self._fallback.with_options(
+                timeout=self._settings.search_timeout_seconds
+            ).beta.messages.stream(**request)
+            entered = await opener.__aenter__()
+
         opening = ""
         decided = False        # have we judged the opening yet?
         holding = False        # opened with a denial, so buffer it all
         buffer = ""
 
-        async with client.beta.messages.stream(
-            **self._build_request(query, hits)
-        ) as stream:
+        async with contextlib.AsyncExitStack() as guard:
+            guard.push_async_exit(opener)
+            stream = entered
             async for text in stream.text_stream:
                 if not decided:
                     opening += text
