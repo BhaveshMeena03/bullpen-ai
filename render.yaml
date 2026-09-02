@@ -128,7 +128,7 @@ services:
       # The model calls are separate and not counted here: roughly $0.008
       # an answer, so about $2.40 more at a full day of 300.
       - key: X_BOT_DAILY_SPEND_CAP_USD
-        value: "12.0"
+        value: "20.0"
       # Answer only badged accounts. Filters throwaway spam; also ignores
       # genuine people who do not pay X for a checkmark. On while the reply
       # quality is still being watched, and announced as such — "open to
