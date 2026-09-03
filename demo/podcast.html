@@ -216,8 +216,12 @@
   .clip-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
   .clip-row label{font-size:13px;color:#8a939e;min-width:48px}
   .clip-row input[type=range]{flex:1;accent-color:#16c784}
-  .c-lab{font-size:13px;color:#e6e8ea;min-width:132px;text-align:right;
+  .c-lab{font-size:13px;color:#e6e8ea;min-width:196px;text-align:right;
          font-variant-numeric:tabular-nums}
+  .c-hint{font-size:12px;color:var(--muted);margin:2px 0 10px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .c-hint:empty{display:none}
+  .clip-row label{text-transform:none}
   .clip-go{display:flex;align-items:center;gap:10px}
   .c-status{font-size:13px;color:#8a939e}
   .c-out:not(:empty){margin-top:10px}
@@ -259,7 +263,7 @@
     font-size:13px;font-weight:500;color:var(--green);white-space:nowrap;
     background:rgba(22,199,132,.10);border:1px solid rgba(22,199,132,.30);
     padding:4px 9px;border-radius:7px;flex:none;
-    display:inline-flex;align-items:center;gap:6px;
+    display:inline-flex;align-items:center;gap:6px;cursor:pointer;
     transition:background .16s ease,border-color .16s ease;
   }
   .play svg{width:9px;height:9px;fill:currentColor;flex:none}
@@ -288,7 +292,14 @@
      button would be, so it reads as the reason that card has none. */
   .seeknote{color:var(--muted);font-size:11.5px;line-height:1.45;
     align-self:center}
-  .watch{margin-left:auto;color:var(--green);font-size:12px;white-space:nowrap}
+  /* In the actions row, last, and quiet. It used to sit in the title row
+     with margin-left:auto, which put it on a line of its own the moment a
+     title was long enough to wrap — floating right, attached to nothing.
+     Muted rather than green because the timestamp beside it is the action
+     now, and a brighter link that leaves the site should not outrank it. */
+  .watch{margin-left:auto;color:var(--muted);font-size:12px;
+    white-space:nowrap;text-decoration:none;align-self:center}
+  .watch:hover{color:var(--green)}
   .ep{color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;
     white-space:nowrap;max-width:100%}
   .aired{font-size:11px;color:var(--muted);white-space:nowrap;
@@ -803,7 +814,7 @@ function airedLabel(iso){
           +'<span class="ep">'+esc(h.title)+'</span>'
           +(h.published_at?'<span class="aired" title="'+escAttr(h.published_at)+'">'
               +esc(airedLabel(h.published_at))+'</span>':'')
-          +'<span class="watch">'+esc(watchLabel(h.deep_link))+'</span></div>'
+          +'</div>'
           +'<div class="quote">'+esc(cleanSnippet(h.text))+'</div></a>'
           +'<div class="hit-actions">'
           +(canSeek(h.deep_link)
@@ -813,7 +824,10 @@ function airedLabel(iso){
                 + '\u2014 copy it and scrub</span>')
           +'<button class="share" data-act="x" data-i="'+i+'">post on X</button>'
           +'<button class="share" data-act="img" data-i="'+i+'">save image</button>'
-          +'<button class="share" data-act="clip" data-i="'+i+'">make video</button>'
+          +'<button class="share" data-act="clip" data-i="'+i+'">make clip</button>'
+          +'<a class="watch" href="'+escAttr(safeUrl(h.deep_link))+'"'
+          + ' target="_blank" rel="noopener">'+esc(watchLabel(h.deep_link))
+          + '</a>'
           +'</div><div class="clipbox" data-clip="'+i+'"></div>'
           +'<div class="player" data-slot="'+i+'"></div></div>';
       });
@@ -884,22 +898,23 @@ function airedLabel(iso){
     var i=btn.getAttribute("data-i");
     var box=hits.querySelector('.clipbox[data-clip="'+i+'"]');
     if(!box) return;
-    if(box.firstChild){ box.innerHTML=""; btn.textContent="make video"; return; }
+    if(box.firstChild){ box.innerHTML=""; btn.textContent="make clip"; return; }
     Array.prototype.forEach.call(hits.querySelectorAll(".clipbox"),
       function(o){ o.innerHTML=""; });
     Array.prototype.forEach.call(hits.querySelectorAll('button[data-act="clip"]'),
-      function(o){ o.textContent="make video"; });
+      function(o){ o.textContent="make clip"; });
     btn.textContent="close";
 
     // Three seconds of run-up by default, so it does not open mid-word —
     // the same lead the hand-cut clips use.
     box.innerHTML =
-      '<div class="clip-row"><label>start</label>'
+      '<div class="clip-row"><label>begin</label>'
       + '<input type="range" class="c-start" min="-30" max="15" step="1" value="-3">'
       + '<span class="c-lab c-slab"></span></div>'
       + '<div class="clip-row"><label>length</label>'
       + '<input type="range" class="c-len" min="'+CLIP_MIN+'" max="'+CLIP_MAX
       + '" step="1" value="30"><span class="c-lab c-llab"></span></div>'
+      + '<div class="c-hint"></div>'
       + '<div class="clip-go"><button class="share c-render">render</button>'
       + '<span class="c-status"></span></div>'
       + '<div class="c-out"></div>';
@@ -907,14 +922,24 @@ function airedLabel(iso){
     var s=box.querySelector(".c-start"), L=box.querySelector(".c-len"),
         sl=box.querySelector(".c-slab"), ll=box.querySelector(".c-llab"),
         go=box.querySelector(".c-render"), st=box.querySelector(".c-status"),
-        out=box.querySelector(".c-out");
+        hint=box.querySelector(".c-hint"), out=box.querySelector(".c-out");
 
     function base(){ return Math.max(0, h.start_seconds + parseInt(s.value,10)); }
     function paint(){
-      var len = parseInt(L.value,10);
-      sl.textContent = hms(base()) + " → " + hms(base()+len);
-      ll.textContent = len + "s";
-      st.textContent = len > 30 ? ("renders in " + waitHint(len)) : "";
+      var len = parseInt(L.value,10), off = parseInt(s.value,10);
+      // "3s before the quote", not a bare timestamp beside an unlabelled
+      // handle. The slider is an offset from the moment that was cited, and
+      // nothing on screen said so.
+      var rel = off === 0 ? "at the quote"
+              : off < 0 ? (-off + "s before the quote")
+                        : (off + "s after the quote");
+      sl.textContent = rel + "  ·  " + hms(base());
+      ll.textContent = len + "s  ·  ends " + hms(base()+len);
+      // Sits with the length it belongs to, in the muted colour the other
+      // readouts use — it is a fact about the choice, not a warning about
+      // the button.
+      hint.textContent = len > 30 ? ("about " + waitHint(len).replace("about ","")
+                                     + " to render") : "";
     }
     s.addEventListener("input",paint); L.addEventListener("input",paint); paint();
 
@@ -969,16 +994,35 @@ function airedLabel(iso){
   // indicator at all.
   var readingEl=document.getElementById("reading"),
       readingTx=document.getElementById("reading-text");
+  var answerHead=document.querySelector("#answer h3");
   function showReading(label){
     if(!readingEl) return;
     readingTx.textContent=label; readingEl.hidden=false;
+    // "Answer" over an empty panel is a heading for something that has not
+    // been written yet. It comes back the moment there is one.
+    if(answerHead) answerHead.hidden=true;
   }
-  function hideReading(){ if(readingEl) readingEl.hidden=true; }
+  function hideReading(){
+    if(readingEl) readingEl.hidden=true;
+    if(answerHead) answerHead.hidden=false;
+  }
 
   // Delegated once on the container, because renderHits replaces its
   // innerHTML on every search and per-button listeners would be rebound
   // (and leak) each time.
   hits.addEventListener("click",function(ev){
+    // The timestamp pill lives inside the anchor that links to YouTube,
+    // which was harmless while it looked like text and wrong the moment it
+    // looked like a button: pressing the one control that says "play this
+    // second" navigated away from the page that can. It now does what it
+    // looks like, and only for hits that can actually seek — an X pill
+    // still follows the link, because there is nothing here to play.
+    var pill=ev.target.closest ? ev.target.closest(".play:not(.noseek)") : null;
+    if(pill){
+      var wrap=pill.closest(".hit-wrap");
+      var play=wrap && wrap.querySelector("button.play-here");
+      if(play){ ev.preventDefault(); play.click(); return; }
+    }
     var btn=ev.target.closest ? ev.target.closest("button[data-act]") : null;
     if(!btn) return;
     var h=lastHits[parseInt(btn.getAttribute("data-i"),10)];
