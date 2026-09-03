@@ -288,10 +288,6 @@
     margin-left:2px;font-weight:500}
   .copyts:hover{color:var(--green);border-color:var(--green)}
   .copyts.done{color:var(--green);border-color:var(--green)}
-  /* Sits in the action row of the one card it applies to, where the play
-     button would be, so it reads as the reason that card has none. */
-  .seeknote{color:var(--muted);font-size:11.5px;line-height:1.45;
-    align-self:center}
   /* In the actions row, last, and quiet. It used to sit in the title row
      with margin-left:auto, which put it on a line of its own the moment a
      title was long enough to wrap — floating right, attached to nothing.
@@ -778,13 +774,27 @@ function speakerChip(h){
   return '<span class="who">' + esc(who.join(" & ")) + '</span>';
 }
 
+// Two different questions that were conflated into one for months.
+//
+// canSeek: can a link land on the moment? X broadcasts CAN — ?t=<seconds>
+// on the status URL opens the player right there. That was assumed false
+// and never tested, so thirty-five hours of broadcasts were shown with a
+// muted timestamp and a note telling people to scrub by hand.
+//
+// canEmbed: can it play INSIDE this page? Only YouTube, which has an
+// embed player. A broadcast opens on X instead — still at the second.
 function canSeek(url){
+  return /[?&]t=\d+/.test(String(url || "")) ||
+         !/(^|\/\/)([^/]*\.)?(x\.com|twitter\.com)\//.test(String(url || ""));
+}
+function canEmbed(url){
   var u = String(url || "");
-  return !/(^|\/\/)([^/]*\.)?(x\.com|twitter\.com)\//.test(u);
+  return /(youtube\.com|youtu\.be)\//.test(u);
 }
 
 function watchLabel(url){
   var u = String(url || "");
+  if (/(x\.com|twitter\.com)\//.test(u)) return "watch on X →";
   if (!canSeek(u)) return "watch on X (no timestamp) →";
   if (u.indexOf("spotify.com") !== -1) return "listen on Spotify →";
   return "watch on YouTube →";
@@ -823,11 +833,11 @@ function airedLabel(iso){
           +'</div>'
           +'<div class="quote">'+esc(cleanSnippet(h.text))+'</div></a>'
           +'<div class="hit-actions">'
-          +(canSeek(h.deep_link)
+          +(canEmbed(h.deep_link)
               ? '<button class="share play-here" data-act="play" data-i="'+i+'">'
                 + '\u25B6 play here</button>'
-              : '<span class="seeknote">X can\u2019t jump to a time in video '
-                + '\u2014 copy it and scrub</span>')
+              : '<a class="share play-here" target="_blank" rel="noopener" href="'
+                + escAttr(safeUrl(h.deep_link)) + '">\u25B6 play on X</a>')
           +'<button class="share" data-act="x" data-i="'+i+'">post on X</button>'
           +'<button class="share" data-act="img" data-i="'+i+'">save image</button>'
           +'<button class="share" data-act="clip" data-i="'+i+'">make clip</button>'

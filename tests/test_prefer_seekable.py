@@ -34,8 +34,14 @@ def hit(episode_id: str, link: str, text: str) -> PodcastHit:
 
 
 def test_recognises_which_links_can_seek():
+    """X broadcasts seek too — ?t=<seconds> opens the player there.
+
+    Asserted the other way for months on an assumption nobody tested, which
+    cost half the archive its play button. Verified against three live
+    broadcasts before this was changed.
+    """
     assert _can_seek(YT)
-    assert not _can_seek(X)
+    assert _can_seek(X)
     assert not _can_seek("")
 
 

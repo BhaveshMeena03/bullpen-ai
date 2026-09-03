@@ -226,6 +226,10 @@ def _deep_link(url: str, platform: str, seconds: float) -> str:
         return f"{url}{joiner}t={sec}s"
     if platform == "spotify":
         return f"{url}#t={sec}"
+    if "x.com/" in url or "twitter.com/" in url:
+        # Plain seconds, no "s" suffix — that is what the player reads.
+        joiner = "&" if "?" in url else "?"
+        return f"{url}{joiner}t={sec}"
     return url
 
 
@@ -283,7 +287,28 @@ def _windows(
     return windows
 
 
-_SEEKABLE_HOST = re.compile(r"^https?://(www\.)?(youtube\.com|youtu\.be|open\.spotify\.com)/")
+# X included, because X broadcasts DO seek. This was assumed otherwise for
+# months and never tested: ?t=<seconds> on a broadcast — on the status URL
+# as well as the /i/broadcasts/ one — opens the player at that second.
+# Checked on three broadcasts, asking for 1800, 2400 and 9311 and getting
+# exactly those back from the player.
+#
+# The cost of the assumption was half the archive. Thirty-five hours of
+# broadcasts were shown with no play button, a muted timestamp and a note
+# telling people to scrub by hand, when a link would have worked.
+_SEEKABLE_HOST = re.compile(
+    r"^https?://(www\.)?(youtube\.com|youtu\.be|open\.spotify\.com"
+    r"|x\.com|twitter\.com)/")
+
+
+# Seeking and embedding are different questions. Everything here seeks; only
+# YouTube plays inside the page.
+_EMBEDDABLE_HOST = re.compile(r"^https?://(www\.)?(youtube\.com|youtu\.be)/")
+
+
+def _can_embed(link: str) -> bool:
+    """Whether the moment can open in the page rather than on another site."""
+    return bool(_EMBEDDABLE_HOST.match(link or ""))
 
 
 def _can_seek(link: str) -> bool:
@@ -309,25 +334,30 @@ def _same_moment(a: str, b: str, threshold: float = 0.55) -> bool:
 
 
 def _prefer_seekable(hits: list[PodcastHit]) -> list[PodcastHit]:
-    """Where the same moment appears twice, keep the copy you can jump to.
+    """Where the same moment appears twice, keep the copy that plays here.
 
     Roughly half of every live broadcast is also in the YouTube upload of
-    that episode, so a single query can retrieve the same passage from
-    both. They are not equivalent: a YouTube citation carries ?t= and lands
-    on the second being quoted, while an X one cannot, because X has no
-    timestamp parameter for video. Returning the X copy when the YouTube
-    one exists costs the reader the entire point of the citation.
+    that episode, so a single query can retrieve the same passage twice.
 
-    Order is otherwise untouched — this only drops a later duplicate, and
-    only when a seekable hit already covers it. A non-seekable hit with no
-    seekable twin stays, because half-covered is better than missing.
+    This used to be justified by saying X could not seek at all. That was
+    never true and was never tested: ?t=<seconds> on a broadcast opens the
+    player at that second, on the status URL as well as /i/broadcasts/.
+    Both copies land on the moment.
+
+    What still separates them is where they land. YouTube has an embed, so
+    the moment opens inside the page; a broadcast opens on X. Between two
+    citations of the same words, the one that does not navigate away is
+    worth more — which is a smaller claim than the old one, and true.
+
+    Order is otherwise untouched: this only drops a later duplicate, and
+    only when an embeddable hit already covers it.
     """
     kept: list[PodcastHit] = []
     for hit in hits:
-        if _can_seek(hit.deep_link):
+        if _can_embed(hit.deep_link):
             kept.append(hit)
             continue
-        covered = any(_can_seek(k.deep_link) and _same_moment(k.text, hit.text)
+        covered = any(_can_embed(k.deep_link) and _same_moment(k.text, hit.text)
                       for k in hits)
         if not covered:
             kept.append(hit)

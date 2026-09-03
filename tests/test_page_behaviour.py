@@ -47,13 +47,19 @@ def test_the_scrub_note_is_not_attached_to_the_heading():
     assert "'<h3>'+head+'</h3>'+note" not in PAGE
 
 
-def test_the_scrub_note_sits_where_the_play_button_would_be():
-    """Same row, so it reads as the reason that card has no play button
-    rather than as an unrelated aside."""
-    actions = PAGE[PAGE.index('class="hit-actions"'):]
-    play = actions.index("play here")
-    note = actions.index('class="seeknote"')
-    assert note - play < 400, "the note drifted out of the action row"
+def test_every_card_offers_a_way_into_the_moment():
+    """There is no such thing as an unjumpable card any more.
+
+    This asserted the opposite: that a broadcast showed a note telling the
+    reader to scrub by hand, because X was believed to have no timestamp
+    parameter. It has one — ?t=<seconds> on the status URL opens the player
+    at that second — so a broadcast now gets a real control like anything
+    else. What differs is only where it opens.
+    """
+    actions = PAGE[PAGE.index('class="hit-actions"'):PAGE.index('class="clipbox"')]
+    assert "play here" in actions, "no inline play for embeddable hits"
+    assert "play on X" in actions, "a broadcast must still offer its moment"
+    assert "seeknote" not in actions, "the scrub-by-hand note is obsolete"
 
 
 def test_only_one_player_can_be_open():

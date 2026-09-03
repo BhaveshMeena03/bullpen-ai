@@ -89,10 +89,12 @@ def timestamp(seconds: float) -> str:
 
 
 def deep_link(url: str, seconds: float) -> str:
+    """A link that lands on the moment. X takes plain seconds, not "120s"."""
     if not url:
         return ""
     sep = "&" if "?" in url else "?"
-    return f"{url}{sep}t={int(seconds)}s"
+    suffix = "" if ("x.com/" in url or "twitter.com/" in url) else "s"
+    return f"{url}{sep}t={int(seconds)}{suffix}"
 
 
 def aggregate(hits: list[dict], min_confidence: str = "medium") -> dict:

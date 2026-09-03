@@ -921,7 +921,8 @@ _ABOUT_US = re.compile(
             | buy\s*back|buyback|airdrop|supply|tokenomics|burn|listing )\b
       | \b(?:the|this)\s+(?:project|token|coin|chart)\b
       | \b(?: buy\s*back|buyback )\b [^.?!]{0,25} \b(?:your|the)\b
-      | ^\W* (?:wen|when)\s+(?:airdrop|listing|moon|pump)
+      | ^\W* (?:wen|when)\s+(?:airdrop|listing|moon|pump
+                              |binance|okx|coinbase|bybit|kraken|cex)
       | ^\W* airdrop \s*\?* \W*$
       # Price talk that never says "price". "are we sending to millions",
       # "2-3M mc", "wagmi to 10m" — all asking where the token goes, none
@@ -933,6 +934,13 @@ _ABOUT_US = re.compile(
                                    |moon|valhalla)\b
       | \b\d+\s*[-–]?\s*\d*\s*[mb]?\s*(?:mc|market\s*cap|mcap)\b
       | \b(?:mc|mcap|market\s*cap)\b
+      # Exchange listings. "are you getting listed on OKX" went to
+      # retrieval and answered out of the podcast.
+      | \b(?:get(?:ting)?\s+)?listed\b
+      | \b(?:cex|binance|okx|coinbase|bybit|kraken|upbit)\b
+        [^.?!]{0,20} \b(?:listing|list|when|soon)\b
+      | \b(?:listing|list)\b [^.?!]{0,20}
+        \b(?:cex|binance|okx|coinbase|bybit|kraken)\b
     )""")
 # ...unless they are plainly asking what was SAID on the show, which is an
 # ordinary question and must reach retrieval untouched.
@@ -1009,6 +1017,32 @@ def addressed_to_another_bot(text: str, handle: str = "mbubbleSearch") -> bool:
         return False
     body = _LEADING_HANDLES.sub("", raw).strip()
     return f"@{handle}".lower() not in body.lower()
+
+# A real question wrapped in bait is still bait. The blocklist above only
+# gated the unprompted-fact path, so a post reading "what did ansem say
+# about zcash? vote to list MBS <link>" got a full answer — posted directly
+# beneath the scam, over this account's name, which is exactly the
+# endorsement the scam was fishing for.
+#
+# "Vote to get listed" is the shape doing the rounds: a parody account
+# wearing an exchange's branding, a fake poll, and a link. X labels the
+# account a parody; nothing carries that label into a mention, so the text
+# has to be enough.
+_VOTE_BAIT = re.compile(
+    r"""(?ix)\b(?: vote \s+ (?:to|for) \s+ (?:list|listing)
+                 | vote \s+ on \s+ \w+ \s+ to \s+ get \s+ listed
+                 | get \s+ listed .{0,20} vote
+                 | few \s+ votes \s+ away
+                 | last \s+ step \s+ with \s+ (?:okx|binance|bybit|coinbase)
+    )\b""")
+
+
+def looks_like_bait(text: str) -> bool:
+    """Whether replying here would put this account under somebody's scam."""
+    q = text or ""
+    return bool(_VOTE_BAIT.search(q) or _SOLICITS.search(q)
+                or _CARRIES_AN_ADDRESS.search(q))
+
 
 def pinned_answer(question: str, contract_address: str | None,
                   token_label: str | None = None) -> str | None:
@@ -1744,7 +1778,15 @@ def _relink(deep_link: str, seconds: int) -> str:
     wrong time; the link should land where the words say it lands.
     """
     base = re.sub(r"[?&]t=\d+s?", "", deep_link or "")
-    if not base or "youtube.com" not in base and "youtu.be" not in base:
+    if not base:
+        return deep_link
+    # X takes plain seconds; YouTube wants the "s" suffix. X was excluded
+    # here because broadcasts were believed unseekable — they are not, so
+    # every reply citing a broadcast was sending people to 0:00.
+    if "x.com/" in base or "twitter.com/" in base:
+        joiner = "&" if "?" in base else "?"
+        return f"{base}{joiner}t={seconds}"
+    if "youtube.com" not in base and "youtu.be" not in base:
         return deep_link
     joiner = "&" if "?" in base else "?"
     return f"{base}{joiner}t={seconds}s"
@@ -2494,6 +2536,12 @@ class MentionBot:
                 # Permanent. Checked before anything else that could produce
                 # a reply, because the promise made in the opt-out is that
                 # this account is never contacted again.
+                handled = mention.id
+                continue
+            if (mention.author_id not in self._priority
+                    and looks_like_bait(mention.text)):
+                logger.info("%s carries bait — answering would put this "
+                            "account under it", mention.id)
                 handled = mention.id
                 continue
             if addressed_to_another_bot(mention.text):
