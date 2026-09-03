@@ -34,7 +34,18 @@ import re
 
 # Platforms whose deep links carry a timestamp. A citation into one of
 # these can be clicked; a citation anywhere else can only be read.
-_SEEKABLE = {"youtube", "spotify"}
+#
+# X broadcasts are in here now. They always belonged: ?t=<seconds> opens
+# the player at that second, verified against three broadcasts. While they
+# were excluded, this ranking preferred the YouTube copy of every episode —
+# and the YouTube copy is the CUT, roughly a third shorter than the
+# broadcast it came from. So the rule that was meant to keep the clickable
+# copy was quietly keeping the shorter one and deleting the full show.
+#
+# X posts carry platform "other" rather than "x", which is what the
+# ingester writes; matching on the id prefix would be tidier but this is
+# the field the rest of the pipeline reads.
+_SEEKABLE = {"youtube", "spotify", "other"}
 
 # Share of sampled phrases that must appear in the other transcript before
 # two episodes are treated as the SAME RECORDING rather than two cuts that
@@ -93,6 +104,11 @@ def _rank(episode: dict) -> tuple[int, int]:
     Seekable first, because a citation you can click is the whole feature.
     Longer second, so between two equally linkable copies the fuller one is
     kept rather than a clip of it.
+
+    Now that broadcasts count as seekable, the second key is what actually
+    decides an X/YouTube pair — and it picks the broadcast, because the
+    upload is a cut of it. That is the right way round: the cut is where
+    the Squire interview went missing.
     """
     seekable = 1 if episode.get("platform") in _SEEKABLE else 0
     return (seekable, len(episode.get("segments") or []))

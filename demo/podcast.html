@@ -256,7 +256,7 @@
      rather than as a label that happens to be green. Monospace so the
      digits do not shift width between results, a filled pill so it reads
      as a control, and the triangle inside it rather than as a character
-     beside it. Ported from the MCG build, where this treatment measurably
+     beside it. Taken from a sister build, where this treatment measurably
      reads as "press this"; the palette stays ours. */
   .play{
     font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
@@ -305,20 +305,11 @@
   .empty{color:var(--muted)}
   .spin{display:none;color:var(--muted);margin-bottom:20px}
   .spin.show{display:block}
-  /* Not a link yet. Same card, visibly not pressable: no hover lift, no
-     arrow, and a label saying why. */
-  .also-card.soon{cursor:default;opacity:.72}
-  .also-card.soon:hover{border-color:var(--line);transform:none;
-    background:var(--panel)}
-  .soon-tag{margin-left:8px;font-size:11px;letter-spacing:.08em;
-    text-transform:uppercase;color:var(--green);
-    background:rgba(22,199,132,.12);border:1px solid rgba(22,199,132,.28);
-    padding:2px 7px;border-radius:999px;vertical-align:middle}
   /* The wait is the problem this solves. Retrieval lands in about two
      seconds and the answer can take thirty more, so without this the panel
      sits empty for half a minute and the page reads as hung. Saying what is
      happening — and how many passages it is happening to — turns a blank
-     wait into a visible one. Borrowed from the MCG build. */
+     wait into a visible one. Taken from a sister build. */
   /* Author rules beat the UA stylesheet, so `display:flex` here silently
      defeated the browser's own [hidden]{display:none} — el.hidden = true
      did nothing and "reading N passages" sat above finished answers
@@ -510,14 +501,6 @@
           terminal — ask it how something works, get the answer from the
           docs.</span>
       </a>
-      <!-- Built and running, not announced. Deliberately a <span> rather
-           than an <a>: a card that looks like a link and goes nowhere is
-           worse than no card, and the href goes in when the site does. -->
-      <span class="also-card soon">
-        <span class="also-name">MCG Search<span class="soon-tag">soon</span></span>
-        <span class="also-say">The same engine over the MCG interview
-          archive — 406 conversations, 275 hours, searchable by meaning
-          down to the second.</span>
       </span>
     </div>
   </div>
