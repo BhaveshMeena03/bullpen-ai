@@ -2208,6 +2208,80 @@ class BotState:
             self.author_replies = {}
 
 
+# A highlight is a gift. It goes to somebody who said something nice, and
+# the pool is finite. These went out under: "Dev is Indian 🤣🤣🤣", "Let's
+# talk⚡️dm us [link]" (twice), and a shill post carrying a contract
+# address — each answered "thank you 🙏 here's one people miss". The
+# account thanked a racist jab and two spammers, because the only test
+# being applied was "is this not a question".
+_SOLICITS = re.compile(
+    r"""(?ix)\b(?: dm\s+(?:us|me) | let'?s\s+talk | check\s+out\s+my
+                 | join\s+(?:our|my) | t\.me/ | discord\.gg
+                 | whats\s?app | telegram | promo(?:te|tion)?
+    )\b""")
+# A base58 string of that length is a Solana address. Somebody posting one
+# at this account is shilling, not complimenting.
+_CARRIES_AN_ADDRESS = re.compile(r"\b[1-9A-HJ-NP-Za-km-z]{32,44}\b")
+# Nationality, ethnicity or appearance plus mockery. Not an exhaustive
+# filter and not meant to be — it catches the shape that actually arrived,
+# and anything it misses still has to pass the praise test below.
+_PERSONAL_JAB = re.compile(
+    r"""(?ix)\b(?: indian|chinese|paki|nigerian|russian|jew(?:ish)?
+                 | brown|white|black )\b [^.?!]{0,30}
+        (?: \U0001F602 | \U0001F923 | lol|lmao|kek )
+      | \b(?:dev|founder|team)\s+is\s+\w+\b [^.?!]{0,20}
+        (?: \U0001F602 | \U0001F923 )""")
+
+
+# What praise actually looks like when it arrives. An allowlist rather than
+# a blocklist, deliberately: a blocklist has to anticipate every unpleasant
+# thing a stranger might type, and the ones it fails to anticipate get
+# thanked. This way the default is silence and the burden is on the post to
+# earn a reply, which is the right way round for an account that answers
+# automatically and in public.
+_READS_AS_PRAISE = re.compile(
+    r"""(?ix)\b(?: nice|cool|sick|dope|clean|slick|smooth|neat|elegant
+                 | great|good|amazing|awesome|incredible|insane|crazy
+                 | brilliant|impressive|beautiful|love\s+(?:this|it)
+                 | goat|fire|based|legend|useful|helpful|works?\b
+                 | congrats|congratulations|well\s+done|respect|props
+                 | gm|thank(?:s|\s+you)?|appreciate
+                 # Recommendations, which is what an endorsement usually
+                 # looks like. "you really need to try this" carries no
+                 # praise word at all and is worth more than any of them.
+                 | try\s+(?:this|it)|check\s+(?:this|it)\s+out
+                 | need\s+to\s+(?:try|see|use)|take\s+a\s+look
+                 | look\s+at\s+this|study|worth\s+a\s+look
+                 | go\s+(?:try|use)\s+(?:this|it)
+    )\b
+      | \U0001F525 | \U0001FAE1 | \U0001F44F | \U0001F64C | \U0001F4AF
+      | \U0001F440 | \U0001F602""")
+
+
+def deserves_a_highlight(text: str) -> bool:
+    """Whether an unprompted fact is the right answer to this post.
+
+    Silence is the correct reply to spam, to a shill, and to somebody being
+    unpleasant. None of them are improved by a fact about the broadcast, and
+    answering costs a slot from a finite pool plus the price of a post.
+
+    Two gates, and a post has to clear both. The blocklist catches what
+    actually arrived; the allowlist means anything neither list has seen
+    gets silence rather than a thank-you.
+    """
+    q = (text or "").strip()
+    if not q:
+        return False
+    if _SOLICITS.search(q) or _CARRIES_AN_ADDRESS.search(q):
+        return False
+    if _PERSONAL_JAB.search(q):
+        return False
+    # A complaint about the price is not praise, whatever else it is.
+    if _COMPLAINS_ABOUT_PRICE.search(q):
+        return False
+    return bool(_READS_AS_PRAISE.search(q))
+
+
 class MentionBot:
     """One poll cycle, with the caps that keep a bug from becoming a bill."""
 
@@ -2486,73 +2560,6 @@ class MentionBot:
                     "of staying silent", mention.author_id)
         return _pick(_MISS_PHRASINGS, mention.id)
 
-# A highlight is a gift. It goes to somebody who said something nice, and
-# the pool is finite. These went out under: "Dev is Indian 🤣🤣🤣", "Let's
-# talk⚡️dm us [link]" (twice), and a shill post carrying a contract
-# address — each answered "thank you 🙏 here's one people miss". The
-# account thanked a racist jab and two spammers, because the only test
-# being applied was "is this not a question".
-_SOLICITS = re.compile(
-    r"""(?ix)\b(?: dm\s+(?:us|me) | let'?s\s+talk | check\s+out\s+my
-                 | join\s+(?:our|my) | t\.me/ | discord\.gg
-                 | whats\s?app | telegram | promo(?:te|tion)?
-    )\b""")
-# A base58 string of that length is a Solana address. Somebody posting one
-# at this account is shilling, not complimenting.
-_CARRIES_AN_ADDRESS = re.compile(r"\b[1-9A-HJ-NP-Za-km-z]{32,44}\b")
-# Nationality, ethnicity or appearance plus mockery. Not an exhaustive
-# filter and not meant to be — it catches the shape that actually arrived,
-# and anything it misses still has to pass the praise test below.
-_PERSONAL_JAB = re.compile(
-    r"""(?ix)\b(?: indian|chinese|paki|nigerian|russian|jew(?:ish)?
-                 | brown|white|black )\b [^.?!]{0,30}
-        (?: \U0001F602 | \U0001F923 | lol|lmao|kek )
-      | \b(?:dev|founder|team)\s+is\s+\w+\b [^.?!]{0,20}
-        (?: \U0001F602 | \U0001F923 )""")
-
-
-# What praise actually looks like when it arrives. An allowlist rather than
-# a blocklist, deliberately: a blocklist has to anticipate every unpleasant
-# thing a stranger might type, and the ones it fails to anticipate get
-# thanked. This way the default is silence and the burden is on the post to
-# earn a reply, which is the right way round for an account that answers
-# automatically and in public.
-_READS_AS_PRAISE = re.compile(
-    r"""(?ix)\b(?: nice|cool|sick|dope|clean|slick|smooth|neat|elegant
-                 | great|good|amazing|awesome|incredible|insane|crazy
-                 | brilliant|impressive|beautiful|love\s+(?:this|it)
-                 | goat|fire|based|legend|useful|helpful|works?\b
-                 | congrats|congratulations|well\s+done|respect|props
-                 | gm|thank(?:s|\s+you)?|appreciate
-    )\b
-      | \U0001F525 | \U0001FAE1 | \U0001F44F | \U0001F64C | \U0001F4AF
-      | \U0001F440 | \U0001F602""")
-
-
-def deserves_a_highlight(text: str) -> bool:
-    """Whether an unprompted fact is the right answer to this post.
-
-    Silence is the correct reply to spam, to a shill, and to somebody being
-    unpleasant. None of them are improved by a fact about the broadcast, and
-    answering costs a slot from a finite pool plus the price of a post.
-
-    Two gates, and a post has to clear both. The blocklist catches what
-    actually arrived; the allowlist means anything neither list has seen
-    gets silence rather than a thank-you.
-    """
-    q = (text or "").strip()
-    if not q:
-        return False
-    if _SOLICITS.search(q) or _CARRIES_AN_ADDRESS.search(q):
-        return False
-    if _PERSONAL_JAB.search(q):
-        return False
-    # A complaint about the price is not praise, whatever else it is.
-    if _COMPLAINS_ABOUT_PRICE.search(q):
-        return False
-    return bool(_READS_AS_PRAISE.search(q))
-
-
     def _instead_of_a_miss(self, mention: Mention) -> str | None:
         """A fact, when nothing was actually asked.
 
@@ -2561,7 +2568,13 @@ def deserves_a_highlight(text: str) -> bool:
         description of the tool reads as the tool failing at the moment it
         is being recommended. That is where it landed.
         """
-        if not deserves_a_highlight(mention.text):
+        # The allowlist is for strangers. A priority account is one of the
+        # five hand-picked handles this bot must never meet with silence,
+        # and a heuristic tuned against spammers is not allowed to decide
+        # otherwise — that is how "intern you really need to try this",
+        # posted by one of them, got nothing back.
+        if (mention.author_id not in self._priority
+                and not deserves_a_highlight(mention.text)):
             logger.info("%s asked nothing and is not worth a fact — "
                         "staying silent", mention.id)
             return None
@@ -2585,7 +2598,8 @@ def deserves_a_highlight(text: str) -> bool:
         """
         if not reads_as_social(question_from(mention.text)):
             return None
-        if not deserves_a_highlight(mention.text):
+        if (mention.author_id not in self._priority
+                and not deserves_a_highlight(mention.text)):
             logger.info("%s reads as social but is spam, a shill or a jab "
                         "— staying silent", mention.id)
             return None
