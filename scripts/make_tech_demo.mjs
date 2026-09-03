@@ -21,7 +21,9 @@ import { resolve } from "path";
 
 const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const FRAMES = "/tmp/mb_tech";
-const PAGE = "file://" + resolve("demo/how-it-works.html");
+// ?staged suppresses the page's own reveal-everything fallback, which
+// exists so the page is readable when somebody just opens it.
+const PAGE = "file://" + resolve("demo/how-it-works.html") + "?staged";
 
 rmSync(FRAMES, { recursive: true, force: true });
 mkdirSync(FRAMES, { recursive: true });

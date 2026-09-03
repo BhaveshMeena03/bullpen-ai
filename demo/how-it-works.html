@@ -145,3 +145,21 @@
       never posted — the timestamp is the part you can check.</p>
   </div>
 </div>
+
+<script>
+// This page is two things: the source for a recorded explainer, where the
+// steps arrive one at a time, and a page people actually open. It was only
+// ever the first. Every .step and .rule starts at opacity:0 and waits for
+// scripts/make_tech_demo.mjs to add "on" — so served on its own it was a
+// heading over an empty screen, which is what anyone following a link saw.
+//
+// The recorder loads it with ?staged and drives the reveal itself. Without
+// that, everything is shown at once, which is the right answer for a
+// reader and leaves the recording untouched.
+(function () {
+  if (new URLSearchParams(location.search).has("staged")) return;
+  document.querySelectorAll(".step, .rule").forEach(function (el) {
+    el.classList.add("on");
+  });
+})();
+</script>
