@@ -895,6 +895,79 @@ _ABOUT_ORIGIN = ("Built for the AnsemHack Clawrena, and for the Market "
                  "Bubble and Bullpen ecosystem.")
 
 
+# ─── questions about US, not about the broadcast ──────────────────────────
+#
+# An account with a ticker in its bio gets asked about its own token, its
+# price, its chart and its roadmap. Retrieval answers all of them out of the
+# podcast, and the result reads as this project speaking about itself:
+#
+#   "what is plan for the project"     -> "the plan is to create an
+#                                          onboarding funnel for Solana..."
+#   "Chart has been falling... dead?"  -> a host on parabolas going -50%
+#   "will there be a buyback"          -> a host's opinion on buybacks
+#   "Airdrop to Ansem?"                -> "to qualify for Ansem airdrops..."
+#
+# None of it is true of this project, and all of it is financial. A podcast
+# quote becomes a roadmap commitment or a price opinion purely by being
+# posted under this handle. That is the one class of wrong answer that a
+# later correction does not undo.
+#
+# The trigger is who is being asked, not the topic. "what did ansem say
+# about buybacks" is a real question about the show and must still work.
+_ABOUT_US = re.compile(
+    r"""(?ix)
+    (?: \b(?:your|ur|yours|you)\b [^.?!]{0,40}
+        \b(?: token|coin|chart|price|project|roadmap|plan|plans
+            | buy\s*back|buyback|airdrop|supply|tokenomics|burn|listing )\b
+      | \b(?:the|this)\s+(?:project|token|coin|chart)\b
+      | \b(?: buy\s*back|buyback )\b [^.?!]{0,25} \b(?:your|the)\b
+      | ^\W* (?:wen|when)\s+(?:airdrop|listing|moon|pump)
+      | ^\W* airdrop \s*\?* \W*$
+    )""")
+# ...unless they are plainly asking what was SAID on the show, which is an
+# ordinary question and must reach retrieval untouched.
+_ABOUT_THE_SHOW = re.compile(
+    r"""(?ix)\b(?: said|say|says|mention(?:ed)?|episode|ep|show|broadcast
+                 | talk(?:ed)?|discuss(?:ed)?|ansem|banks|host|guest )\b""")
+
+# "this garbage keeps falling down", "dead already?", "it's rugging". These
+# are complaints about the token's price. They are not questions about the
+# broadcast and they are certainly not praise — one of them was answered
+# with "thank you 🙏" followed by a highlight about a coin going up.
+_COMPLAINS_ABOUT_PRICE = re.compile(
+    r"""(?ix)\b(?: garbage|trash|rug(?:ged|ging|pull)?|scam|dead|dying
+                 | dump(?:ing|ed)?|crash(?:ing|ed)?|falling|tanking
+                 | bleeding|down\s+bad|rekt|jeet(?:ed|ing)?
+    )\b""")
+
+
+def asks_about_us(text: str) -> bool:
+    """A question about this account's token or plans, not about the show."""
+    q = text or ""
+    if _ABOUT_THE_SHOW.search(q):
+        return False
+    return bool(_ABOUT_US.search(q) or _COMPLAINS_ABOUT_PRICE.search(q))
+
+
+# Said plainly, and it declines in the same breath. The honest answer to
+# "will you do a buyback" is that this account is not the one who would
+# know, and saying so is worth more than a citation about somebody else's.
+_NOT_OUR_LANE = (
+    "i only answer questions about what was said on the Market Bubble "
+    "broadcast — i can't speak for any token, its price or its plans. "
+    "ask me something from the show and i'll find the timestamp \U0001FAE1")
+
+# Somebody else's address is not ours to hand out, and answering "send me
+# ansem's address" with THIS project's contract address is the shape of a
+# scam even when it is an accident.
+_SOMEONE_ELSES_ADDRESS = re.compile(
+    r"""(?ix)\b(?: ansem|banks|blknoiz|his|her|their )
+        (?:'?s)?\b                      # "ansems address" — \b after the
+                                        # bare name does not match a
+                                        # possessive, which is exactly how
+                                        # people write it
+        [^.?!]{0,20} \b(?:address|ca|contract|wallet)\b""")
+
 def pinned_answer(question: str, contract_address: str | None,
                   token_label: str | None = None) -> str | None:
     """A fixed reply for questions retrieval should not be asked.
@@ -912,7 +985,15 @@ def pinned_answer(question: str, contract_address: str | None,
     would be a ready-made tool for making a scam look endorsed by this
     account.
     """
-    if not contract_address or not _ASKS_FOR_CA.search(question or ""):
+    q = question or ""
+    # Before anything: a question about this project's token, price or plans
+    # is not a question retrieval should answer.
+    if asks_about_us(q):
+        return _NOT_OUR_LANE
+    # And never answer a request for somebody else's address with ours.
+    if _SOMEONE_ELSES_ADDRESS.search(q):
+        return _NOT_OUR_LANE
+    if not contract_address or not _ASKS_FOR_CA.search(q):
         return None
     label = token_label or "This project"
     return _pick(_CA_PHRASINGS, question).format(
@@ -2405,6 +2486,73 @@ class MentionBot:
                     "of staying silent", mention.author_id)
         return _pick(_MISS_PHRASINGS, mention.id)
 
+# A highlight is a gift. It goes to somebody who said something nice, and
+# the pool is finite. These went out under: "Dev is Indian 🤣🤣🤣", "Let's
+# talk⚡️dm us [link]" (twice), and a shill post carrying a contract
+# address — each answered "thank you 🙏 here's one people miss". The
+# account thanked a racist jab and two spammers, because the only test
+# being applied was "is this not a question".
+_SOLICITS = re.compile(
+    r"""(?ix)\b(?: dm\s+(?:us|me) | let'?s\s+talk | check\s+out\s+my
+                 | join\s+(?:our|my) | t\.me/ | discord\.gg
+                 | whats\s?app | telegram | promo(?:te|tion)?
+    )\b""")
+# A base58 string of that length is a Solana address. Somebody posting one
+# at this account is shilling, not complimenting.
+_CARRIES_AN_ADDRESS = re.compile(r"\b[1-9A-HJ-NP-Za-km-z]{32,44}\b")
+# Nationality, ethnicity or appearance plus mockery. Not an exhaustive
+# filter and not meant to be — it catches the shape that actually arrived,
+# and anything it misses still has to pass the praise test below.
+_PERSONAL_JAB = re.compile(
+    r"""(?ix)\b(?: indian|chinese|paki|nigerian|russian|jew(?:ish)?
+                 | brown|white|black )\b [^.?!]{0,30}
+        (?: \U0001F602 | \U0001F923 | lol|lmao|kek )
+      | \b(?:dev|founder|team)\s+is\s+\w+\b [^.?!]{0,20}
+        (?: \U0001F602 | \U0001F923 )""")
+
+
+# What praise actually looks like when it arrives. An allowlist rather than
+# a blocklist, deliberately: a blocklist has to anticipate every unpleasant
+# thing a stranger might type, and the ones it fails to anticipate get
+# thanked. This way the default is silence and the burden is on the post to
+# earn a reply, which is the right way round for an account that answers
+# automatically and in public.
+_READS_AS_PRAISE = re.compile(
+    r"""(?ix)\b(?: nice|cool|sick|dope|clean|slick|smooth|neat|elegant
+                 | great|good|amazing|awesome|incredible|insane|crazy
+                 | brilliant|impressive|beautiful|love\s+(?:this|it)
+                 | goat|fire|based|legend|useful|helpful|works?\b
+                 | congrats|congratulations|well\s+done|respect|props
+                 | gm|thank(?:s|\s+you)?|appreciate
+    )\b
+      | \U0001F525 | \U0001FAE1 | \U0001F44F | \U0001F64C | \U0001F4AF
+      | \U0001F440 | \U0001F602""")
+
+
+def deserves_a_highlight(text: str) -> bool:
+    """Whether an unprompted fact is the right answer to this post.
+
+    Silence is the correct reply to spam, to a shill, and to somebody being
+    unpleasant. None of them are improved by a fact about the broadcast, and
+    answering costs a slot from a finite pool plus the price of a post.
+
+    Two gates, and a post has to clear both. The blocklist catches what
+    actually arrived; the allowlist means anything neither list has seen
+    gets silence rather than a thank-you.
+    """
+    q = (text or "").strip()
+    if not q:
+        return False
+    if _SOLICITS.search(q) or _CARRIES_AN_ADDRESS.search(q):
+        return False
+    if _PERSONAL_JAB.search(q):
+        return False
+    # A complaint about the price is not praise, whatever else it is.
+    if _COMPLAINS_ABOUT_PRICE.search(q):
+        return False
+    return bool(_READS_AS_PRAISE.search(q))
+
+
     def _instead_of_a_miss(self, mention: Mention) -> str | None:
         """A fact, when nothing was actually asked.
 
@@ -2413,6 +2561,10 @@ class MentionBot:
         description of the tool reads as the tool failing at the moment it
         is being recommended. That is where it landed.
         """
+        if not deserves_a_highlight(mention.text):
+            logger.info("%s asked nothing and is not worth a fact — "
+                        "staying silent", mention.id)
+            return None
         found = self._next_highlight(mention.id)
         if not found:
             return None
@@ -2432,6 +2584,10 @@ class MentionBot:
         and got silence at the moment a reply was worth the most.
         """
         if not reads_as_social(question_from(mention.text)):
+            return None
+        if not deserves_a_highlight(mention.text):
+            logger.info("%s reads as social but is spam, a shill or a jab "
+                        "— staying silent", mention.id)
             return None
         found = self._next_highlight(mention.id)
         if not found:
