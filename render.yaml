@@ -7,7 +7,12 @@ services:
     runtime: docker
     # Paid tier: the free one sleeps when idle, and a bot that only
     # answers while someone happens to be browsing the site is not a bot.
-    plan: starter
+    #
+    # standard rather than starter: 1 CPU and 2GB. The blueprint has to
+    # agree with the dashboard or a sync fails on the mismatch, and the
+    # headroom is what the clip renderer will need — a max-quality encode
+    # peaks near 1GB of RSS, which a 512MB starter does not survive.
+    plan: standard
     healthCheckPath: /healthz
     autoDeploy: true
     # Pinned, so that experimental work can live on a branch without any
