@@ -248,7 +248,23 @@
   }
   .hit-top{display:flex;align-items:center;gap:10px;margin-bottom:6px;
     flex-wrap:wrap}
-  .play{color:var(--green);font-weight:700;font-size:13px;white-space:nowrap}
+  /* The timestamp IS the product, so it is styled as the thing to press
+     rather than as a label that happens to be green. Monospace so the
+     digits do not shift width between results, a filled pill so it reads
+     as a control, and the triangle inside it rather than as a character
+     beside it. Ported from the MCG build, where this treatment measurably
+     reads as "press this"; the palette stays ours. */
+  .play{
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:13px;font-weight:500;color:var(--green);white-space:nowrap;
+    background:rgba(22,199,132,.10);border:1px solid rgba(22,199,132,.30);
+    padding:4px 9px;border-radius:7px;flex:none;
+    display:inline-flex;align-items:center;gap:6px;
+    transition:background .16s ease,border-color .16s ease;
+  }
+  .play svg{width:9px;height:9px;fill:currentColor;flex:none}
+  .hit-wrap:hover .play{background:rgba(22,199,132,.19);
+    border-color:rgba(22,199,132,.5)}
   /* A result on X cannot jump to its moment — X has no ?t= for video. Styling
      it identically to a YouTube hit puts a green play button in front of
      something that will not play from there, which reads as broken rather
@@ -257,7 +273,10 @@
      the timestamp so scrubbing to it by hand is one paste instead of
      remembering four digits. */
   .play.noseek{color:var(--muted);font-weight:600;
+    background:transparent;border-color:transparent;padding:0;
     display:inline-flex;align-items:center;gap:6px}
+  .hit-wrap:hover .play.noseek{background:transparent;
+    border-color:transparent}
   .play.noseek .ts{color:var(--text);font-weight:700;
     font-variant-numeric:tabular-nums}
   .copyts{background:transparent;border:1px solid var(--line);color:var(--muted);
@@ -279,6 +298,42 @@
   .empty{color:var(--muted)}
   .spin{display:none;color:var(--muted);margin-bottom:20px}
   .spin.show{display:block}
+  /* Not a link yet. Same card, visibly not pressable: no hover lift, no
+     arrow, and a label saying why. */
+  .also-card.soon{cursor:default;opacity:.72}
+  .also-card.soon:hover{border-color:var(--line);transform:none;
+    background:var(--panel)}
+  .soon-tag{margin-left:8px;font-size:11px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--green);
+    background:rgba(22,199,132,.12);border:1px solid rgba(22,199,132,.28);
+    padding:2px 7px;border-radius:999px;vertical-align:middle}
+  /* The wait is the problem this solves. Retrieval lands in about two
+     seconds and the answer can take thirty more, so without this the panel
+     sits empty for half a minute and the page reads as hung. Saying what is
+     happening — and how many passages it is happening to — turns a blank
+     wait into a visible one. Borrowed from the MCG build. */
+  .reading{display:flex;align-items:center;gap:10px;margin:0 0 12px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--muted)}
+  .bars{display:inline-flex;gap:2px;align-items:flex-end;height:11px}
+  .bars s{width:2px;height:4px;background:var(--green);display:block;
+    animation:eq .9s ease-in-out infinite}
+  .bars s:nth-child(2){animation-delay:.15s}
+  .bars s:nth-child(3){animation-delay:.3s}
+  .bars s:nth-child(4){animation-delay:.45s}
+  @keyframes eq{0%,100%{height:4px}50%{height:11px}}
+  /* The caret marks the answer as still being written, which is the other
+     half of the same question: is this finished, or is more coming? */
+  /* Attached to #answer-body while text is streaming, so the reader can
+     tell "still writing" from "finished". */
+  #answer-body.writing::after{content:"";display:inline-block;
+    width:7px;height:15px;background:var(--green);margin-left:3px;
+    vertical-align:-2px;animation:blink 1s step-end infinite}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+  @media (prefers-reduced-motion:reduce){
+    .bars s,#answer-body.writing::after{animation:none}
+  }
   .foot{color:var(--muted);font-size:12px;margin-top:40px;border-top:1px solid
     var(--line);padding-top:16px}
   .eps{margin-top:44px}
@@ -406,6 +461,10 @@
 
   <div class="answer" id="answer">
     <h3>Answer</h3>
+    <div class="reading" id="reading" hidden>
+      <span class="bars" aria-hidden="true"><s></s><s></s><s></s><s></s></span>
+      <span id="reading-text"></span>
+    </div>
     <div id="answer-body"></div>
     <div class="player" id="answer-player"></div>
   </div>
@@ -438,6 +497,15 @@
           terminal — ask it how something works, get the answer from the
           docs.</span>
       </a>
+      <!-- Built and running, not announced. Deliberately a <span> rather
+           than an <a>: a card that looks like a link and goes nowhere is
+           worse than no card, and the href goes in when the site does. -->
+      <span class="also-card soon">
+        <span class="also-name">MCG Search<span class="soon-tag">soon</span></span>
+        <span class="also-say">The same engine over the MCG interview
+          archive — 406 conversations, 275 hours, searchable by meaning
+          down to the second.</span>
+      </span>
     </div>
   </div>
 
@@ -660,7 +728,12 @@ function timestampChip(h){
       + ' title="copy the timestamp, then scrub to it on X">copy</button>'
       + '</span>';
   }
-  return '<span class="play">\u25B6 ' + esc(h.timestamp) + '</span>';
+  // Inline SVG rather than the \u25B6 character: the glyph renders at a
+  // different size and baseline in every font, and it was sitting a pixel
+  // high next to the digits.
+  return '<span class="play">'
+    + '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M0 0l10 5-10 5z"/></svg>'
+    + esc(h.timestamp) + '</span>';
 }
 
 // The moment, playable in place. A card that links away makes the claim
@@ -877,6 +950,18 @@ function airedLabel(iso){
     }
   }
 
+  // The status line above the answer. Kept as two functions rather than
+  // inline toggles because every exit path has to clear it — an indicator
+  // still claiming to be reading after the answer failed is worse than no
+  // indicator at all.
+  var readingEl=document.getElementById("reading"),
+      readingTx=document.getElementById("reading-text");
+  function showReading(label){
+    if(!readingEl) return;
+    readingTx.textContent=label; readingEl.hidden=false;
+  }
+  function hideReading(){ if(readingEl) readingEl.hidden=true; }
+
   // Delegated once on the container, because renderHits replaces its
   // innerHTML on every search and per-button listeners would be rebound
   // (and leak) each time.
@@ -1081,6 +1166,10 @@ function airedLabel(iso){
 
   function finishSearch(){
     go.disabled=false; spin.classList.remove("show");
+    // Single place both indicators come down. finishSearch runs on success,
+    // on failure and on the non-streaming fallback, which is the only way
+    // to be sure neither is left claiming work that has stopped.
+    hideReading(); body.classList.remove("writing");
     citeTimestamps();
     addShareButton();
   }
@@ -1230,6 +1319,9 @@ function airedLabel(iso){
       // page is still working on something else.
       spin.classList.remove("show");
       answer.classList.add("show"); body.textContent="";
+      // Something truthful in the panel from the moment it opens, rather
+      // than an empty box until the model produces its first token.
+      showReading("searching the archive");
       var typer=Typer(body);
       function pump(){
         return reader.read().then(function(step){
@@ -1246,9 +1338,22 @@ function airedLabel(iso){
             });
             if(!data) return;
             var p; try{ p=JSON.parse(data); }catch(e){ return; }
-            if(ev==="hits") renderHits(p);
-            else if(ev==="error") typer.set("Search hiccuped — try again.");
-            else if(p.text){ typer.push(p.text); }
+            if(ev==="hits"){
+              renderHits(p);
+              // The count is the reassurance: it found things, it is now
+              // reading them. A spinner cannot say that.
+              var n=(p&&p.length)||0;
+              showReading(n?("reading "+n+" passage"+(n===1?"":"s")):"writing the answer");
+            }
+            else if(ev==="error"){
+              hideReading(); typer.set("Search hiccuped — try again.");
+            }
+            else if(p.text){
+              // First token: the model is answering, so the status line has
+              // done its job and the caret takes over.
+              hideReading(); body.classList.add("writing");
+              typer.push(p.text);
+            }
           });
           return pump();
         });
