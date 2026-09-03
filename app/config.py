@@ -341,6 +341,13 @@ class Settings(BaseSettings):
     # The cost is the other side: it ignores genuine people who do not pay X
     # for a checkmark, and on a tool whose whole pitch is being useful to
     # whoever asks, that is a real thing to give up. Off by default.
+    # An outbound proxy for the clip downloader, when one is needed.
+    # YouTube treats a datacenter IP differently from a home one and can
+    # refuse a section download from a cloud host while the same URL works
+    # on a laptop. Empty means direct, which is the right default: a proxy
+    # sees every request, so it is opt-in rather than always on.
+    clip_proxy: str = ""
+
     x_bot_verified_only: bool = False
     # Longest reply to compose. 280 is what X API v2 is widely reported to
     # enforce on POST /2/tweets even for Premium accounts — but automated

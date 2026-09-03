@@ -10,18 +10,28 @@ the index rather than out of a speech-to-text pass, and only the seconds
 being clipped are ever downloaded — a minute of a three-hour episode is a
 couple of megabytes, not the whole file.
 
-What it costs, measured rather than guessed: a 55-second clip at 720x720
-encodes in 3.8s of single-core CPU and comes out at 9MB. CPU is therefore
-not the binding constraint; egress is. 9MB a clip against 5GB of included
-bandwidth is roughly 550 clips a month, so the limits below exist to make
-a viral afternoon cost a refusal rather than a bill.
+What it costs, measured rather than guessed. A viewer clip renders at the
+same quality as one cut by hand for a post — 1920 wide, 16:9, crf 16 — and
+that moves both costs by roughly an order of magnitude:
 
-Deliberately modest defaults:
+  CPU      ~2.2 CPU-seconds per second of output. A 45s clip is ~100
+           CPU-seconds: under a minute on two cores, four minutes on half
+           of one. CPU is now a binding constraint, not a rounding error.
+  egress   ~14MB for 45s, against 9MB for the old 720p square. Roughly 350
+           clips per 5GB rather than 550.
 
-  720x720   half the bytes of 1080 and indistinguishable on a phone
-  45s max   long enough for a real exchange, short enough to stay cheap
-  1 at a time  video encoding is the most expensive thing this service can
-               be asked to do; concurrency here is how a small box dies
+Both are the price of the thing being worth posting. A 720p square
+pillarboxes in every timeline and looks like a preview, and half this
+archive is X broadcasts, which cannot be linked to a timestamp at all —
+for those, this clip is the only way anyone can share the moment.
+
+The limits below exist so a viral afternoon costs a queue and a refusal
+rather than a bill:
+
+  1920 wide, 16:9   what the source actually holds
+  45s max           long enough for a real exchange
+  1 at a time       encoding is the most expensive thing this service does,
+                    and concurrency here is how a small box dies
 
 Jobs run in the background and the client polls, because even a fast
 encode is far longer than a request should be held open.
@@ -51,6 +61,13 @@ CAPTION_WORDS = 5
 
 MAX_CLIP_SECONDS = 45
 MIN_CLIP_SECONDS = 5
+
+# What a viewer-requested clip renders at. 1920 wide, quality-targeted,
+# same as a clip made by hand for a post — measured at ~2.2 CPU-seconds per
+# second of output, so a 45s clip is ~100 CPU-seconds. That is a minute on
+# two cores and four on half of one, which is why MAX_CONCURRENT is 1 and
+# the front end shows a queue position rather than pretending it is instant.
+CLIP_HEIGHT = 1920
 # Only one encode at a time. The queue is what keeps a burst from turning
 # into an out-of-memory kill on a small instance.
 MAX_CONCURRENT = 1
@@ -126,7 +143,16 @@ def _encoder(size: int = DEFAULT_SIZE, best: bool = False) -> list[str]:
     and then watched. Only worth it for a clip that goes out publicly.
     """
     if best:
-        return ["-c:v", "libx264", "-preset", "slow", "-crf", "18",
+        # crf 16 and `slower`, not 18 and `slow`. X and YouTube both
+        # re-encode whatever they are given, so this file is a source for
+        # their encoder rather than the thing anyone watches — every
+        # artefact left here is one their pass bakes in permanently.
+        #
+        # -tune film because that is what this footage is: real cameras and
+        # grain, not flat animation. yuv420p and High@4.2 stay, since
+        # anything more exotic will not decode in a phone timeline.
+        return ["-c:v", "libx264", "-preset", "slower", "-crf", "16",
+                "-tune", "film",
                 "-pix_fmt", "yuv420p", "-profile:v", "high", "-level", "4.2"]
     rate = f"{int(2500 * (size / DEFAULT_SIZE) ** 2)}k"
     try:
@@ -434,7 +460,7 @@ def render(source: Path, captions, backdrop: Path, workdir: Path,
     result = subprocess.run(
         ["ffmpeg", "-y", *inputs, "-filter_complex", ";".join(steps),
          "-map", f"[{label}]", "-map", "0:a?", *_encoder(size, best),
-         "-c:a", "aac", "-b:a", "192k" if best else "128k",
+         "-c:a", "aac", "-b:a", "256k" if best else "128k",
          "-movflags", "+faststart",
          "-shortest", str(out)],
         capture_output=True, text=True, timeout=300)
@@ -529,8 +555,17 @@ class ClipService:
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             raw = work / "raw.mp4"
-            fetch_section(episode["url"], start, end, raw, self._proxy)
+            # Same recipe make_clip.py uses for a clip that goes out in
+            # public: full height, 16:9, quality-targeted encode. The old
+            # defaults here were 720 square at a fixed bitrate, which is a
+            # preview — and a viewer sharing this has no other way to point
+            # anyone at an X broadcast, since X cannot link to a timestamp.
+            fetch_section(episode["url"], start, end, raw, self._proxy,
+                          height=CLIP_HEIGHT)
             backdrop = work / "backdrop.png"
-            make_backdrop(episode.get("title", ""), stamp(start), backdrop)
+            make_wide_overlay(episode.get("title", ""), stamp(start),
+                              backdrop, CLIP_HEIGHT,
+                              int(CLIP_HEIGHT * 9 / 16))
             captions = build_captions(episode.get("segments", []), start, end)
-            render(raw, captions, backdrop, work, out)
+            render(raw, captions, backdrop, work, out, CLIP_HEIGHT,
+                   best=True, wide=True)

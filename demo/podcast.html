@@ -210,6 +210,19 @@
   .example-play:hover{background:rgba(52,211,153,.16)}
   /* 16:9 without a wrapper div, so the player keeps its shape on a phone
      where the card is the width of the screen. */
+  .clipbox:empty{display:none}
+  .clipbox{margin-top:10px;padding:12px 14px;border:1px solid #232a33;
+           border-radius:10px;background:#12161c}
+  .clip-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+  .clip-row label{font-size:13px;color:#8a939e;min-width:48px}
+  .clip-row input[type=range]{flex:1;accent-color:#16c784}
+  .c-lab{font-size:13px;color:#e6e8ea;min-width:132px;text-align:right;
+         font-variant-numeric:tabular-nums}
+  .clip-go{display:flex;align-items:center;gap:10px}
+  .c-status{font-size:13px;color:#8a939e}
+  .c-out:not(:empty){margin-top:10px}
+  .c-out video{width:100%;border-radius:10px;display:block}
+  .c-dl{display:inline-block;margin-top:8px}
   .player{margin-top:8px}
   .player:empty{display:none}
   .player iframe{width:100%;aspect-ratio:16/9;border:0;border-radius:10px;
@@ -726,8 +739,10 @@ function airedLabel(iso){
               : '<span class="seeknote">X can\u2019t jump to a time in video '
                 + '\u2014 copy it and scrub</span>')
           +'<button class="share" data-act="x" data-i="'+i+'">post on X</button>'
-          +'<button class="share" data-act="img" data-i="'+i+'">save clip</button>'
-          +'</div><div class="player" data-slot="'+i+'"></div></div>';
+          +'<button class="share" data-act="img" data-i="'+i+'">save image</button>'
+          +'<button class="share" data-act="clip" data-i="'+i+'">make video</button>'
+          +'</div><div class="clipbox" data-clip="'+i+'"></div>'
+          +'<div class="player" data-slot="'+i+'"></div></div>';
       });
       hits.innerHTML=html;
     } else {
@@ -763,6 +778,105 @@ function airedLabel(iso){
 
   var lastQuery="", lastHits=[];
 
+
+  // ─── clips ──────────────────────────────────────────────────────────
+  //
+  // The picker exists because the retrieved window is where the SENTENCE
+  // is, not where the exchange starts. Somebody who just read the quote
+  // knows better than the retriever whether the good part began fifteen
+  // seconds earlier, so the range is theirs to set rather than ours to
+  // guess. It opens on a sane default so it is one click for anyone who
+  // does not care.
+  var CLIP_MIN=5, CLIP_MAX=45;
+
+  function hms(s){
+    s=Math.max(0,Math.round(s));
+    var h=Math.floor(s/3600), m=Math.floor((s%3600)/60), x=s%60;
+    var mm=(h?String(m).padStart(2,"0"):String(m));
+    return (h?h+":":"")+mm+":"+String(x).padStart(2,"0");
+  }
+
+  function clipPicker(h,btn){
+    var i=btn.getAttribute("data-i");
+    var box=hits.querySelector('.clipbox[data-clip="'+i+'"]');
+    if(!box) return;
+    if(box.firstChild){ box.innerHTML=""; btn.textContent="make video"; return; }
+    Array.prototype.forEach.call(hits.querySelectorAll(".clipbox"),
+      function(o){ o.innerHTML=""; });
+    Array.prototype.forEach.call(hits.querySelectorAll('button[data-act="clip"]'),
+      function(o){ o.textContent="make video"; });
+    btn.textContent="close";
+
+    // Three seconds of run-up by default, so it does not open mid-word —
+    // the same lead the hand-cut clips use.
+    box.innerHTML =
+      '<div class="clip-row"><label>start</label>'
+      + '<input type="range" class="c-start" min="-30" max="15" step="1" value="-3">'
+      + '<span class="c-lab c-slab"></span></div>'
+      + '<div class="clip-row"><label>length</label>'
+      + '<input type="range" class="c-len" min="'+CLIP_MIN+'" max="'+CLIP_MAX
+      + '" step="1" value="30"><span class="c-lab c-llab"></span></div>'
+      + '<div class="clip-go"><button class="share c-render">render</button>'
+      + '<span class="c-status"></span></div>'
+      + '<div class="c-out"></div>';
+
+    var s=box.querySelector(".c-start"), L=box.querySelector(".c-len"),
+        sl=box.querySelector(".c-slab"), ll=box.querySelector(".c-llab"),
+        go=box.querySelector(".c-render"), st=box.querySelector(".c-status"),
+        out=box.querySelector(".c-out");
+
+    function base(){ return Math.max(0, h.start_seconds + parseInt(s.value,10)); }
+    function paint(){
+      sl.textContent = hms(base()) + " → " + hms(base()+parseInt(L.value,10));
+      ll.textContent = L.value + "s";
+    }
+    s.addEventListener("input",paint); L.addEventListener("input",paint); paint();
+
+    go.addEventListener("click",function(){
+      go.disabled=true; out.innerHTML="";
+      st.textContent="queued…";
+      fetch(API+"/v1/podcast/clip",{
+        method:"POST", headers:{"content-type":"application/json"},
+        body:JSON.stringify({episode_id:h.episode_id, start:base(),
+                             end:base()+parseInt(L.value,10)})
+      }).then(function(r){
+        return r.json().then(function(d){
+          if(!r.ok) throw new Error(d.detail||"that did not work");
+          return d;
+        });
+      }).then(function(d){ poll(d.job_id); })
+        .catch(function(e){ st.textContent=e.message; go.disabled=false; });
+    });
+
+    // Rendering is roughly a minute, so the wait is stated in real terms
+    // rather than as a spinner that implies "any moment now".
+    function poll(id){
+      var began=Date.now();
+      (function tick(){
+        fetch(API+"/v1/podcast/clip/"+id).then(function(r){ return r.json(); })
+          .then(function(d){
+            var secs=Math.round((Date.now()-began)/1000);
+            if(d.status==="done"){
+              st.textContent="done in "+secs+"s";
+              out.innerHTML='<video controls preload="metadata" src="'
+                + API+d.url+'"></video>'
+                + '<a class="share c-dl" href="'+API+d.url+'" download>download</a>';
+              go.disabled=false; return;
+            }
+            if(d.status==="failed"){
+              st.textContent=d.error||"that clip could not be made";
+              go.disabled=false; return;
+            }
+            st.textContent=(d.status==="working"?"rendering":"queued")
+                           +"… "+secs+"s";
+            setTimeout(tick,2000);
+          })
+          .catch(function(){ st.textContent="lost track of that render";
+                             go.disabled=false; });
+      })();
+    }
+  }
+
   // Delegated once on the container, because renderHits replaces its
   // innerHTML on every search and per-button listeners would be rebound
   // (and leak) each time.
@@ -792,6 +906,7 @@ function airedLabel(iso){
       btn.textContent="close";
       return;
     }
+    if(btn.getAttribute("data-act")==="clip"){ clipPicker(h,btn); return; }
     if(btn.getAttribute("data-act")==="x"){ postMoment(h); return; }
     momentCard(h);
     var was=btn.textContent; btn.textContent="saved ✓";

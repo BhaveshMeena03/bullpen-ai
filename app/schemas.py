@@ -149,3 +149,16 @@ class PodcastSearchResponse(BaseModel):
     hits: list[PodcastHit]
     model: str
     refused: bool = False
+
+
+class ClipRequest(BaseModel):
+    """A viewer asking for a video of one moment.
+
+    Bounds live in app.clipper (MIN/MAX_CLIP_SECONDS) and are enforced in
+    the handler rather than here, so that a clip one second too long comes
+    back as a sentence explaining the limit instead of a validation dump.
+    """
+
+    episode_id: str = Field(..., min_length=1, max_length=200)
+    start: float = Field(..., ge=0)
+    end: float = Field(..., gt=0)

@@ -10,3 +10,8 @@ pydantic-settings==2.14.2
 # shapes and four lines of text, so this is here instead of a headless
 # browser in the image.
 pillow==12.3.0
+
+# The clip renderer downloads just the requested seconds of an episode.
+# Was dev-only while clipping was a local script; it is a runtime
+# dependency now that the site can ask for a clip.
+yt-dlp==2026.7.4

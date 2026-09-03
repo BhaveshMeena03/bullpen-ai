@@ -8,10 +8,14 @@ services:
     # Paid tier: the free one sleeps when idle, and a bot that only
     # answers while someone happens to be browsing the site is not a bot.
     #
-    # standard rather than starter: 1 CPU and 2GB. The blueprint has to
-    # agree with the dashboard or a sync fails on the mismatch, and the
-    # headroom is what the clip renderer will need — a max-quality encode
-    # peaks near 1GB of RSS, which a 512MB starter does not survive.
+    # standard rather than starter, for two reasons. The blueprint has to
+    # agree with the dashboard or a sync fails on the mismatch; and the
+    # clip renderer needs the headroom — a max-quality encode peaks near
+    # 1GB of RSS, and starter is a 512MB box, so it does not run slowly
+    # there, it gets OOM-killed mid-render. Measured: ~2.2 CPU-seconds per
+    # second of output, so a 45s clip is ~100 CPU-seconds, about a minute
+    # and a half on this one core. MAX_CONCURRENT=1 in app/clipper.py is
+    # what keeps that a queue instead of a crash.
     plan: standard
     healthCheckPath: /healthz
     autoDeploy: true
