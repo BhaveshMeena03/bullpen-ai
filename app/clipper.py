@@ -60,6 +60,13 @@ BG = "#0b0e11"
 GREEN = "#16c784"
 CAPTION_WORDS = 5
 
+# The credit on every clip. Short on purpose: this is read at a glance on a
+# phone, off a re-upload, by somebody who has never heard of the site — the
+# subdomain was three extra syllables that carried no information. It is the
+# only attribution on a file that travels, which is why it is not optional.
+SITE_CREDIT = "lexthedev.com"
+
+
 # Three minutes is the ceiling, not the expectation. Measured end to end in
 # a one-core container, a 20-second clip takes 91 seconds — download,
 # caption render and encode — so this ceiling is about a quarter of an hour
@@ -295,9 +302,14 @@ def make_backdrop(title: str, stamp: str, path: Path,
         y += 34 * k
 
     foot_font = _font(FONT_CANDIDATES_REGULAR, int(18 * k))
-    foot = f"{stamp}   ·   search.lexthedev.com"
-    w = draw.textlength(foot, font=foot_font)
-    draw.text(((size - w) / 2, size - 44 * k), foot, font=foot_font, fill=GREEN)
+    stamp_font = _font(FONT_CANDIDATES_BOLD, int(18 * k))
+    gap = 12 * k
+    sw = draw.textlength(stamp, font=stamp_font)
+    cw = draw.textlength(SITE_CREDIT, font=foot_font)
+    x = (size - (sw + gap + cw)) / 2
+    y = size - 44 * k
+    draw.text((x, y), stamp, font=stamp_font, fill="#e6e8ea")
+    draw.text((x + sw + gap, y), SITE_CREDIT, font=foot_font, fill=GREEN)
     img.save(path)
 
 
@@ -321,19 +333,36 @@ def make_wide_overlay(title: str, stamp: str, path: Path,
     draw = ImageDraw.Draw(img)
     draw.rectangle([0, 0, width, int(7 * k)], fill=GREEN)
 
-    # A gradient would be nicer than a flat band and costs a loop over every
-    # row; behind text this size the difference is not visible.
-    # Opaque enough to actually cover. At 165 the broadcast's own
-    # "LOS ANGELES 1:42 PM PT" read straight through the credit.
-    scrim = Image.new("RGBA", (width, int(74 * k)), (0, 0, 0, 225))
+    # A gradient, not a flat band. At a flat 225 this covered the frame it
+    # sat on — the broadcast's own Polymarket and Market Bubble marks are
+    # right there in the top strip and vanished behind it, which reads as a
+    # bar bolted over the video rather than part of it.
+    #
+    # Strongest along the top edge where the text sits and falling away to
+    # nearly clear at the bottom of the band, so the picture comes through
+    # the lower half while the type keeps something to sit on. The text is
+    # outlined as well, which is what actually carries legibility here —
+    # that is why the flat band could be dropped this far. It was raised to
+    # 225 once because the broadcast's "LOS ANGELES 1:42 PM PT" read
+    # through the credit; the outline solves that without the paint.
+    band = int(74 * k)
+    scrim = Image.new("RGBA", (width, band), (0, 0, 0, 0))
+    sd = ImageDraw.Draw(scrim)
+    for row in range(band):
+        # 170 at the top edge, 40 at the bottom.
+        alpha = int(170 - (170 - 40) * (row / max(1, band - 1)))
+        sd.line([(0, row), (width, row)], fill=(0, 0, 0, alpha))
     img.paste(scrim, (0, int(7 * k)), scrim)
 
     # Shrink to fit rather than crop. Taking the first wrapped line cut
     # "Why Ansem Thinks Ethereum Is Done.. | Market" and threw away the
     # episode number, which is the half a reader needs.
     foot_font = _font(FONT_CANDIDATES_REGULAR, int(24 * k))
-    room = width - 68 * k - draw.textlength(
-        f"{stamp}  ·  search.lexthedev.com", font=foot_font) - 40 * k
+    stamp_font = _font(FONT_CANDIDATES_BOLD, int(24 * k))
+    gap = 14 * k
+    credit_w = (draw.textlength(stamp, font=stamp_font) + gap
+                + draw.textlength(SITE_CREDIT, font=foot_font))
+    room = width - 68 * k - credit_w - 40 * k
     for pt in (36, 33, 30, 27, 24):
         font = _font(FONT_CANDIDATES_BOLD, int(pt * k))
         if draw.textlength(title, font=font) <= room:
@@ -343,17 +372,24 @@ def make_wide_overlay(title: str, stamp: str, path: Path,
         shown = shown[:-2]
     if shown != title:
         shown = shown.rstrip(" .|-") + "…"
-    draw.text((34 * k, (74 * k - pt * k) / 2 + 7 * k), shown,
-              font=font, fill="#e6e8ea")
+    _outlined(draw, (34 * k, (74 * k - pt * k) / 2 + 7 * k), shown,
+              font, "#e6e8ea", outline=max(2, int(3 * k)))
 
     # In the top band beside the title, not along the bottom. The
     # broadcast runs its own logo, chyron and ticker across the lower third
     # of every frame, so anything put down there is competing with three
     # things at once — and the captions have to live there too.
-    foot = f"{stamp}  ·  search.lexthedev.com"
-    fw = draw.textlength(foot, font=foot_font)
-    draw.text((width - fw - 34 * k, (74 * k - 24 * k) / 2 + 7 * k),
-              foot, font=foot_font, fill=GREEN)
+    # Two pieces, not one string. The timestamp is the evidence — bold and
+    # white, the same weight as the title it sits beside — and the domain is
+    # the credit, lighter and green so it reads as a mark rather than as
+    # part of the sentence. One flat green run made them look like the same
+    # fact, which they are not.
+    baseline = (74 * k - 24 * k) / 2 + 7 * k
+    ring = max(2, int(3 * k))
+    x = width - credit_w - 34 * k
+    _outlined(draw, (x, baseline), stamp, stamp_font, "#e6e8ea", outline=ring)
+    x += draw.textlength(stamp, font=stamp_font) + gap
+    _outlined(draw, (x, baseline), SITE_CREDIT, foot_font, GREEN, outline=ring)
 
     img.save(path)
 
