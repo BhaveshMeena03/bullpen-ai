@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import shutil
 import subprocess
 import tempfile
@@ -59,7 +60,13 @@ BG = "#0b0e11"
 GREEN = "#16c784"
 CAPTION_WORDS = 5
 
-MAX_CLIP_SECONDS = 45
+# Three minutes is the ceiling, not the expectation. Measured end to end in
+# a one-core container, a 20-second clip takes 91 seconds — download,
+# caption render and encode — so this ceiling is about a quarter of an hour
+# of work. The picker says so before the button is pressed, and
+# MAX_CONCURRENT of 1 means the queue behind it is real. The default in the
+# picker stays short; this is headroom for a whole exchange.
+MAX_CLIP_SECONDS = 180
 MIN_CLIP_SECONDS = 5
 
 # What a viewer-requested clip renders at. 1920 wide, quality-targeted,
@@ -122,6 +129,36 @@ def _font(candidates: list[str], size: int):
     return ImageFont.load_default()
 
 
+def effective_cpus() -> int:
+    """How many cores this process may actually use, not how many it can see.
+
+    A container sees every core on the host and is scheduled on a fraction
+    of one. x264 sizes its thread pool from the visible count, so on a 1-CPU
+    box that reports 12 it starts twelve encoding threads, each with its own
+    frame buffers, and they then timeshare a single core's worth of quota.
+    Measured in exactly that shape: 2.07GB of anonymous memory against a 2GB
+    limit, and a twenty-second clip still encoding after six minutes.
+
+    The cgroup quota is the honest number, so it is read directly. Falls
+    back to the visible count where there is no quota, which is the normal
+    case on a laptop and correct there.
+    """
+    try:                                        # cgroup v2
+        raw = Path("/sys/fs/cgroup/cpu.max").read_text().split()
+        if raw[0] != "max":
+            return max(1, round(int(raw[0]) / int(raw[1])))
+    except Exception:                           # noqa: BLE001
+        pass
+    try:                                        # cgroup v1
+        quota = int(Path("/sys/fs/cgroup/cpu/cpu.cfs_quota_us").read_text())
+        period = int(Path("/sys/fs/cgroup/cpu/cpu.cfs_period_us").read_text())
+        if quota > 0:
+            return max(1, round(quota / period))
+    except Exception:                           # noqa: BLE001
+        pass
+    return os.cpu_count() or 1
+
+
 def _encoder(size: int = DEFAULT_SIZE, best: bool = False) -> list[str]:
     """Hardware encode on a Mac, x264 on the server.
 
@@ -153,6 +190,10 @@ def _encoder(size: int = DEFAULT_SIZE, best: bool = False) -> list[str]:
         # anything more exotic will not decode in a phone timeline.
         return ["-c:v", "libx264", "-preset", "slower", "-crf", "16",
                 "-tune", "film",
+                # Sized to the quota, not to the core count the kernel
+                # advertises. Without this the thread pool is built for the
+                # host and starves on a container's slice.
+                "-threads", str(effective_cpus()),
                 "-pix_fmt", "yuv420p", "-profile:v", "high", "-level", "4.2"]
     rate = f"{int(2500 * (size / DEFAULT_SIZE) ** 2)}k"
     try:
@@ -399,9 +440,20 @@ def fetch_section(url: str, start: float, end: float, dest: Path,
                       minutes even for a short section.
     """
     is_youtube = "youtube.com" in url or "youtu.be" in url
+    # No --force-keyframes-at-cuts. It makes yt-dlp re-encode the section
+    # with x264 so the cut lands exactly on the requested frame — and this
+    # pipeline then encodes the result a second time, so the work is paid
+    # for twice and thrown away once. On a container with one core that is
+    # the difference between a clip and a timeout: measured on the same
+    # twenty-second section, 8 seconds without it against a 180-second
+    # timeout with it.
+    #
+    # Accuracy was the reason it was there, so it was checked rather than
+    # assumed: a 30-second request comes back 30.01 seconds long starting
+    # at 0.03, which is well inside the tolerance for captions that are
+    # timed from the requested start.
     cmd = [_ytdlp_binary(), "--quiet", "--no-warnings",
            "--download-sections", f"*{start:.2f}-{end:.2f}",
-           "--force-keyframes-at-cuts",
            # H.264 first so the merge stays an mp4. Left to itself yt-dlp
            # takes AV1 with Opus, which is a smaller download and a webm,
            # and then everything downstream is decoding AV1 for no benefit

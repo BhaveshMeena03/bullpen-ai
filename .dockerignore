@@ -14,5 +14,8 @@ data/
 # can tell. tests/test_docker_build_context.py checks the two files agree.
 !data/highlights.json
 !data/term_index.json
+# The clipper's source of the media URL and the per-second segments.
+# Gzipped because the raw file is 7.6MB and every ingest rewrites it.
+!data/episodes.json.gz
 redteam_report.md
 PITCH_PREP.md

@@ -860,7 +860,18 @@ function airedLabel(iso){
   // seconds earlier, so the range is theirs to set rather than ours to
   // guess. It opens on a sane default so it is one click for anyone who
   // does not care.
-  var CLIP_MIN=5, CLIP_MAX=45;
+  var CLIP_MIN=5, CLIP_MAX=180;
+  // Measured, not estimated: a 20-second clip took 91 seconds end to end in
+  // a one-core container, download included — about 4.5 seconds of work per
+  // second of output. So a three-minute clip is a quarter of an hour, and
+  // saying so before the button is pressed is the difference between
+  // waiting and assuming it broke.
+  var SECONDS_PER_SECOND = 4.5;
+  function waitHint(secs){
+    var mins = secs * SECONDS_PER_SECOND / 60;
+    if (mins < 1.5) return "about a minute";
+    return "about " + Math.ceil(mins) + " minutes";
+  }
 
   function hms(s){
     s=Math.max(0,Math.round(s));
@@ -900,8 +911,10 @@ function airedLabel(iso){
 
     function base(){ return Math.max(0, h.start_seconds + parseInt(s.value,10)); }
     function paint(){
-      sl.textContent = hms(base()) + " → " + hms(base()+parseInt(L.value,10));
-      ll.textContent = L.value + "s";
+      var len = parseInt(L.value,10);
+      sl.textContent = hms(base()) + " → " + hms(base()+len);
+      ll.textContent = len + "s";
+      st.textContent = len > 30 ? ("renders in " + waitHint(len)) : "";
     }
     s.addEventListener("input",paint); L.addEventListener("input",paint); paint();
 
