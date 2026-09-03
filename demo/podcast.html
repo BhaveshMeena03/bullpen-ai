@@ -323,6 +323,12 @@
      sits empty for half a minute and the page reads as hung. Saying what is
      happening — and how many passages it is happening to — turns a blank
      wait into a visible one. Borrowed from the MCG build. */
+  /* Author rules beat the UA stylesheet, so `display:flex` here silently
+     defeated the browser's own [hidden]{display:none} — el.hidden = true
+     did nothing and "reading N passages" sat above finished answers
+     forever. The rule has to be restated, and !important so nothing added
+     later loses this argument again. */
+  .reading[hidden]{display:none!important}
   .reading{display:flex;align-items:center;gap:10px;margin:0 0 12px;
     font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
     font-size:12px;letter-spacing:.14em;text-transform:uppercase;

@@ -475,7 +475,6 @@ def fetch_section(url: str, start: float, end: float, dest: Path,
                       Sixteen at once is the difference between seconds and
                       minutes even for a short section.
     """
-    is_youtube = "youtube.com" in url or "youtu.be" in url
     # No --force-keyframes-at-cuts. It makes yt-dlp re-encode the section
     # with x264 so the cut lands exactly on the requested frame — and this
     # pipeline then encodes the result a second time, so the work is paid
@@ -488,8 +487,23 @@ def fetch_section(url: str, start: float, end: float, dest: Path,
     # assumed: a 30-second request comes back 30.01 seconds long starting
     # at 0.03, which is well inside the tolerance for captions that are
     # timed from the requested start.
+    is_youtube = "youtube.com" in url or "youtu.be" in url
+
+    # --force-keyframes-at-cuts is per-source, because the two sources fail
+    # in opposite directions.
+    #
+    # X is HLS: yt-dlp fetches the fragments itself, so the flag only buys a
+    # frame-exact cut and costs an x264 re-encode this pipeline throws away.
+    # Measured at 8 seconds without it against a 180-second timeout with it.
+    #
+    # YouTube hands ffmpeg a URL bound to the client that negotiated it
+    # (c=ANDROID_VR), and ffmpeg fetches as itself and gets 403 — "ffmpeg
+    # exited with code 8". With the flag, yt-dlp downloads the section
+    # itself and ffmpeg never touches the network. So YouTube keeps it and
+    # pays the re-encode; X does not.
     cmd = [_ytdlp_binary(), "--quiet", "--no-warnings",
            "--download-sections", f"*{start:.2f}-{end:.2f}",
+           *(["--force-keyframes-at-cuts"] if is_youtube else []),
            # H.264 first so the merge stays an mp4. Left to itself yt-dlp
            # takes AV1 with Opus, which is a smaller download and a webm,
            # and then everything downstream is decoding AV1 for no benefit

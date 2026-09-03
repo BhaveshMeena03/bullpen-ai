@@ -923,6 +923,16 @@ _ABOUT_US = re.compile(
       | \b(?: buy\s*back|buyback )\b [^.?!]{0,25} \b(?:your|the)\b
       | ^\W* (?:wen|when)\s+(?:airdrop|listing|moon|pump)
       | ^\W* airdrop \s*\?* \W*$
+      # Price talk that never says "price". "are we sending to millions",
+      # "2-3M mc", "wagmi to 10m" — all asking where the token goes, none
+      # of them matching a word about tokens. The first one got answered
+      # with a passage about a host growing an investment fund, which read
+      # as this account forecasting its own market cap.
+      | \b(?:sending|send|going|go|push(?:ing)?|run(?:ning)?)\b
+        [^.?!]{0,20} \b(?:to\s+)?(?:millions?|billions?|\d+\s*[mb]\b
+                                   |moon|valhalla)\b
+      | \b\d+\s*[-–]?\s*\d*\s*[mb]?\s*(?:mc|market\s*cap|mcap)\b
+      | \b(?:mc|mcap|market\s*cap)\b
     )""")
 # ...unless they are plainly asking what was SAID on the show, which is an
 # ordinary question and must reach retrieval untouched.
@@ -967,6 +977,38 @@ _SOMEONE_ELSES_ADDRESS = re.compile(
                                         # possessive, which is exactly how
                                         # people write it
         [^.?!]{0,20} \b(?:address|ca|contract|wallet)\b""")
+
+# Other people's assistants. X puts every handle in a reply chain at the
+# front of a reply, so this account gets tagged into conversations it was
+# never asked anything in — "how much longer is left @grok" was answered
+# with a host wondering how much longer he would stay live, under a GIF,
+# to somebody who had asked a different bot about something else.
+#
+# The leading run of handles is what X added. What comes after it is what
+# the person actually wrote, and if that names another assistant and not
+# us, the question is not ours to answer.
+_LEADING_HANDLES = re.compile(r"^(?:\s*@\w{1,15}\b)+")
+_OTHER_ASSISTANT = re.compile(
+    r"""(?ix)@(?: grok | askgrok | chatgpt(?:app)? | askperplexity
+                | perplexity_ai | gemini | claudeai | copilot )\b""")
+
+
+def addressed_to_another_bot(text: str, handle: str = "mbubbleSearch") -> bool:
+    """Whether the question was put to somebody else's assistant.
+
+    Another assistant anywhere in the post is the signal — leading or not,
+    since "@grok explain this chart" puts it first and X puts reply-chain
+    handles first too, so position says nothing about who was asked.
+
+    What decides it is whether the person turned to US in the part they
+    actually typed. "@grok is wrong, @mbubbleSearch what did he say" is
+    ours; a thread we were merely carried into is not.
+    """
+    raw = text or ""
+    if not _OTHER_ASSISTANT.search(raw):
+        return False
+    body = _LEADING_HANDLES.sub("", raw).strip()
+    return f"@{handle}".lower() not in body.lower()
 
 def pinned_answer(question: str, contract_address: str | None,
                   token_label: str | None = None) -> str | None:
@@ -2452,6 +2494,11 @@ class MentionBot:
                 # Permanent. Checked before anything else that could produce
                 # a reply, because the promise made in the opt-out is that
                 # this account is never contacted again.
+                handled = mention.id
+                continue
+            if addressed_to_another_bot(mention.text):
+                logger.info("%s was put to another assistant — not ours to "
+                            "answer", mention.id)
                 handled = mention.id
                 continue
             if asks_to_be_left_alone(mention.text):

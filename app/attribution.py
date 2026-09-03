@@ -48,9 +48,19 @@ _CANON = {"faze banks": "FaZe Banks", "banks": "FaZe Banks",
 
 # "Ansem said", "Banks noted", "FaZe Banks explained" -- and the
 # possessive and colon forms the model also produces.
+# The gap must not cross a comma or a pipe, and the name must not be part of
+# an episode title. Both come from the same live failure: "in the Ansem
+# Edition episode, FaZe Banks mentions..." matched Ansem here, ran the gap
+# across the comma to reach "mentions", and rewrote the TITLE — the reply
+# went out reading "in the one of the hosts Edition episode".
+#
+# A real attribution does not need a comma to reach its verb: "Ansem said",
+# "Ansem explained around 3:05". Anything that has to cross one is reaching
+# past the sentence it belongs to.
 _CREDIT = re.compile(
     r"\b(FaZe Banks|Ansem|Banks)\b"
-    r"(?P<gap>[^.!?\n\"]{0,60}?)"
+    r"(?!\s+(?:Edition|Episode|Ep\b))"
+    r"(?P<gap>[^.!?\n\",|]{0,60}?)"
     r"\b(?P<verb>said|says|noted|notes|explained|explains|argued|argues"
     r"|described|describes|recalled|recalls|admitted|admits|mentioned"
     r"|mentions|claimed|claims|stated|states|revealed|reveals|put it"
