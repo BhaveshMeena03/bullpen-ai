@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import tempfile
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
