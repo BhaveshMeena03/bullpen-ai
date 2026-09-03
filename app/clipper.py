@@ -519,7 +519,21 @@ def fetch_section(url: str, start: float, end: float, dest: Path,
     if proxy:
         cmd += ["--proxy", proxy]
     cmd += ["-o", str(dest), url]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+    # ffmpeg has to go through the proxy too, not just yt-dlp.
+    #
+    # --download-sections hands the range fetch to ffmpeg, which is a
+    # separate process and knows nothing about --proxy. So yt-dlp
+    # negotiates a media URL from the proxy's IP, ffmpeg then requests it
+    # from this host's IP, and YouTube rejects the mismatch — "ffmpeg
+    # exited with code 8", which is a 403 wearing a different number.
+    # Setting the proxy on the child environment is what ffmpeg reads.
+    env = None
+    if proxy:
+        env = {**os.environ,
+               "http_proxy": proxy, "https_proxy": proxy,
+               "HTTP_PROXY": proxy, "HTTPS_PROXY": proxy}
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=180,
+                            env=env)
     if result.returncode != 0 or not dest.exists():
         tail = ((result.stderr or "").strip().splitlines() or ["(no stderr)"])[-1]
         raise RuntimeError(f"could not fetch that section: {tail[:180]}")
