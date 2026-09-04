@@ -76,12 +76,24 @@ SITE_CREDIT = "lexthedev.com"
 MAX_CLIP_SECONDS = 180
 MIN_CLIP_SECONDS = 5
 
-# What a viewer-requested clip renders at. 1920 wide, quality-targeted,
-# same as a clip made by hand for a post — measured at ~2.2 CPU-seconds per
-# second of output, so a 45s clip is ~100 CPU-seconds. That is a minute on
-# two cores and four on half of one, which is why MAX_CONCURRENT is 1 and
-# the front end shows a queue position rather than pretending it is instant.
-CLIP_HEIGHT = 1920
+# What a viewer-requested clip renders at. 1280 wide, quality-targeted.
+#
+# It was 1920, and 1920 is why search went down on 4 September. Measured,
+# each in a clean process, rendering the same 180-second clip:
+#
+#   1920x1080   1616 MB peak      9.6 MB file
+#   1280x720     759 MB peak      5.6 MB file
+#
+# The render runs inside the web process on a 2 GB instance that is already
+# holding the app and the episode cache, so 1616 MB is not a tight fit, it
+# is an out-of-memory kill that takes search with it. 759 MB fits with room.
+#
+# Nothing about the encode changed: still crf 16, still quality-targeted,
+# still the canvas the source actually fills. X and YouTube re-encode
+# whatever they are handed, and 720p is what most of that timeline is
+# watched at anyway. A clip cut by hand can still ask for 1920 by passing
+# the size in, which is what the local path does.
+CLIP_HEIGHT = 1280
 # Only one encode at a time. The queue is what keeps a burst from turning
 # into an out-of-memory kill on a small instance.
 MAX_CONCURRENT = 1
@@ -562,6 +574,44 @@ def fetch_section(url: str, start: float, end: float, dest: Path,
     raise RuntimeError(f"could not fetch that section: {last[:180]}")
 
 
+def _blank_frame(path: Path, size: int, height: int) -> None:
+    """A fully transparent frame, for the stretches with nothing to say."""
+    from PIL import Image
+    Image.new("RGBA", (size, height), (0, 0, 0, 0)).save(path)
+
+
+def _concat_list(captions, workdir: Path, size: int, height: int,
+                 blank: Path) -> str:
+    """A concat script covering the whole clip, gaps included.
+
+    The demuxer plays entries back to back with no notion of a timeline, so
+    silence has to be written down as the blank frame rather than left out.
+    Without it every caption would slide earlier by the length of the gap
+    before it and the whole track would drift out of sync.
+
+    The last entry is repeated without a duration because the demuxer drops
+    the final file's frame otherwise, which loses the closing caption.
+    """
+    lines: list[str] = []
+    cursor = 0.0
+    last: Path | None = None
+    for i, (start, end, text) in enumerate(captions):
+        if start - cursor > 0.04:               # a gap worth writing down
+            lines.append(f"file '{blank.name}'")
+            lines.append(f"duration {start - cursor:.3f}")
+            last = blank
+        png = workdir / f"cap{i:04d}.png"
+        make_caption(text, png, size, height)
+        held = max(end - max(start, cursor), 0.04)
+        lines.append(f"file '{png.name}'")
+        lines.append(f"duration {held:.3f}")
+        last = png
+        cursor = max(end, cursor)
+    if last is not None:
+        lines.append(f"file '{last.name}'")
+    return "\n".join(lines) + "\n"
+
+
 def render(source: Path, captions, backdrop: Path, workdir: Path,
            out: Path, size: int = DEFAULT_SIZE, best: bool = False,
            wide: bool = False) -> None:
@@ -587,14 +637,28 @@ def render(source: Path, captions, backdrop: Path, workdir: Path,
         steps = [f"[0:v]scale={size}:-2[vid]",
                  "[1:v][vid]overlay=(W-w)/2:(H-h)/2:shortest=1[base]"]
     label = "base"
-    for i, (start, end, text) in enumerate(captions):
-        png = workdir / f"cap{i:04d}.png"
-        make_caption(text, png, size, height)
-        inputs += ["-i", str(png)]
-        nxt = f"c{i}"
-        steps.append(f"[{label}][{i + 2}:v]overlay=0:0:"
-                     f"enable='between(t,{start:.2f},{end:.2f})'[{nxt}]")
-        label = nxt
+    if captions:
+        # One input, not one per caption.
+        #
+        # Every caption used to arrive as its own -i plus its own chained
+        # overlay. A 46 second clip is 36 of them and a 180 second clip is
+        # 147, and ffmpeg decodes every input in the graph: at 1080x1920 a
+        # caption is 8.3 MB of RGBA, so the long clip asked for about 1.2 GB
+        # of frame buffers before x264 had allocated anything. It OOMed the
+        # web service, which took search down with it, because the render
+        # runs in the same process.
+        #
+        # The concat demuxer plays the same PNGs as a single timed stream,
+        # so the graph holds one caption frame at a time however many there
+        # are. Memory stops scaling with clip length.
+        blank = workdir / "capgap.png"
+        _blank_frame(blank, size, height)
+        listing = workdir / "captions.txt"
+        listing.write_text(_concat_list(captions, workdir, size, height,
+                                        blank))
+        inputs += ["-f", "concat", "-safe", "0", "-i", str(listing)]
+        steps.append(f"[{label}][2:v]overlay=0:0:shortest=1[capped]")
+        label = "capped"
 
     result = subprocess.run(
         ["ffmpeg", "-y", *inputs, "-filter_complex", ";".join(steps),
