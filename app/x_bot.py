@@ -2442,6 +2442,46 @@ def has_a_known_intent(text: str) -> bool:
         or _ASKS_WHAT_THIS_IS.search(q) or _ASKS_IF_AUTOMATED.search(q))
 
 
+# Words that carry no subject to search for: pronouns and deictics, the
+# verbs people use to say they have just noticed something, and the
+# intensifiers they say it with.
+_NOTHING_TO_SEARCH = frozenset("""
+a an the this that these those it its is am are was were be been being
+i you he she we they me him her us them my your his our their
+how what why when where who whom which is do did does can could would
+just only even still now already yet again ever never so such very really
+much more most too fucking fuckin freaking damn actually literally
+hell heck shit god jesus christ hey yo ok okay well
+seeing see seen saw looking look looked finding find found
+know knew think thought get got getting go going gone come coming
+here there thing things stuff man bro dude guys wow omg lol
+""".split())
+
+
+def is_rhetorical_praise(text: str) -> bool:
+    """Praise shaped like a question, with nothing in it to look up.
+
+    "how am I just seeing this, this is fucking insane" opens with "how",
+    so it parses as a question and went to retrieval, which searched the
+    literal words and answered a co-host's compliment with an unrelated
+    story about a token that pumped. Nothing in the sentence names a
+    subject: strip the pronouns, the noticing verbs and the intensifiers
+    and only the compliment is left.
+
+    A compliment that DOES name something is still a question --
+    "this is insane, what did ansem say about eth" has a subject and has
+    to be searched.
+    """
+    q = question_from(text or "")
+    if not q or not _READS_AS_PRAISE.search(q):
+        return False
+    words = [w for w in re.findall(r"[a-z']{2,}", q.lower())
+             if w not in _NOTHING_TO_SEARCH]
+    # Whatever is left, the compliment itself does not count as a subject.
+    subject = [w for w in words if not _READS_AS_PRAISE.search(w)]
+    return len(subject) == 0
+
+
 def deserves_a_highlight(text: str) -> bool:
     """Whether an unprompted fact is the right answer to this post.
 
@@ -3036,6 +3076,17 @@ class MentionBot:
             logger.info("%s: no question in a thread already answered "
                         "(%r) — staying quiet", mention.id, question[:60])
             return None
+
+        # Praise shaped like a question. "how am I just seeing this, this
+        # is fucking insane", from a co-host, opens with "how" and so
+        # reached retrieval, which searched those literal words and
+        # answered his compliment with an unrelated story about a token
+        # that pumped. There is no subject in the sentence to look up, so
+        # it is handled where the other compliments are.
+        if is_rhetorical_praise(mention.text):
+            logger.info("%s is praise shaped like a question (%r) — a fact "
+                        "rather than a search", mention.id, question[:60])
+            return self._instead_of_a_miss(mention)
 
         if (len(question) < self._min_question
                 or not looks_like_a_question(question)):

@@ -26,6 +26,7 @@ from app.x_api import (
     strip_urls,
 )
 from app.x_bot import (BotState, MentionBot, format_reply, fingerprint,
+                       is_rhetorical_praise,
                        has_a_known_intent, has_substance, is_a_mass_tag,
                        question_from)
 
@@ -108,6 +109,33 @@ def test_the_same_post_twice_has_the_same_shape():
 ])
 def test_a_short_post_with_a_handler_survives_the_gate(post):
     assert has_a_known_intent(post)
+
+
+# --- praise that is shaped like a question ----------------------------------
+
+# What a co-host actually posted, and what came back: a search of those
+# literal words, answering his compliment with an unrelated story about a
+# token that pumped. It opens with "how", so every question test says yes.
+@pytest.mark.parametrize("post", [
+    "@mbubbleSearch @MarketBubble how am I just seeing this, this is fucking insane",
+    "@mbubbleSearch this is sick",
+    "@mbubbleSearch how is this so good",
+    "@mbubbleSearch what the hell this is amazing",
+])
+def test_praise_with_no_subject_is_not_a_question(post):
+    assert is_rhetorical_praise(post)
+
+
+# A compliment that names something still has to be searched. The praise is
+# not the reason to skip retrieval; having nothing to retrieve is.
+@pytest.mark.parametrize("post", [
+    "@mbubbleSearch wow this is insane how did you build it",
+    "@mbubbleSearch this is insane, what did banks say about eth",
+    "@mbubbleSearch what did ansem say about hyperliquid",
+    "@mbubbleSearch how does the clip feature work",
+])
+def test_praise_that_names_something_still_searches(post):
+    assert not is_rhetorical_praise(post)
 
 
 # --- the link guard --------------------------------------------------------
