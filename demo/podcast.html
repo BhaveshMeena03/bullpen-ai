@@ -36,7 +36,7 @@
     display:flex;flex-direction:column;align-items:center;padding:0 16px;
     position:relative}
 
-  .wrap{width:100%;max-width:820px;padding:56px 0 80px}
+  .wrap{width:100%;max-width:820px;padding:24px 0 80px}
   /* The wordmark that was a line of centred text is a header now, styled
      with the rest of it further down this file. */
   /* Live prices for the two coins this project is attached to, and the one
@@ -309,7 +309,9 @@
   }
   .foot{color:var(--muted);font-size:12px;margin-top:40px;border-top:1px solid
     var(--line);padding-top:16px}
-  .eps{margin-top:44px}
+  /* scroll-margin so the header does not sit on top of the
+     heading when the Episodes link jumps here. */
+  .eps{margin-top:44px;scroll-margin-top:24px}
   .eps h2{font-size:18px;margin-bottom:4px}
   .eps .sub2{color:var(--muted);font-size:13px;margin-bottom:16px}
   details.epcard{background:var(--panel);border:1px solid var(--line);
@@ -364,6 +366,7 @@
     color:var(--text)}
   .brand-name b{color:var(--green);font-weight:600}
   .site-nav{display:flex;gap:22px}
+  .site-nav a[hidden]{display:none!important}
   .site-nav a{color:var(--muted);text-decoration:none;font-size:14px;
     transition:color .15s ease}
   .site-nav a:hover{color:var(--text)}
@@ -396,11 +399,11 @@
   .sub{max-width:640px;margin-left:auto;margin-right:auto}
   @media (max-width:560px){ h1{margin-top:26px} }
 
-  .eyebrow{margin-top:64px;text-align:center;font-size:11.5px;
+  .eyebrow{margin-top:46px;text-align:center;font-size:11.5px;
     font-weight:600;letter-spacing:.14em;text-transform:uppercase;
     color:#6b7480}
   .eyebrow + h1{margin-top:14px}
-  @media (max-width:560px){ .eyebrow{margin-top:40px} }
+  @media (max-width:560px){ .eyebrow{margin-top:30px} }
 
   /* ---- one control -----------------------------------------------------
      The field and the button were two rectangles side by side with a gap
@@ -459,7 +462,9 @@
     </a>
     <nav class="site-nav">
       <a href="/demo/how-it-works.html">How it works</a>
-      <a href="#episodes">Episodes</a>
+      <!-- Revealed by the summaries fetch below, so it is never
+           a link to a section that is not there. -->
+      <a href="#eps" hidden>Episodes</a>
     </nav>
   </header>
 
@@ -750,6 +755,13 @@
           wrap.appendChild(d);
         });
         document.getElementById("eps").hidden=false;
+        // The nav link is dead until this section exists, so it only
+        // appears once there is somewhere for it to go. It pointed at
+        // #episodes while the section was #eps, which is a link that
+        // silently does nothing -- worse than no link, because a person
+        // taps it, gets no feedback, and concludes the site is broken.
+        var jump = document.querySelector('.site-nav a[href="#eps"]');
+        if (jump) jump.hidden = false;
       })
       .catch(function(){ /* summaries are optional — page works without */ });
   }
