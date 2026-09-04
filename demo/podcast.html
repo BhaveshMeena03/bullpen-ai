@@ -36,39 +36,9 @@
     display:flex;flex-direction:column;align-items:center;padding:0 16px;
     position:relative}
 
-  /* The disclosure, saying the same thing without shouting it. It was
-     mustard on brown — the palette a browser uses for a warning — so the
-     loudest element on the page was the legal small print, above the
-     product's own name. It still sits first and still reads; it just
-     stops being an alert.
-
-     It shares this row with the prices rather than being layered under
-     them. Pinning them to the corner and trusting the centred sentence to
-     stop short did not hold at any width worth having; the text simply ran
-     underneath. Here the sentence takes what is left once the prices are
-     placed, so the two cannot collide however long either gets, and they
-     wrap onto separate lines when there is no room for both. */
-  .banner{position:relative;width:100%;background:transparent;color:#7c848d;
-    font-size:11.5px;letter-spacing:.01em;padding:7px 16px;margin:0 -16px;
-    border-bottom:1px solid rgba(255,255,255,.05);text-align:center}
-  /* The disclosure centres on the whole width, not on what is left over
-     after the prices — sharing the row as flex siblings pushed it off to
-     the left of the page, which read as a mistake. The prices are lifted
-     out of the flow instead, and kept small enough to clear the sentence
-     at its full width. */
-  .banner .note{display:inline-block;max-width:100%}
   .wrap{width:100%;max-width:820px;padding:56px 0 80px}
-  /* Centred, with the hero below it — the box is the page, which is how
-     every search engine people already know behaves. The prices are not
-     in here: they ride the disclosure row above, clear of the name. */
-  .topbar{display:flex;align-items:center;justify-content:center;
-    gap:14px;margin-bottom:34px;flex-wrap:wrap}
-  .brand{font-weight:800;font-size:15px;letter-spacing:.5px}
-  .brand span{color:var(--green)}
-  /* Reads as a feature, not a footnote: filled, green, on the right. */
-  @media(max-width:560px){
-    .topbar{flex-direction:column;align-items:center;gap:12px}
-  }
+  /* The wordmark that was a line of centred text is a header now, styled
+     with the rest of it further down this file. */
   /* Live prices for the two coins this project is attached to, and the one
      everything on the show is priced against. Hidden until it has real
      numbers: a price strip showing "--" is worse than no price strip, and
@@ -101,7 +71,6 @@
      at all -- the prices stayed pinned at every width, including the ones
      it existed to fix. */
   @media(max-width:1400px){
-    .banner{display:flex;flex-direction:column;align-items:center;gap:7px}
     .ticks{position:static;transform:none;flex-wrap:wrap;
       justify-content:center}
   }
@@ -380,29 +349,124 @@
     form button{padding:13px}
     #q{font-size:16px;padding:15px 16px}
     .chips{margin-bottom:32px}
-    .banner{font-size:11px}
   }
+
+  /* ---- header ----------------------------------------------------------
+     The page used to open with a line of text where a product opens with a
+     header. A mark, the name, and two places to go is the difference
+     between something somebody built and something somebody runs. */
+  header.site{width:100%;max-width:1060px;display:flex;align-items:center;
+    justify-content:space-between;gap:20px;padding:20px 4px 0;margin:0 auto}
+  header.site .brand{display:flex;align-items:center;gap:10px;
+    text-decoration:none;color:var(--text)}
+  header.site .brand img{display:block;border-radius:6px}
+  .brand-name{font-size:15px;font-weight:600;letter-spacing:-.01em;
+    color:var(--text)}
+  .brand-name b{color:var(--green);font-weight:600}
+  .site-nav{display:flex;gap:22px}
+  .site-nav a{color:var(--muted);text-decoration:none;font-size:14px;
+    transition:color .15s ease}
+  .site-nav a:hover{color:var(--text)}
+  @media (max-width:560px){ .site-nav{display:none} }
+
+  /* ---- depth -----------------------------------------------------------
+     A flat near-black rectangle reads as a terminal. One soft pool of light
+     behind the question turns the page into a place with a centre. Fixed,
+     so it does not travel with the scroll and become a smear. */
+  body::before{content:"";position:fixed;inset:0;pointer-events:none;
+    z-index:0;
+    background:
+      radial-gradient(720px 420px at 50% 18%,
+        color-mix(in srgb,var(--green) 9%,transparent), transparent 68%),
+      radial-gradient(900px 500px at 50% 0%,
+        rgba(255,255,255,.028), transparent 70%)}
+  .wrap{position:relative;z-index:1}
+
+  /* ---- the ticker, demoted ---------------------------------------------
+     Live prices were the first thing on the page, which told every new
+     visitor this is a token before it told them it is a search engine. The
+     prices still belong here, at the end rather than the start. */
+  .ticks{gap:4px}
+  .tick{font-size:10px;padding:2px 8px;background:transparent;
+    border-color:rgba(35,42,51,.7);color:#6b7480}
+  .tick:hover{border-color:var(--line);transform:none}
+
+  /* ---- rhythm ---------------------------------------------------------- */
+  h1{margin-top:44px;letter-spacing:-.02em}
+  .sub{max-width:640px;margin-left:auto;margin-right:auto}
+  @media (max-width:560px){ h1{margin-top:26px} }
+
+  .eyebrow{margin-top:64px;text-align:center;font-size:11.5px;
+    font-weight:600;letter-spacing:.14em;text-transform:uppercase;
+    color:#6b7480}
+  .eyebrow + h1{margin-top:14px}
+  @media (max-width:560px){ .eyebrow{margin-top:40px} }
+
+  /* ---- one control -----------------------------------------------------
+     The field and the button were two rectangles side by side with a gap
+     between them, which is a form. Every search surface people already use
+     puts the button inside the field, so the whole thing reads as one
+     object you type into. The field carries the padding on the right that
+     the button then sits in, so the text never runs under it. */
+  form{position:relative;display:block;gap:0}
+  #q{width:100%;padding-right:132px;border-radius:16px;padding-top:22px;
+    padding-bottom:22px;padding-left:24px;font-size:19px;
+    background:rgba(18,22,28,.86);
+    box-shadow:0 1px 0 rgba(255,255,255,.03) inset,
+               0 18px 40px -28px rgba(0,0,0,.9)}
+  #q:focus{box-shadow:0 0 0 4px rgba(22,199,132,.15),
+                      0 18px 44px -26px rgba(22,199,132,.35)}
+  button{border-radius:16px;font-weight:650;letter-spacing:-.01em}
+  #go{position:absolute;top:8px;right:8px;bottom:8px;padding:0 24px;
+    border-radius:12px;font-size:15px;line-height:1;
+    transition:filter .15s ease,transform .15s ease}
+  #go:hover:not(:disabled){filter:brightness(1.07);transform:translateY(-1px)}
+  /* On a phone the button would take half the field. It goes back under it,
+     full width, where a thumb can actually reach it, and the field goes back
+     to the size the phone rules already chose for it. Those rules are
+     earlier in the file, so at equal specificity this block has to restate
+     them or the desktop sizing above wins on mobile too. */
+  @media (max-width:560px){
+    form{display:flex;flex-direction:column;gap:10px}
+    #q{padding:15px 16px;font-size:16px}
+    #go{position:static;padding:15px 24px}
+  }
+
+  /* ---- the suggestions -------------------------------------------------
+     Three saturated green pills directly under a saturated green button
+     meant four things shouting at the same volume, and the one that matters
+     is the button. Quiet until you go near them, green only on hover. */
+  .chip{background:rgba(255,255,255,.02);border-color:var(--line);
+    color:var(--muted);padding:7px 14px;font-size:13px;
+    transition:color .15s ease,border-color .15s ease,background .15s ease}
+  .chip:hover{background:rgba(22,199,132,.08);border-color:#16c78455;
+    color:var(--green)}
+
+  /* ---- the footer the disclosure moved into --------------------------- */
+  .foot{display:flex;align-items:center;justify-content:space-between;
+    gap:18px;flex-wrap:wrap;line-height:1.6}
+  .foot > span{flex:1;min-width:260px}
+  .foot .ticks{position:static;transform:none;margin:0;flex-wrap:wrap;
+    justify-content:flex-end}
 </style>
 </head>
 <body>
-<div class="banner">
-  <!-- Shorter than it was, and every claim it made is still here: the
-       captions are machine-made, this is not advice, and it is nobody's
-       official anything. The long version could not be centred on the page
-       and clear of the prices at the same time, and of the two the
-       disclosure is the one that has to stay legible. -->
-  <span class="note">Auto-generated captions · not financial advice ·
-  independent project, not affiliated</span>
-  <!-- Shares the disclosure's row, hard right, so the wordmark below keeps
-       the centre to itself. Populated by the block at the bottom of this
-       file and left hidden if anything about that fails. -->
-  <div class="ticks" id="ticks" hidden></div>
-</div>
-
 <div class="wrap">
-  <div class="topbar">
-    <div class="brand">MARKET <span>BUBBLE</span> · search</div>
-  </div>
+  <header class="site">
+    <a class="brand" href="/">
+      <img src="/demo/logo-200.png" alt="" width="26" height="26">
+      <span class="brand-name">Market Bubble <b>Search</b></span>
+    </a>
+    <nav class="site-nav">
+      <a href="/demo/how-it-works.html">How it works</a>
+      <a href="#episodes">Episodes</a>
+    </nav>
+  </header>
+
+  <!-- What the thing is, before the headline asks anything of you. It
+       replaces the price strip as the first line on the page, which is the
+       whole point. Figures from scripts/count_the_archive.py. -->
+  <div class="eyebrow">Searchable archive &middot; 18 episodes &middot; 66 hours</div>
 
   <h1>Ask the <em>Market Bubble</em> broadcast anything.</h1>
   <p class="sub">Search every episode by meaning, not keywords — and jump
@@ -506,8 +570,15 @@
   </div>
 
   <div class="foot">
-    Semantic search over podcast transcripts · informational only, not
-    financial advice · built as an independent concept, not affiliated.
+    <!-- The disclosure that used to run above the product's own name. Every
+         claim it made is still here; it just no longer arrives before the
+         visitor has learned what the thing is. -->
+    <span>Auto-generated captions &middot; semantic search over podcast
+    transcripts &middot; informational only, not financial advice &middot;
+    built as an independent concept, not affiliated.</span>
+    <!-- Live prices, moved down with it. Populated by the block at the
+         bottom of this file, hidden if anything about that fails. -->
+    <div class="ticks" id="ticks" hidden></div>
   </div>
 </div>
 
