@@ -532,11 +532,34 @@ def fetch_section(url: str, start: float, end: float, dest: Path,
         env = {**os.environ,
                "http_proxy": proxy, "https_proxy": proxy,
                "HTTP_PROXY": proxy, "HTTPS_PROXY": proxy}
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=180,
-                            env=env)
-    if result.returncode != 0 or not dest.exists():
-        tail = ((result.stderr or "").strip().splitlines() or ["(no stderr)"])[-1]
-        raise RuntimeError(f"could not fetch that section: {tail[:180]}")
+    # Retry, because a residential proxy hands out a different exit IP every
+    # time and a share of that pool is already flagged by YouTube. A single
+    # attempt is a coin flip on which IP you draw — observed directly: the
+    # same credentials failed with 407 NO_USER and then passed a minute
+    # later from a different exit. Three attempts turn a ~60% draw into
+    # ~94%, and each one is free apart from the wait.
+    #
+    # Only worth doing when a proxy is configured. Without one every
+    # attempt leaves from the same address, so a retry just fails again
+    # more slowly.
+    attempts = 3 if proxy else 1
+    last = ""
+    for attempt in range(1, attempts + 1):
+        result = subprocess.run(cmd, capture_output=True, text=True,
+                                timeout=180, env=env)
+        if result.returncode == 0 and dest.exists():
+            if attempt > 1:
+                logger.info("fetched on attempt %d of %d", attempt, attempts)
+            return
+        last = ((result.stderr or "").strip().splitlines()
+                or ["(no stderr)"])[-1]
+        # A partial file from the failed attempt would make the next one
+        # look like it succeeded.
+        dest.unlink(missing_ok=True)
+        if attempt < attempts:
+            logger.info("fetch attempt %d failed (%s) — retrying on a new "
+                        "exit IP", attempt, last[:90])
+    raise RuntimeError(f"could not fetch that section: {last[:180]}")
 
 
 def render(source: Path, captions, backdrop: Path, workdir: Path,
