@@ -165,35 +165,49 @@ def describe(dropped: list[dict]) -> str:
 # either away loses real coverage.
 #
 # This decides what is worth LISTING, and the answer there is one card per
-# show. The episodes page was rendering 38 cards while the header said 18,
-# with the 20 August broadcast appearing three times, because the page was
+# show. The episodes page rendered 38 cards while the header said 18, with
+# the 20 August broadcast appearing three times, because the page was
 # showing files and the header was counting shows.
 #
-# Matching is on rare words. Two Whisper passes over the same audio produce
-# similar text and never identical text, so exact n-grams find nothing and
-# ordinary word overlap merges unrelated episodes -- two hours of crypto
-# talk share a vocabulary. What survives a second transcription is the
-# guest's name, a ticker, a number said once.
+# Matched on three-word runs shared by the pair, and on nothing else. Two
+# Whisper passes over the same audio produce similar text and never
+# identical text, so the measure has to tolerate that:
+#
+#   exact 6-grams     too brittle. Two passes share almost no six-word run,
+#                     so nothing merged at all.
+#   word overlap      too loose. Two hours of crypto talk share a
+#                     vocabulary, so unrelated episodes merged.
+#   rare words        worked, and depended on the whole corpus to decide
+#                     what "rare" meant. The same pair then grouped
+#                     differently on two machines with different data
+#                     files, and production listed 20 shows while this
+#                     machine counted 18.
+#
+# Three-word runs need neither a corpus nor a vocabulary. Measured over
+# known pairs: the same show scores 0.73 to 0.82, different shows 0.09 to
+# 0.11, and the band between is empty. That is a property of the pair
+# alone, so two machines cannot disagree.
 
 import collections
 import datetime
 
-# A word in three files or fewer belongs to a conversation. Above that it
-# is the vocabulary of the show and says nothing about which episode.
-_RARE_IN_AT_MOST = 3
-# Half the smaller one's rare vocabulary. Measured over every pair: real
-# duplicates run from 0.42 to 0.98, nothing unrelated reaches 0.30, and the
-# band between is empty. 0.60 looked safer and split one show into three.
-_SAME_SHOW = 0.40
+# Where to cut, in the middle of a gap seven times wider than either
+# cluster. Nothing observed lands between 0.11 and 0.73.
+_SAME_SHOW = 0.35
 # A cut usually goes up the next day; one went up four days later.
 _SAME_SHOW_DAYS = 6
+_RUN = 3
 
-_A_WORD = re.compile(r"[a-z][a-z']{3,}")
+_A_TOKEN = re.compile(r"[a-z']+")
 
 
-def _vocabulary(episode: dict) -> set[str]:
-    return set(_A_WORD.findall(
-        " ".join(s.get("text", "") for s in episode.get("segments") or []).lower()))
+def _runs(episode: dict) -> set[int]:
+    """Hashes of every three-word run, which is cheaper than holding the
+    runs themselves: a four-hour show is around forty thousand of them."""
+    words = _A_TOKEN.findall(
+        " ".join(s.get("text", "") for s in episode.get("segments") or []).lower())
+    return {hash(tuple(words[i:i + _RUN]))
+            for i in range(max(0, len(words) - _RUN))}
 
 
 def _length(episode: dict) -> float:
@@ -208,18 +222,30 @@ def _aired(episode: dict) -> datetime.date | None:
         return None
 
 
+def same_show(a: dict, b: dict) -> bool:
+    """Whether these two files are the same broadcast.
+
+    Depends only on the two of them, which is the point.
+    """
+    when_a, when_b = _aired(a), _aired(b)
+    if not when_a or not when_b:
+        return False
+    if abs((when_a - when_b).days) > _SAME_SHOW_DAYS:
+        return False
+    first, second = _runs(a), _runs(b)
+    if not first or not second:
+        return False
+    smaller, larger = ((first, second) if len(first) <= len(second)
+                       else (second, first))
+    return len(smaller & larger) / len(smaller) > _SAME_SHOW
+
+
 def group_by_show(episodes: list[dict]) -> list[list[dict]]:
     """Episodes clustered so that each cluster is one broadcast.
 
     Merged transitively, because one show can have four cuts.
     """
-    vocab = {e["episode_id"]: _vocabulary(e) for e in episodes}
-    seen: collections.Counter = collections.Counter()
-    for bag in vocab.values():
-        seen.update(bag)
-    rare = {w for w, n in seen.items() if n <= _RARE_IN_AT_MOST}
-    marks = {k: v & rare for k, v in vocab.items()}
-
+    marks = {e["episode_id"]: _runs(e) for e in episodes}
     parent = {e["episode_id"]: e["episode_id"] for e in episodes}
 
     def root(x: str) -> str:

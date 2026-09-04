@@ -6,49 +6,73 @@ from app.dedupe import group_by_show, canonical_episode_ids   # noqa: E402
 
 
 def _ep(eid, day, words, seconds=100):
-    """An episode whose transcript is the given words."""
+    """An episode whose transcript is the given words, as running prose so
+    the three-word runs the matcher looks at actually exist."""
+    text = " ".join(words)
     return {"episode_id": eid, "published_at": day,
-            "segments": [{"t": i * 10, "text": w}
-                         for i, w in enumerate(words)] +
-                        [{"t": seconds, "text": "tail"}]}
+            "segments": [{"t": 0, "text": text}, {"t": seconds, "text": "the end"}]}
+
+
+def _talk(seed, n=400):
+    """Filler that reads like speech: shared small words, distinct content."""
+    out = []
+    for i in range(n):
+        out += ["and", "then", "he", "said", f"{seed}{i}", "about", "the", "market"]
+    return out
 
 
 def test_a_broadcast_and_its_cut_are_one_show():
     """The 20 August evening was three rows: the 5.4h live broadcast, the
     Orangie cut, and the next day's upload. The page showed three cards."""
-    rare = [f"orangie{i}" for i in range(40)]
-    live = _ep("live", "2026-08-20", rare + ["extra"] * 5, seconds=19000)
-    cut = _ep("cut", "2026-08-20", rare[:30], seconds=3600)
-    upload = _ep("upload", "2026-08-21", rare[:34], seconds=9000)
-    groups = group_by_show([live, cut, upload])
-    assert len(groups) == 1
+    body = _talk("orangie")
+    live = _ep("live", "2026-08-20", body + _talk("extra", 60), seconds=19000)
+    cut = _ep("cut", "2026-08-20", body[:1200], seconds=3600)
+    upload = _ep("upload", "2026-08-21", body[:2000], seconds=9000)
+    assert len(group_by_show([live, cut, upload])) == 1
     # The longest survives, so the full broadcast is the row that shows.
     assert canonical_episode_ids([live, cut, upload]) == {"live"}
 
 
 def test_different_shows_stay_apart():
     """Two hours of crypto talk share a vocabulary; that must not merge
-    them. Only the rare words count."""
-    a = _ep("a", "2026-08-20", [f"guestone{i}" for i in range(40)])
-    b = _ep("b", "2026-08-27", [f"guesttwo{i}" for i in range(40)])
+    them. Only the runs of words they actually share count."""
+    a = _ep("a", "2026-08-20", _talk("guestone"))
+    b = _ep("b", "2026-08-27", _talk("guesttwo"))
     assert len(group_by_show([a, b])) == 2
 
 
 def test_the_same_guest_a_month_apart_is_two_shows():
     """The date window is what stops a returning guest merging episodes."""
-    rare = [f"mizkif{i}" for i in range(40)]
-    a = _ep("a", "2026-05-07", rare)
-    b = _ep("b", "2026-08-07", rare)
+    body = _talk("mizkif")
+    a = _ep("a", "2026-05-07", body)
+    b = _ep("b", "2026-08-07", body)
     assert len(group_by_show([a, b])) == 2
 
 
 def test_grouping_survives_an_episode_with_no_transcript():
-    a = _ep("a", "2026-08-20", [f"word{i}" for i in range(40)])
-    empty = {"episode_id": "empty", "published_at": "2026-08-20",
-             "segments": []}
-    groups = group_by_show([a, empty])
-    assert len(groups) == 2
+    a = _ep("a", "2026-08-20", _talk("word"))
+    empty = {"episode_id": "empty", "published_at": "2026-08-20", "segments": []}
+    assert len(group_by_show([a, empty])) == 2
     assert "a" in canonical_episode_ids([a, empty])
+
+
+def test_the_verdict_does_not_depend_on_who_else_is_in_the_corpus():
+    """The bug this replaced. Rarity was measured across every episode
+    present, so the same pair grouped differently on two machines with
+    different data files: production listed 20 shows while the same code
+    on a laptop counted 18. A pair is now judged on the pair alone."""
+    body = _talk("orangie")
+    live = _ep("live", "2026-08-20", body, seconds=19000)
+    cut = _ep("cut", "2026-08-20", body[:1200], seconds=3600)
+    others = [_ep(f"other{i}", "2026-07-0" + str(i + 1), _talk(f"guest{i}"))
+              for i in range(5)]
+
+    alone = group_by_show([live, cut])
+    crowded = group_by_show([live, cut] + others)
+    merged = next(g for g in crowded
+                  if {e["episode_id"] for e in g} & {"live", "cut"})
+    assert len(alone) == 1
+    assert {e["episode_id"] for e in merged} == {"live", "cut"}
 
 
 def test_an_episode_the_data_file_has_never_seen_is_still_listed():
