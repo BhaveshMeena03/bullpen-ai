@@ -26,9 +26,15 @@ consistently and other episodes do not contain them. So a pair is the
 same show when most of the smaller one's rare vocabulary appears in the
 larger, and they aired within a few days of each other.
 
-Pairs are merged transitively, since one broadcast can have three cuts,
+Pairs are merged transitively, since one broadcast can have four cuts,
 and the longest member of each group is the one that survives -- the full
 broadcast, not somebody's highlight of it.
+
+The check that the grouping is right is not the threshold, it is the
+answer: the groups come out as one show a week from 1 May to 3 September,
+which is Market Bubble #1 through #18 in order, with only the week of
+28 May missing -- a broadcast that has not been ingested yet. Nothing in
+here knows the episode numbers. Reconstructing them is the evidence.
 """
 
 from __future__ import annotations
@@ -50,12 +56,20 @@ WORD = re.compile(r"[a-z][a-z']{3,}")
 # A word in three files or fewer is specific to a conversation. Above that
 # it is the vocabulary of the show and says nothing about which episode.
 RARE_DF = 3
-# Most of the smaller one's rare words, not merely many of them. Measured
-# across every pair: real duplicates land at 0.66 and above, and the
-# closest unrelated pair is far below.
-SAME_SHOW = 0.60
-# A cut goes up the day after the broadcast, occasionally two.
-SAME_WEEK_DAYS = 3
+# Half the smaller one's rare vocabulary. Measured across every pair, and
+# there is a clean gap to put the line in: every pair scoring 0.42 or above
+# is genuinely one show, and no unrelated pair reaches 0.30. Nothing at all
+# falls between. 0.40 sits in the empty band.
+#
+# It was 0.60 first, which read as safe and quietly split the 20 August
+# show into three: the live broadcast at 5.4h, the Orangie cut at 1.0h and
+# the #16 upload the next day, scoring 0.53, 0.57 and 0.43 against each
+# other. A threshold above the data is not caution, it is a wrong answer
+# that looks careful.
+SAME_SHOW = 0.40
+# A cut usually goes up the next day. "Inside Ansem's Trade Journal" went
+# up four days after the show it came from, so the window is a week.
+SAME_WEEK_DAYS = 6
 
 
 def words(episode: dict) -> set[str]:
