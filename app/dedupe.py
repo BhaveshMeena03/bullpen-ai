@@ -280,3 +280,27 @@ def group_by_show(episodes: list[dict]) -> list[list[dict]]:
 def canonical_episode_ids(episodes: list[dict]) -> set[str]:
     """One id per show: the longest cut, which is the full broadcast."""
     return {max(c, key=_length)["episode_id"] for c in group_by_show(episodes)}
+
+
+# The show numbers its own episodes, and both copies of a broadcast carry
+# the number: "LIVE W/ WILL CLEMENTE ... Market Bubble Ep 18" and "We are
+# entering a SUPERCYCLE | Market Bubble #18" are one evening.
+#
+# This exists because the transcript matcher cannot see an episode that is
+# not in episodes.json, and a show ingested since the last deploy is in
+# exactly that position: its summary is written to Pinecone by the ingest,
+# the data file ships with the image, and until they meet the newest show
+# is listed twice. That is what Ep 18 did on the night it aired.
+#
+# Parsed from 18 of the 20 titles in the archive, and no two different
+# shows share a number, so it is safe to treat a shared number as proof of
+# a shared evening. The two it cannot parse simply fall back to the
+# transcript matcher, which is the stronger test when it can run at all.
+_EPISODE_NUMBER = re.compile(
+    r"(?ix)(?: market\s+bubble | ep(?:isode)? )\s*\#?\s*(\d{1,2})\b")
+
+
+def episode_number(title: str) -> int | None:
+    """The show's own number for an episode, from its title."""
+    found = _EPISODE_NUMBER.search(title or "")
+    return int(found.group(1)) if found else None

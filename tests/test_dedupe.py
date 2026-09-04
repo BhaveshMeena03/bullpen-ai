@@ -86,3 +86,29 @@ def test_an_episode_the_data_file_has_never_seen_is_still_listed():
     shown = [r for r in rows
              if r["episode_id"] not in known or r["episode_id"] in canonical]
     assert [r["episode_id"] for r in shown] == ["a", "brand-new"]
+
+
+# --- the number the show gives its own episodes -----------------------------
+
+from app.dedupe import episode_number                          # noqa: E402
+
+
+@pytest.mark.parametrize("title,expected", [
+    ("LIVE W/ WILL CLEMENTE, NET NET CAPITAL: Market Bubble Ep 18", 18),
+    ("We are entering a SUPERCYCLE | Market Bubble #18", 18),
+    ("LIVE W/ MIZKIF: Market Bubble EP 2 - Presented by @Polymarket", 2),
+    ("Why AI Is Beating Crypto Right Now | Market Bubble #2", 2),
+    # Two the archive genuinely cannot parse; they fall back to the
+    # transcript matcher, which is the stronger test anyway.
+    ("Market Bubble: The Ansem Edition - Presented by @Polymarket", None),
+    ("$100K POLYMARKET FANTASY FOOTBALL DRAFT NIGHT", None),
+])
+def test_episode_number(title, expected):
+    assert episode_number(title) == expected
+
+
+def test_the_broadcast_and_its_cut_share_a_number():
+    """The pair that was listed twice on the night Ep 18 aired."""
+    live = "LIVE W/ WILL CLEMENTE, NET NET CAPITAL: Market Bubble Ep 18"
+    cut = "We are entering a SUPERCYCLE | Market Bubble #18"
+    assert episode_number(live) == episode_number(cut)

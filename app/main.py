@@ -44,7 +44,7 @@ from .assets import aggregate as aggregate_assets
 from .assets_store import AssetStore
 from .clawpump import NAMESPACE as CLAWPUMP_NAMESPACE
 from .clawpump import ClawPumpAgent
-from .dedupe import canonical_episode_ids
+from .dedupe import canonical_episode_ids, episode_number
 from .clipper import (
     MAX_CLIP_SECONDS,
     MIN_CLIP_SECONDS,
@@ -1164,7 +1164,33 @@ def _listed(rows: list[dict]) -> list[dict]:
     shown = [r for r in rows
              if r.get("episode_id") not in known
              or r.get("episode_id") in canonical]
-    return shown or rows
+
+    # The transcript matcher cannot see an episode that is not in
+    # episodes.json, and a show ingested since the last deploy is exactly
+    # that: its summary is written to Pinecone by the ingest, the data file
+    # ships with the image, and until they meet the newest show is listed
+    # twice. Ep 18 did that on the night it aired -- the X broadcast and
+    # the next day's YouTube cut, one above the other.
+    #
+    # The show numbers its own episodes and both copies carry the number,
+    # so where two rows claim the same one, the copy whose transcript we
+    # actually hold wins. That is the full broadcast; the other is a cut of
+    # it that the matcher would have collapsed if it could see it.
+    deduped: list[dict] = []
+    seen_numbers: dict[int, int] = {}
+    for row in shown:
+        number = episode_number(row.get("title") or "")
+        if number is None:
+            deduped.append(row)
+            continue
+        at = seen_numbers.get(number)
+        if at is None:
+            seen_numbers[number] = len(deduped)
+            deduped.append(row)
+        elif (row.get("episode_id") in known
+              and deduped[at].get("episode_id") not in known):
+            deduped[at] = row              # prefer the one we can quote
+    return deduped or rows
 
 
 @app.get("/v1/podcast/archive", dependencies=[Depends(public_rate_limit)])
