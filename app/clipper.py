@@ -49,6 +49,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 logger = logging.getLogger(__name__)
 
@@ -507,6 +508,42 @@ def largest_frame_gap(path: Path) -> float:
     return max(b - a for a, b in zip(stamps, stamps[1:]))
 
 
+
+def pin_one_exit_ip(proxy: str, session: str) -> str:
+    """The same proxy URL, asking for one IP rather than any IP.
+
+    A rotating residential proxy hands out a different exit per
+    connection. yt-dlp negotiates the media URL from one of them and
+    ffmpeg, a separate process, fetches it from another, so YouTube sees
+    the URL used from an address it was not issued to and refuses:
+    "ffmpeg exited with code 8", which is a 403 wearing a different
+    number. Retrying could not help, because every attempt split the same
+    way.
+
+    DataImpulse pins an exit by putting a session id in the username --
+    login__sessid.abc:password@gw.dataimpulse.com:823 -- and holds that IP
+    for about thirty minutes. Both processes read the same proxy string,
+    so putting it there is what makes them share an address.
+
+    Parameters are appended to the username after "__" and separated with
+    ";", so an existing "__cr.us" is extended rather than replaced. A
+    proxy that already names a session is left exactly as it is.
+    """
+    if not proxy or "sessid." in proxy:
+        return proxy
+    parsed = urlsplit(proxy)
+    if not parsed.username:
+        return proxy                    # no credentials to hang it off
+    user = parsed.username
+    user += f";sessid.{session}" if "__" in user else f"__sessid.{session}"
+    auth = f"{user}:{parsed.password}@" if parsed.password else f"{user}@"
+    host = parsed.hostname or ""
+    if parsed.port:
+        host = f"{host}:{parsed.port}"
+    return urlunsplit((parsed.scheme, auth + host, parsed.path,
+                       parsed.query, parsed.fragment))
+
+
 def fetch_section(url: str, start: float, end: float, dest: Path,
                   proxy: str | None = None, height: int = DEFAULT_SIZE) -> None:
     """Download just the requested seconds of a video, at most `height` tall.
@@ -565,8 +602,6 @@ def fetch_section(url: str, start: float, end: float, dest: Path,
             cmd += ["--extractor-args",
                     f"youtube:player_client={PLAYER_CLIENT}"]
         cmd += ["--remote-components", "ejs:github"]
-    if proxy:
-        cmd += ["--proxy", proxy]
     cmd += ["-o", str(dest), url]
     # ffmpeg has to go through the proxy too, not just yt-dlp.
     #
@@ -576,11 +611,7 @@ def fetch_section(url: str, start: float, end: float, dest: Path,
     # from this host's IP, and YouTube rejects the mismatch — "ffmpeg
     # exited with code 8", which is a 403 wearing a different number.
     # Setting the proxy on the child environment is what ffmpeg reads.
-    env = None
-    if proxy:
-        env = {**os.environ,
-               "http_proxy": proxy, "https_proxy": proxy,
-               "HTTP_PROXY": proxy, "HTTPS_PROXY": proxy}
+    # Built per attempt now, since each one asks for its own exit IP.
     # Retry, because a residential proxy hands out a different exit IP every
     # time and a share of that pool is already flagged by YouTube. A single
     # attempt is a coin flip on which IP you draw — observed directly: the
@@ -588,16 +619,23 @@ def fetch_section(url: str, start: float, end: float, dest: Path,
     # later from a different exit. Three attempts turn a ~60% draw into
     # ~94%, and each one is free apart from the wait.
     #
-    # Only worth doing when a proxy is configured. Without one every
-    # attempt leaves from the same address, so a retry just fails again
-    # more slowly.
-    # Three attempts whether or not a proxy is set: a dropped
-    # fragment is a network event, and the direct path drops them
-    # too, just less often.
+    # Three attempts whether or not a proxy is set: a dropped fragment is a
+    # network event, and the direct path drops them too, just less often.
     attempts = 3
     last = ""
     for attempt in range(1, attempts + 1):
-        result = subprocess.run(cmd, capture_output=True, text=True,
+        # One exit IP per attempt, shared by both processes. A new session
+        # each time, so a retry still draws a different address -- which is
+        # the whole reason retrying works -- while yt-dlp and ffmpeg inside
+        # one attempt agree on which address that is.
+        env, run = None, list(cmd)
+        if proxy:
+            pinned = pin_one_exit_ip(proxy, uuid.uuid4().hex[:12])
+            run = [*cmd[:-3], "--proxy", pinned, *cmd[-3:]]
+            env = {**os.environ,
+                   "http_proxy": pinned, "https_proxy": pinned,
+                   "HTTP_PROXY": pinned, "HTTPS_PROXY": pinned}
+        result = subprocess.run(run, capture_output=True, text=True,
                                 timeout=180, env=env)
         if result.returncode == 0 and dest.exists():
             gap = largest_frame_gap(dest)
