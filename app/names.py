@@ -42,6 +42,14 @@ _ALIASES: dict[str, str] = {
     "hyperlid": "Hyperliquid",
     "hyper liquid": "Hyperliquid",
     "poly market": "Polymarket",
+    # Counted in the transcripts before adding: 285 lines say "robin
+    # hood", 126 say "pump fun", 35 say "micro strategy". Every one of
+    # them was unreachable by exact search, because expand() only knows
+    # the spellings listed here -- a search for "Robinhood" matched the
+    # 129 lines that spell it correctly and missed the other 285.
+    "robin hood": "Robinhood",
+    "pump fun": "pump.fun",
+    "micro strategy": "MicroStrategy",
     "pumpfun": "pump.fun",
     "frentech": "friend.tech",
     "fren tech": "friend.tech",
