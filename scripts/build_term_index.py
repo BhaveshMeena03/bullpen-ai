@@ -103,6 +103,10 @@ def tokens(text: str) -> set[str]:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--max-name-df", type=int, default=250,
+                    help="ceiling for a name from an episode title; higher "
+                         "than --max-df because a guest is said often "
+                         "inside their own episode")
     ap.add_argument("--max-df", type=int, default=60,
                     help="drop a token appearing in more windows than this; "
                          "common words cost storage and tell you nothing")
@@ -131,8 +135,42 @@ def main() -> int:
             for token in tokens(body) | phrases(body):
                 postings[token].append(position)
 
-    kept = {t: p for t, p in postings.items() if len(p) <= args.max_df}
+    # Names are exempt from the frequency cap.
+    #
+    # The cap exists to drop words that tell you nothing — "about", "think",
+    # "market". It was dropping names too, and got worse as the archive
+    # grew: ingesting the full Greg Osuri & Mayne broadcast pushed "mayne"
+    # past sixty windows, so the episode about Mayne is what made "mayne"
+    # unsearchable by name. Raising the cap instead let "pump fun fees"
+    # match, which is the opposite failure — exact match should only ever
+    # fire on something rare.
+    #
+    # A name from an episode title is precisely what people type, however
+    # often it is said inside the episode. Those are kept whatever their
+    # frequency; everything else still faces the cap.
+    # A token from a title is only a NAME if it is specific to an episode
+    # or two. "ansem", "market", "bubble", "solana" appear in most titles —
+    # exempting those let "what did ansem say about solana" match on exact
+    # tokens, which is the noise this cap exists to prevent. A guest is in
+    # one title, so that is the test.
+    title_df: dict[str, int] = defaultdict(int)
+    for episode in episodes:
+        for token in tokens(episode.title) | phrases(episode.title):
+            title_df[token] += 1
+    names = {t for t, n in title_df.items() if n <= 2}
+
+    # Names get a higher ceiling, not an unlimited one. Measured across this
+    # archive the two groups separate cleanly: guests sit at 104-193 windows
+    # (clemente 104, mayne 105, orangie 165, mizkif 188, tjr 193) and topics
+    # at 352+ (solana 352, bitcoin 446). Without the second cap "solana"
+    # counted as a name — it is in one title — and "what did ansem say about
+    # solana" started matching on exact tokens, which is the noise this
+    # whole filter exists to keep out.
+    kept = {t: p for t, p in postings.items()
+            if len(p) <= args.max_df
+            or (t in names and len(p) <= args.max_name_df)}
     dropped = len(postings) - len(kept)
+    rescued = sum(1 for t in kept if len(kept[t]) > args.max_df)
 
     OUT.write_text(json.dumps({"ids": ids, "terms": kept},
                               separators=(",", ":")))
@@ -140,7 +178,8 @@ def main() -> int:
 
     print(f"  {len(ids):,} windows")
     print(f"  {len(postings):,} distinct tokens, {len(kept):,} kept "
-          f"({dropped:,} too common at df>{args.max_df})")
+          f"({dropped:,} too common at df>{args.max_df}, "
+          f"{rescued:,} kept anyway as names)")
     print(f"  {OUT.relative_to(ROOT)} — {size/1_000_000:.2f} MB")
     if size > 4_000_000:
         print("\n  That is large for the image. Lower --max-df.")
