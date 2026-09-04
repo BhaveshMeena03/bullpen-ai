@@ -470,6 +470,43 @@ def _ytdlp_binary() -> str:
     return shutil.which("yt-dlp") or "yt-dlp"
 
 
+# A dropped HLS fragment is the failure that does not announce itself. An X
+# replay arrives as thousands of two-second fragments fetched sixteen at a
+# time through a rotating proxy; when one of them quietly does not arrive,
+# yt-dlp still exits 0 and still writes a playable file. The file is simply
+# missing two seconds of picture while keeping all of its audio, so the clip
+# renders, uploads, and plays with the video running two seconds behind the
+# voices. That shipped, and only looked wrong to a person watching it.
+#
+# Fragments are about two seconds, so anything approaching that is a lost
+# one rather than a slow frame.
+FRAME_GAP_TOLERANCE = 0.5
+
+
+def largest_frame_gap(path: Path) -> float:
+    """The biggest hole between consecutive video frames, in seconds.
+
+    Zero when the file cannot be probed: this guards a download, and a
+    broken probe should not be able to reject a good one.
+    """
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "frame=pts_time", "-of", "csv=p=0", str(path)],
+            capture_output=True, text=True, timeout=120).stdout
+    except Exception:                                       # noqa: BLE001
+        return 0.0
+    stamps = []
+    for chunk in out.replace(",", " ").split():
+        try:
+            stamps.append(float(chunk))
+        except ValueError:
+            continue
+    if len(stamps) < 2:
+        return 0.0
+    return max(b - a for a, b in zip(stamps, stamps[1:]))
+
+
 def fetch_section(url: str, start: float, end: float, dest: Path,
                   proxy: str | None = None, height: int = DEFAULT_SIZE) -> None:
     """Download just the requested seconds of a video, at most `height` tall.
@@ -554,17 +591,29 @@ def fetch_section(url: str, start: float, end: float, dest: Path,
     # Only worth doing when a proxy is configured. Without one every
     # attempt leaves from the same address, so a retry just fails again
     # more slowly.
-    attempts = 3 if proxy else 1
+    # Three attempts whether or not a proxy is set: a dropped
+    # fragment is a network event, and the direct path drops them
+    # too, just less often.
+    attempts = 3
     last = ""
     for attempt in range(1, attempts + 1):
         result = subprocess.run(cmd, capture_output=True, text=True,
                                 timeout=180, env=env)
         if result.returncode == 0 and dest.exists():
-            if attempt > 1:
-                logger.info("fetched on attempt %d of %d", attempt, attempts)
-            return
-        last = ((result.stderr or "").strip().splitlines()
-                or ["(no stderr)"])[-1]
+            gap = largest_frame_gap(dest)
+            if gap <= FRAME_GAP_TOLERANCE:
+                if attempt > 1:
+                    logger.info("fetched on attempt %d of %d", attempt,
+                                attempts)
+                return
+            # Exit code 0 and a playable file, with a hole in it.
+            last = (f"the download is missing {gap:.1f}s of video "
+                    f"(a dropped fragment)")
+            logger.warning("attempt %d came back with a %.1fs gap — "
+                           "discarding it", attempt, gap)
+        else:
+            last = ((result.stderr or "").strip().splitlines()
+                    or ["(no stderr)"])[-1]
         # A partial file from the failed attempt would make the next one
         # look like it succeeded.
         dest.unlink(missing_ok=True)
