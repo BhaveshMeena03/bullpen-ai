@@ -155,3 +155,102 @@ def describe(dropped: list[dict]) -> str:
                      f"{episode.get('title', '')[:44]:46s} "
                      f"-> already covered by {episode['_duplicate_of']}")
     return "\n".join(lines)
+
+
+# ─── grouping the same show ───────────────────────────────────────────────
+#
+# Separate from dedupe() above, and deliberately so. That decides what is
+# worth INDEXING, and its answer is "both copies": the YouTube cut drops
+# the guest interviews and some segments only ever aired on X, so throwing
+# either away loses real coverage.
+#
+# This decides what is worth LISTING, and the answer there is one card per
+# show. The episodes page was rendering 38 cards while the header said 18,
+# with the 20 August broadcast appearing three times, because the page was
+# showing files and the header was counting shows.
+#
+# Matching is on rare words. Two Whisper passes over the same audio produce
+# similar text and never identical text, so exact n-grams find nothing and
+# ordinary word overlap merges unrelated episodes -- two hours of crypto
+# talk share a vocabulary. What survives a second transcription is the
+# guest's name, a ticker, a number said once.
+
+import collections
+import datetime
+
+# A word in three files or fewer belongs to a conversation. Above that it
+# is the vocabulary of the show and says nothing about which episode.
+_RARE_IN_AT_MOST = 3
+# Half the smaller one's rare vocabulary. Measured over every pair: real
+# duplicates run from 0.42 to 0.98, nothing unrelated reaches 0.30, and the
+# band between is empty. 0.60 looked safer and split one show into three.
+_SAME_SHOW = 0.40
+# A cut usually goes up the next day; one went up four days later.
+_SAME_SHOW_DAYS = 6
+
+_A_WORD = re.compile(r"[a-z][a-z']{3,}")
+
+
+def _vocabulary(episode: dict) -> set[str]:
+    return set(_A_WORD.findall(
+        " ".join(s.get("text", "") for s in episode.get("segments") or []).lower()))
+
+
+def _length(episode: dict) -> float:
+    return max((s.get("t", 0) for s in episode.get("segments") or []), default=0)
+
+
+def _aired(episode: dict) -> datetime.date | None:
+    stamp = (episode.get("published_at") or episode.get("date") or "")[:10]
+    try:
+        return datetime.date.fromisoformat(stamp)
+    except ValueError:
+        return None
+
+
+def group_by_show(episodes: list[dict]) -> list[list[dict]]:
+    """Episodes clustered so that each cluster is one broadcast.
+
+    Merged transitively, because one show can have four cuts.
+    """
+    vocab = {e["episode_id"]: _vocabulary(e) for e in episodes}
+    seen: collections.Counter = collections.Counter()
+    for bag in vocab.values():
+        seen.update(bag)
+    rare = {w for w, n in seen.items() if n <= _RARE_IN_AT_MOST}
+    marks = {k: v & rare for k, v in vocab.items()}
+
+    parent = {e["episode_id"]: e["episode_id"] for e in episodes}
+
+    def root(x: str) -> str:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for i, a in enumerate(episodes):
+        for b in episodes[i + 1:]:
+            first, second = marks[a["episode_id"]], marks[b["episode_id"]]
+            if not first or not second:
+                continue
+            when_a, when_b = _aired(a), _aired(b)
+            if not when_a or not when_b:
+                continue
+            if abs((when_a - when_b).days) > _SAME_SHOW_DAYS:
+                continue
+            smaller, larger = ((first, second) if len(first) <= len(second)
+                               else (second, first))
+            if len(smaller & larger) / len(smaller) > _SAME_SHOW:
+                ra, rb = root(a["episode_id"]), root(b["episode_id"])
+                if ra != rb:
+                    parent[ra] = rb
+
+    clusters: dict[str, list[dict]] = collections.defaultdict(list)
+    for e in episodes:
+        clusters[root(e["episode_id"])].append(e)
+    return list(clusters.values())
+
+
+def canonical_episode_ids(episodes: list[dict]) -> set[str]:
+    """One id per show: the longest cut, which is the full broadcast."""
+    return {max(c, key=_length)["episode_id"] for c in group_by_show(episodes)}

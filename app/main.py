@@ -44,6 +44,7 @@ from .assets import aggregate as aggregate_assets
 from .assets_store import AssetStore
 from .clawpump import NAMESPACE as CLAWPUMP_NAMESPACE
 from .clawpump import ClawPumpAgent
+from .dedupe import canonical_episode_ids
 from .clipper import (
     MAX_CLIP_SECONDS,
     MIN_CLIP_SECONDS,
@@ -1110,13 +1111,57 @@ async def _market_for(ticker: str, asset_class: str | None) -> dict | None:
     return data
 
 
+_CANONICAL_CACHE: set[str] | None = None
+
+
+def _canonical_ids() -> set[str]:
+    """One episode id per show, computed once.
+
+    The index holds a file per upload, and one broadcast reaches it up to
+    four times: the live X post, the YouTube cut, and shorter clips of
+    both. Retrieval wants all of them -- the cut drops guest interviews
+    and some segments only aired live -- but a list of episodes wants one
+    row per evening. The page was rendering 38 cards under a header that
+    said 18, with 20 August appearing three times.
+
+    Empty on any failure, which the caller reads as "list everything".
+    Showing a duplicate row is a blemish; hiding real episodes because a
+    file would not parse is a broken page.
+    """
+    global _CANONICAL_CACHE
+    if _CANONICAL_CACHE is not None:
+        return _CANONICAL_CACHE
+    try:
+        episodes = list(_episodes_by_id().values())
+        _CANONICAL_CACHE = canonical_episode_ids(episodes) if episodes else set()
+        if _CANONICAL_CACHE:
+            logger.info("%d files group into %d shows for the episode list",
+                        len(episodes), len(_CANONICAL_CACHE))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("could not group episodes into shows (%s) — listing "
+                       "every file", exc)
+        _CANONICAL_CACHE = set()
+    return _CANONICAL_CACHE
+
+
 @app.get("/v1/podcast/episodes", dependencies=[Depends(public_rate_limit)])
 async def podcast_episodes(
     summaries: SummaryStore = Depends(get_summaries),
 ) -> list[dict]:
-    """Pre-computed episode summaries — a Pinecone fetch, no model call."""
+    """Pre-computed episode summaries — a Pinecone fetch, no model call.
+
+    One row per show. The duplicates stay in the index and stay
+    searchable; they simply do not each get a card.
+    """
     _track("episode_summary_views")
-    return await summaries.list_all()
+    rows = await summaries.list_all()
+    canonical = _canonical_ids()
+    if not canonical:
+        return rows
+    shown = [r for r in rows if r.get("episode_id") in canonical]
+    # A summary whose episode is not in episodes.json at all would vanish
+    # silently. Better a duplicate card than a missing episode.
+    return shown or rows
 
 
 # ─── clips ────────────────────────────────────────────────────────────────
