@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<!-- Source for the archive stats card. 1600x900, which is the 16:9 X
+     renders at full width without cropping.
+
+     Every number here comes from scripts/count_the_archive.py and is
+     counted over the 18 SHOWS, not the 38 files. Counting files inflates
+     each of these by about a third, because one broadcast is in the index
+     up to four times, and a card that says "18 episodes" beside per-file
+     counts contradicts itself in the same picture.
+
+     Whisper's misspellings are folded in: Solana includes "salana",
+     Hyperliquid includes "hyper liquid", Robinhood includes "robin hood".
+     Leaving them out undercounts Solana alone by 416.
+
+     Re-render after any ingest, because every figure moves:
+
+       .venv/bin/python scripts/count_the_archive.py      # shows, hours
+       "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+         --headless --disable-gpu --hide-scrollbars \
+         --force-device-scale-factor=2 --window-size=1600,900 \
+         --virtual-time-budget=5000 --screenshot=stats-card.png \
+         http://127.0.0.1:8000/demo/stats-card.html
+
+     The bar widths are hand-set in proportion to the counts. They are
+     decoration for the numbers beside them, not a chart -- if a count
+     changes, move the bar with it or delete the bars. -->
+<html><head><meta charset="utf-8"><style>
+  @font-face{font-family:"Instrument Serif";
+    src:url("fonts/InstrumentSerif-Regular.ttf") format("truetype")}
+  @font-face{font-family:"Inter";
+    src:url("fonts/Inter-Variable.ttf") format("truetype")}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{width:1600px;height:900px;background:#0b0e11;color:#e6e8ea;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,sans-serif;
+    padding:76px 88px;position:relative;overflow:hidden;
+    display:flex;flex-direction:column}
+  /* The same pool of light the site opens with, so the card and the page
+     read as one thing. */
+  .glow{position:absolute;inset:0;pointer-events:none;
+    background:
+      radial-gradient(760px 460px at 50% 0%, #16c78418, transparent 68%),
+      radial-gradient(900px 500px at 50% 0%, #ffffff08, transparent 70%)}
+  header{display:flex;align-items:center;gap:14px;margin-bottom:56px}
+  header img{width:34px;height:34px;border-radius:8px;display:block}
+  .name{font-size:22px;font-weight:600;letter-spacing:-.01em}
+  .name b{color:#16c784;font-weight:600}
+
+  h1{font-family:"Instrument Serif",Georgia,serif;font-weight:400;
+    font-size:70px;line-height:1.06;letter-spacing:-.02em;margin-bottom:14px}
+  h1 em{color:#16c784;font-style:normal}
+  .sub{font-size:24px;color:#8a939e;margin-bottom:52px}
+
+  .rows{display:flex;flex-direction:column;gap:0;
+    border-top:1px solid #232a33}
+  .row{display:flex;align-items:baseline;gap:22px;padding:19px 2px;
+    border-bottom:1px solid #232a33}
+  .row .who{font-size:29px;font-weight:600;width:290px;letter-spacing:-.01em}
+  /* The bar is the comparison. Ethereum against Solana is the whole point
+     of the card, and a reader should see it before reading a number. */
+  .bar{height:12px;border-radius:99px;background:#16c784;flex:0 0 auto}
+  .row.dim .bar{background:#2c3947}
+  .row.dim .who,.row.dim .n{color:#8a939e}
+  .n{font-size:27px;font-variant-numeric:tabular-nums;margin-left:auto;
+    color:#e6e8ea;font-weight:600}
+  .n span{color:#6b7480;font-weight:400;font-size:20px;margin-left:8px}
+
+  footer{margin-top:auto;padding-top:34px;display:flex;
+    align-items:baseline;justify-content:space-between}
+  .site{font-size:24px;color:#16c784;font-weight:600}
+  .note{font-size:19px;color:#6b7480}
+</style></head><body>
+  <div class="glow"></div>
+
+  <header>
+    <img src="logo-200.png" alt="">
+    <div class="name">Market Bubble <b>Search</b></div>
+  </header>
+
+  <h1>18 episodes. 66 hours.<br><em>68,525</em> lines of transcript.</h1>
+  <div class="sub">Every word the show has said, counted.</div>
+
+  <div class="rows">
+    <div class="row">
+      <div class="who">Solana</div>
+      <div class="bar" style="width:520px"></div>
+      <div class="n">788 <span>18/18 episodes</span></div>
+    </div>
+    <div class="row">
+      <div class="who">Bitcoin</div>
+      <div class="bar" style="width:484px"></div>
+      <div class="n">733 <span>18/18 episodes</span></div>
+    </div>
+    <div class="row">
+      <div class="who">Robinhood</div>
+      <div class="bar" style="width:297px"></div>
+      <div class="n">450 <span>14/18 episodes</span></div>
+    </div>
+    <div class="row">
+      <div class="who">Hyperliquid</div>
+      <div class="bar" style="width:284px"></div>
+      <div class="n">431 <span>18/18 episodes</span></div>
+    </div>
+    <div class="row dim">
+      <div class="who">Ethereum</div>
+      <div class="bar" style="width:145px"></div>
+      <div class="n">219 <span>18/18 episodes</span></div>
+    </div>
+  </div>
+
+  <footer>
+    <div class="site">search.lexthedev.com</div>
+    <div class="note">counted 4 September 2026</div>
+  </footer>
+</body></html>
