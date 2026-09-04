@@ -1144,6 +1144,63 @@ def _canonical_ids() -> set[str]:
     return _CANONICAL_CACHE
 
 
+def _listed(rows: list[dict]) -> list[dict]:
+    """The rows the episode list shows: one per broadcast.
+
+    Only a KNOWN duplicate is hidden. An episode that episodes.json has
+    never heard of cannot be judged a duplicate of anything, so it shows.
+
+    That distinction is the whole guard. Filtering to `canonical` alone
+    hid the newest episode the moment one was ingested: summaries live in
+    Pinecone and are written by the ingest, episodes.json ships with the
+    image, so between an ingest and the next deploy the newest show is in
+    the index, searchable and answering questions, and absent from the
+    list of episodes. It happened within hours of that filter shipping.
+    """
+    canonical = _canonical_ids()
+    if not canonical:
+        return rows
+    known = set(_episodes_by_id())
+    shown = [r for r in rows
+             if r.get("episode_id") not in known
+             or r.get("episode_id") in canonical]
+    return shown or rows
+
+
+@app.get("/v1/podcast/archive", dependencies=[Depends(public_rate_limit)])
+async def podcast_archive(
+    summaries: SummaryStore = Depends(get_summaries),
+) -> dict:
+    """How big the archive is, for the line the page opens with.
+
+    Derived from the same rows the episode list renders, so the headline
+    figure and the list below it cannot disagree. They did: the header
+    said 18 while the list showed 38, because one was counting shows and
+    the other was counting files.
+
+    Hours come from episodes.json, which ships with the image, so a show
+    ingested since the last deploy is counted in `shows` and contributes
+    nothing to `hours` until it redeploys. Undercounting the hours for a
+    few hours is the right way round -- the alternative is a figure that
+    claims audio the answer engine cannot quote.
+    """
+    try:
+        rows = _listed(await summaries.list_all())
+        episodes = _episodes_by_id()
+        seconds = 0.0
+        for row in rows:
+            episode = episodes.get(row.get("episode_id"))
+            if episode:
+                seconds += max((s.get("t", 0)
+                                for s in episode.get("segments") or []),
+                               default=0)
+        return {"shows": len(rows), "hours": round(seconds / 3600)}
+    except Exception as exc:                                    # noqa: BLE001
+        # The page keeps the figures already written into the markup.
+        logger.warning("could not size the archive: %s", exc)
+        raise HTTPException(status_code=503, detail="unavailable")
+
+
 @app.get("/v1/podcast/episodes", dependencies=[Depends(public_rate_limit)])
 async def podcast_episodes(
     summaries: SummaryStore = Depends(get_summaries),
@@ -1154,24 +1211,7 @@ async def podcast_episodes(
     searchable; they simply do not each get a card.
     """
     _track("episode_summary_views")
-    rows = await summaries.list_all()
-    canonical = _canonical_ids()
-    if not canonical:
-        return rows
-    # Only a KNOWN duplicate is hidden. An episode that episodes.json has
-    # never heard of cannot be judged a duplicate of anything, so it shows.
-    #
-    # That distinction is the whole guard. Filtering to `canonical` alone
-    # hid the newest episode the moment one was ingested: summaries live in
-    # Pinecone and are written by the ingest, episodes.json ships with the
-    # image, so between an ingest and the next deploy the newest show is in
-    # the index, searchable and answering questions, and absent from the
-    # list of episodes. It happened within hours of that filter shipping.
-    known = set(_episodes_by_id())
-    shown = [r for r in rows
-             if r.get("episode_id") not in known
-             or r.get("episode_id") in canonical]
-    return shown or rows
+    return _listed(await summaries.list_all())
 
 
 # ─── clips ────────────────────────────────────────────────────────────────
