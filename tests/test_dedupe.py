@@ -49,3 +49,16 @@ def test_grouping_survives_an_episode_with_no_transcript():
     groups = group_by_show([a, empty])
     assert len(groups) == 2
     assert "a" in canonical_episode_ids([a, empty])
+
+
+def test_an_episode_the_data_file_has_never_seen_is_still_listed():
+    """The failure this guards: summaries are written to Pinecone by the
+    ingest, episodes.json ships with the image. Between an ingest and the
+    next deploy the newest show is searchable and answering questions
+    while being absent from the episode list. That happened."""
+    known = {"a", "b"}
+    canonical = {"a"}
+    rows = [{"episode_id": "a"}, {"episode_id": "b"}, {"episode_id": "brand-new"}]
+    shown = [r for r in rows
+             if r["episode_id"] not in known or r["episode_id"] in canonical]
+    assert [r["episode_id"] for r in shown] == ["a", "brand-new"]

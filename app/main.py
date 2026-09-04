@@ -1158,9 +1158,19 @@ async def podcast_episodes(
     canonical = _canonical_ids()
     if not canonical:
         return rows
-    shown = [r for r in rows if r.get("episode_id") in canonical]
-    # A summary whose episode is not in episodes.json at all would vanish
-    # silently. Better a duplicate card than a missing episode.
+    # Only a KNOWN duplicate is hidden. An episode that episodes.json has
+    # never heard of cannot be judged a duplicate of anything, so it shows.
+    #
+    # That distinction is the whole guard. Filtering to `canonical` alone
+    # hid the newest episode the moment one was ingested: summaries live in
+    # Pinecone and are written by the ingest, episodes.json ships with the
+    # image, so between an ingest and the next deploy the newest show is in
+    # the index, searchable and answering questions, and absent from the
+    # list of episodes. It happened within hours of that filter shipping.
+    known = set(_episodes_by_id())
+    shown = [r for r in rows
+             if r.get("episode_id") not in known
+             or r.get("episode_id") in canonical]
     return shown or rows
 
 
