@@ -25,7 +25,9 @@ from app.x_api import (
     assert_linkless,
     strip_urls,
 )
-from app.x_bot import BotState, MentionBot, format_reply, question_from
+from app.x_bot import (BotState, MentionBot, format_reply, fingerprint,
+                       has_a_known_intent, has_substance, is_a_mass_tag,
+                       question_from)
 
 # --- reading the question --------------------------------------------------
 
@@ -42,6 +44,70 @@ from app.x_bot import BotState, MentionBot, format_reply, question_from
 ])
 def test_question_from(post, expected):
     assert question_from(post) == expected
+
+
+# --- was anything actually said to us --------------------------------------
+
+# Every one of these was posted at the account and answered with a full
+# retrieval: an embedding, a Pinecone query, a rerank and a model call, to
+# put a fact about the broadcast under a link farm. Eight #Web5 posts
+# arrived from eight accounts in two days.
+@pytest.mark.parametrize("post", [
+    "@mbubbleSearch #Web5 https://t.co/vYR9s0CrLp https://t.co/tLp0PwuIop",
+    "@mbubbleSearch @Banks #Web5 https://t.co/D6XRiXanHp https://t.co/wA2",
+    "@mbubbleSearch Lfg $MBS",
+    "@mbubbleSearch @MarketBubble 🔥🔥🔥💯",
+    "@CookerFlips @mbubbleSearch be early",
+    "@blknoiz06 @mbubbleSearch doing something different",
+    "@MarketBubble @mbubbleSearch millions",
+    "@mbubbleSearch @blknoiz06 Send it🚀🚀",
+])
+def test_a_post_with_nothing_in_it_has_no_substance(post):
+    assert not has_substance(post)
+
+
+@pytest.mark.parametrize("post", [
+    # Three characters of substance, and a real thing to answer.
+    "@mbubbleSearch Going to 0?",
+    "@mbubbleSearch what did ansem say about eth",
+    # No question mark, still plainly a question.
+    "@Lexx_eth @mbubbleSearch @Banks So how many hours are we talking",
+])
+def test_a_real_post_has_substance(post):
+    assert has_substance(post)
+
+
+def test_a_broadcast_tagging_everyone_is_not_addressed_to_us():
+    """Nine of these went out in eight minutes, each to a different large
+    account, each with this one tagged in and each answered."""
+    assert is_a_mass_tag("@phantom @mbubbleSearch @blknoiz06 follow him")
+
+
+@pytest.mark.parametrize("post", [
+    # A group conversation is people tagging friends into something real.
+    "@a @b @c @mbubbleSearch so what actually happened on the July 2 show",
+    "@a @b @mbubbleSearch what did ansem say",          # only two handles
+])
+def test_a_group_conversation_is_not_a_mass_tag(post):
+    assert not is_a_mass_tag(post)
+
+
+def test_the_same_post_twice_has_the_same_shape():
+    a = "@phantom @mbubbleSearch follow him and support this"
+    b = "@Pumpfun @mbubbleSearch follow him and support this"
+    assert fingerprint(a) == fingerprint(b)
+    assert fingerprint(a) != fingerprint("@mbubbleSearch what did ansem say")
+
+
+# One to three words each, and every one of them means something specific
+# that this bot answers. A word count cannot tell them from "be early", so
+# the recognisers are asked instead.
+@pytest.mark.parametrize("post", [
+    "@bot stop", "@bot ca pls", "@bot recap #14", "@bot what is this",
+    "@bot try again", "@bot summarise ep 10",
+])
+def test_a_short_post_with_a_handler_survives_the_gate(post):
+    assert has_a_known_intent(post)
 
 
 # --- the link guard --------------------------------------------------------
@@ -2088,9 +2154,22 @@ async def test_the_same_fact_is_never_offered_twice(tmp_path):
 @pytest.mark.anyio
 async def test_the_pool_reshuffles_once_it_is_spent(tmp_path):
     """Three facts and five compliments: it must keep answering rather than
-    fall silent once every one has been used."""
-    batches = [[mention("1")]] + [[mention(str(i), text="@bot lfg")]
-                                  for i in range(2, 8)]
+    fall silent once every one has been used.
+
+    The compliment used to be "lfg", which is not one — it is the shape
+    that arrived as "Lfg $MBS" under a price complaint, and it now gets
+    silence like the rest of the hype. A real compliment still has to
+    reach the pool, which is what this is testing.
+
+    Worded differently each time, because one account posting the same
+    sentence over and over is the chain-spam shape and is now answered
+    once. Six people saying six nice things is the case here.
+    """
+    nice = ["very cool", "this is great", "love this", "really useful",
+            "incredible work", "so good"]
+    batches = [[mention("1")]] + [
+        [mention(str(i), text=f"@bot {nice[i - 2]}", author=f"a{i}")]
+        for i in range(2, 8)]
     client = FakeClient(batches)
     bot = MentionBot(client, FakeIndex(), highlights=POOL,
                      state_path=tmp_path / "s.json")

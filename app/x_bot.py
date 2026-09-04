@@ -2213,6 +2213,12 @@ class BotState:
     # users, which limited it by accident. Opening to everyone removes that
     # accident, so the limit has to be stated.
     author_replies: dict = field(default_factory=dict)
+    # The shape of each post this account has already answered, per author,
+    # so the same post sent again gets nothing. One account sent the same
+    # sentence to nine large accounts in eight minutes with this one tagged
+    # in each, and every other gate passed it: plenty of words, no links,
+    # and nine separate conversations so the per-thread cap never applied.
+    author_texts: dict = field(default_factory=dict)
     # How many replies this account has put into each conversation today.
     # Two automated accounts in one thread reply to each other forever:
     # @clawpumptech is a bot too, its reply mentions this one, that reply
@@ -2278,6 +2284,7 @@ class BotState:
             "opted_out": self.opted_out,
             "highlights_used": self.highlights_used[-200:],
             "author_replies": self.author_replies,
+            "author_texts": self.author_texts,
             "spent_usd": round(self.spent_usd, 4),
             "spent_today_usd": round(self.spent_today_usd, 4),
         }))
@@ -2290,6 +2297,7 @@ class BotState:
             self.spent_today_usd = 0.0
             self.conversation_replies = {}
             self.author_replies = {}
+            self.author_texts = {}
 
 
 # A highlight is a gift. It goes to somebody who said something nice, and
@@ -2340,6 +2348,98 @@ _READS_AS_PRAISE = re.compile(
     )\b
       | \U0001F525 | \U0001FAE1 | \U0001F44F | \U0001F64C | \U0001F4AF
       | \U0001F440 | \U0001F602""")
+
+
+# Everything that is addressing rather than content: handles, the t.co
+# links X rewrites every url into, and hashtags. What is left is what the
+# person actually typed at this account.
+_A_LINK = re.compile(r"https?://\S+")
+_A_HASHTAG = re.compile(r"#\w+")
+_LEADING_HANDLES = re.compile(r"^(?:\s*@\w{1,15})+")
+_A_WORD = re.compile(r"[A-Za-z][A-Za-z'’-]+")
+# The words a question opens with when it forgets its question mark.
+# "@a @b @c So how many hours are we talking" is a real question and has
+# to survive both gates below.
+_INTERROGATIVE_OPENER = re.compile(
+    r"""(?ix)\b(?: what|who|when|where|why|how|which|whose
+                 | did|does|do|is|are|was|were|can|could|would|should
+                 | has|have|any|tell|find|show|explain )\b""")
+
+
+def _content_of(text: str) -> str:
+    t = _A_LINK.sub(" ", text or "")
+    t = _HANDLE.sub(" ", t)
+    return _A_HASHTAG.sub(" ", t)
+
+
+def has_substance(text: str) -> bool:
+    """Whether there is a post here at all, once the addressing is removed.
+
+    "@mbubbleSearch #Web5 t.co/x t.co/y" is a hashtag and two links. Eight
+    of those arrived in two days from eight accounts and every one was
+    answered with a full retrieval — an embedding, a Pinecone query, a
+    rerank and a model call — to post a fact about GTA 6 under a link farm.
+    "Send it🚀🚀", "Lfg $MBS", "be early", "millions" and "🔥🔥🔥💯" cost the
+    same and read the same.
+
+    A question mark is enough on its own: "Going to 0?" is three
+    characters of substance and a real thing to answer.
+    """
+    content = _content_of(text)
+    if "?" in content:
+        return True
+    return len(_A_WORD.findall(content)) >= 4
+
+
+def is_a_mass_tag(text: str) -> bool:
+    """Whether this is a broadcast that happens to include us.
+
+    A post opening with three or more handles and asking nothing is being
+    sprayed at accounts, not addressed to one. The length ceiling is what
+    keeps a genuine group conversation out of it — people do tag four
+    friends into a real discussion, and that discussion has more than a
+    dozen words in it.
+    """
+    handles = _LEADING_HANDLES.match((text or "").strip())
+    if not handles or len(_HANDLE.findall(handles.group(0))) < 3:
+        return False
+    content = _content_of(text)
+    if "?" in content or _INTERROGATIVE_OPENER.search(content):
+        return False
+    return len(_A_WORD.findall(content)) < 12
+
+
+def fingerprint(text: str) -> str:
+    """A stable shape for a post, for spotting the same one sent again.
+
+    One account sent the same sentence to nine different large accounts in
+    eight minutes, tagging this one each time, and got nine different
+    answers back. Every gate above passes it: there are plenty of words,
+    it is not a link farm, and the nine posts are nine conversations so the
+    per-thread cap never applies. Only the repetition gives it away.
+    """
+    words = _A_WORD.findall(_content_of(text).lower())
+    return " ".join(sorted(set(words))[:12])
+
+
+def has_a_known_intent(text: str) -> bool:
+    """Whether a handler already recognises this, however short it is.
+
+    "stop", "ca pls", "recap #14", "what is this", "try again" are one to
+    three words each and every one of them means something specific that
+    this bot answers without retrieval. A word count cannot tell them
+    apart from "be early", so it is not allowed to try — the recognisers
+    are asked directly instead.
+    """
+    q = question_from(text or "")
+    if not q:
+        return False
+    return bool(
+        asks_to_be_left_alone(q) or asks_to_retry(q)
+        or summary_request(q) is not None or asks_for_the_latest(q)
+        or _ASKS_FOR_CA.search(q) or asks_only_about_a_name(q)
+        or asks_about_us(q) or asks_for_a_joke(q) or summons(q)
+        or _ASKS_WHAT_THIS_IS.search(q) or _ASKS_IF_AUTOMATED.search(q))
 
 
 def deserves_a_highlight(text: str) -> bool:
@@ -2556,6 +2656,48 @@ class MentionBot:
                 self.state.opted_out.append(mention.author_id)
                 handled = mention.id
                 continue
+            # Nothing was actually said to us. Checked among the other cheap
+            # gates, so a link farm costs the read that already happened and
+            # nothing else — no embedding, no Pinecone query, no rerank, no
+            # model call, and no reply under it.
+            #
+            # Below the opt-out and above the spending, on purpose: "stop"
+            # has to be honoured before anything can decide it is too short
+            # to matter.
+            #
+            # Priority accounts are exempt, as everywhere else: "memefi",
+            # posted by Ansem, is one word with no question in it and is
+            # exactly what this account exists to answer.
+            if (mention.author_id not in self._priority
+                    and not has_a_known_intent(mention.text)):
+                if is_a_mass_tag(mention.text):
+                    logger.info("%s is a broadcast tagging several accounts "
+                                "and asking nothing — leaving it", mention.id)
+                    handled = mention.id
+                    continue
+                # A short post is not automatically an empty one. "very cool
+                # concept!" is three words and is the moment a demonstration
+                # is worth the most, so the praise allowlist overrules the
+                # word count. "Lfg $MBS", "be early" and "Send it🚀🚀" match
+                # neither and get nothing.
+                if not (has_substance(mention.text)
+                        or deserves_a_highlight(mention.text)):
+                    logger.info("%s is handles, hashtags and links with no "
+                                "post in it — leaving it", mention.id)
+                    handled = mention.id
+                    continue
+                # Only for repeated STATEMENTS. Somebody asking the same
+                # question again in a new thread is asking a new audience
+                # and should get the same answer; somebody pasting the same
+                # sentence under nine large accounts is not asking anything.
+                shape = ("" if asks_something(question_from(mention.text))
+                         else fingerprint(mention.text))
+                seen = self.state.author_texts.get(str(mention.author_id or ""))
+                if shape and seen and shape in seen:
+                    logger.info("%s repeats a post this author already had "
+                                "answered today — leaving it", mention.id)
+                    handled = mention.id
+                    continue
             if (self._verified_only and not mention.author_verified
                     and mention.author_id not in self._priority):
                 # Checked here rather than inside compose(), so an ignored
@@ -2612,6 +2754,16 @@ class MentionBot:
                     if author:
                         self.state.author_replies[author] = (
                             self.state.author_replies.get(author, 0) + 1)
+                        # Remembered only once a reply actually went out,
+                        # so a post skipped for some other reason does not
+                        # silence a genuine repeat of it later. Bounded per
+                        # author: a spammer is caught by the first few
+                        # shapes and the rest is just file size.
+                        shape = fingerprint(mention.text)
+                        if shape:
+                            seen = self.state.author_texts.setdefault(author, [])
+                            seen.append(shape)
+                            del seen[:-20]
                 handled = mention.id
                 self.state.attempts.pop(mention.id, None)
             except Exception:                              # noqa: BLE001
