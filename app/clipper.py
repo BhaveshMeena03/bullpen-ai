@@ -67,13 +67,13 @@ CAPTION_WORDS = 5
 SITE_CREDIT = "lexthedev.com"
 
 
-# Three minutes is the ceiling, not the expectation. Measured end to end in
-# a one-core container, a 20-second clip takes 91 seconds — download,
-# caption render and encode — so this ceiling is about a quarter of an hour
-# of work. The picker says so before the button is pressed, and
-# MAX_CONCURRENT of 1 means the queue behind it is real. The default in the
-# picker stays short; this is headroom for a whole exchange.
-MAX_CLIP_SECONDS = 180
+# Two minutes is the ceiling, not the expectation. Memory no longer scales
+# with length, so this is purely about the wait: measured end to end in a
+# one-core container a 20-second clip takes 91 seconds, which puts the
+# ceiling at roughly ten minutes of work with a queue of one behind it.
+# Three minutes was headroom nobody was using at fifteen minutes a go. The
+# picker says the estimate before the button is pressed.
+MAX_CLIP_SECONDS = 120
 MIN_CLIP_SECONDS = 5
 
 # What a viewer-requested clip renders at. 1280 wide, quality-targeted.
