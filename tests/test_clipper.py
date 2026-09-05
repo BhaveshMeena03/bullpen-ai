@@ -223,3 +223,25 @@ def test_the_local_script_defaults_to_the_sites_canvas():
            / "scripts" / "make_clip.py").read_text()
     assert "default=CLIP_HEIGHT" in src
     assert not re.search(r'if args\.best and "--height" not in sys\.argv', src)
+
+
+def test_memory_watching_falls_back_where_it_cannot_measure(monkeypatch):
+    """Everywhere except Linux there is no VmPeak to read, and the render
+    still has to run. Returning None is the honest answer; returning a
+    number from a laptop is what broke production."""
+    import app.clipper as clipper
+    monkeypatch.setattr(clipper.sys, "platform", "darwin")
+    done, peak = clipper.run_watching_memory(
+        ["/bin/echo", "hello"], timeout=30)
+    assert done.returncode == 0 and "hello" in done.stdout
+    assert peak is None
+
+
+def test_memory_watching_still_returns_output_and_status():
+    """The measurement must not change what the caller sees. A render that
+    fails has to report its stderr the same way it always did."""
+    import app.clipper as clipper
+    done, _ = clipper.run_watching_memory(
+        ["/bin/sh", "-c", "echo out; echo err 1>&2; exit 3"], timeout=30)
+    assert done.returncode == 3
+    assert "out" in done.stdout and "err" in done.stderr

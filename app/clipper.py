@@ -816,6 +816,55 @@ def _concat_list(captions, workdir: Path, size: int, height: int,
 CLIP_MEMORY_LIMIT_MB = 0
 
 
+def run_watching_memory(cmd: list[str], timeout: int,
+                        env: dict | None = None):
+    """Run a command and report the peak VIRTUAL size it reached, in MB.
+
+    This exists because the memory ceiling was set from the wrong number
+    and broke every clip. `ulimit -v` bounds virtual address space; the
+    figures it was sized against were resident set sizes measured on a
+    laptop, and ffmpeg reserves far more address space than it ever makes
+    resident. The gap between those two numbers is the bug, and nothing on
+    a Mac can measure it -- VmPeak is a Linux file.
+
+    So the render measures itself, in the place that matters, and the log
+    carries the answer. Polled rather than read once at the end, because
+    /proc/<pid> disappears the moment the process does.
+
+    Returns (completed_process, peak_mb). peak_mb is None where it cannot
+    be measured, which is everywhere except Linux.
+    """
+    if not sys.platform.startswith("linux"):
+        return subprocess.run(cmd, capture_output=True, text=True,
+                              timeout=timeout, env=env), None
+
+    import threading
+    peak = {"kb": 0}
+
+    def watch(pid: int, stop: threading.Event) -> None:
+        status = Path(f"/proc/{pid}/status")
+        while not stop.wait(0.4):
+            try:
+                for line in status.read_text().splitlines():
+                    if line.startswith("VmPeak:"):
+                        peak["kb"] = max(peak["kb"], int(line.split()[1]))
+                        break
+            except (OSError, ValueError, IndexError):
+                return                      # the process ended; keep the max
+
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, text=True, env=env)
+    stop = threading.Event()
+    watcher = threading.Thread(target=watch, args=(proc.pid, stop), daemon=True)
+    watcher.start()
+    try:
+        out, err = proc.communicate(timeout=timeout)
+    finally:
+        stop.set()
+    done = subprocess.CompletedProcess(cmd, proc.returncode, out, err)
+    return done, (peak["kb"] / 1024 if peak["kb"] else None)
+
+
 def _looks_like_out_of_memory(returncode: int, stderr: str) -> bool:
     """Whether ffmpeg died against the ceiling rather than on the input."""
     if returncode in (137, -9):                 # SIGKILL, the kernel's OOM
@@ -958,7 +1007,7 @@ def render(source: Path, captions, backdrop: Path, workdir: Path,
         steps.append(f"[{label}][2:v]overlay=0:0:shortest=1[capped]")
         label = "capped"
 
-    result = subprocess.run(
+    result, peak_mb = run_watching_memory(
         _capped(["ffmpeg", "-y", *inputs,
          "-filter_complex", ";".join(steps + steps_audio),
          "-map", f"[{label}]",
@@ -967,7 +1016,14 @@ def render(source: Path, captions, backdrop: Path, workdir: Path,
          *_encoder(size, best),
          "-movflags", "+faststart",
          "-shortest", str(out)]),
-        capture_output=True, text=True, timeout=300)
+        timeout=300)
+    if peak_mb:
+        # The number the ceiling has to be set from. Logged on every render
+        # so it is a measurement rather than a guess, and so the figure
+        # tracks the canvas rather than being pinned to one that was true
+        # in September.
+        logger.info("render at %dpx peaked at %.0f MB of address space",
+                    size, peak_mb)
     if result.returncode != 0:
         tail = "; ".join((result.stderr or "").strip().splitlines()[-3:])
         # Say which failure this is. Out of memory surfaces as a generic
