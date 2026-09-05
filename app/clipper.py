@@ -42,6 +42,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -64,11 +65,12 @@ BG = "#0b0e11"
 GREEN = "#16c784"
 CAPTION_WORDS = 5
 
-# The credit on every clip. Short on purpose: this is read at a glance on a
-# phone, off a re-upload, by somebody who has never heard of the site — the
-# subdomain was three extra syllables that carried no information. It is the
-# only attribution on a file that travels, which is why it is not optional.
-SITE_CREDIT = "lexthedev.com"
+# Clips used to carry a "lexthedev.com" credit, on the reasoning that a
+# file which travels should say where it came from. Removed on purpose:
+# these are posted alongside the show's own moments, and a URL burned into
+# somebody else's broadcast reads as branding their footage rather than
+# citing it. The episode and the timestamp stay, which is what a viewer
+# actually needs to go and check the quote.
 
 
 # Two minutes is the ceiling, not the expectation. Memory no longer scales
@@ -254,6 +256,89 @@ def ffmpeg_available() -> bool:
     return shutil.which("ffmpeg") is not None
 
 
+# ─── where to cut ─────────────────────────────────────────────────────────
+
+# A sentence that has actually finished, rather than a line that happens
+# to have ended. Trailing quotes and brackets are allowed after the stop
+# because captions carry them: `he said "we're done."` ends a sentence.
+_SENTENCE_END = re.compile(r"""[.!?]['")\]]*\s*$""")
+
+# The same stop, found anywhere in a line rather than only at its end.
+# Requires whitespace or the line's end after it, so "3.5" and "u.s." do
+# not read as the end of a thought.
+_SENTENCE_STOP = re.compile(r"""[.!?]['")\]]*(?=\s|$)""")
+
+# How far the cut may move to find a better place to land. Six seconds is
+# about two spoken lines: enough to reach the end of a sentence in normal
+# speech, short enough that a 45-second clip is still a 45-second clip.
+SNAP_SLACK = 6.0
+
+
+def snap_to_speech(segments: list[dict], start: float, end: float,
+                   slack: float = SNAP_SLACK) -> tuple[float, float]:
+    """Move a clip's edges to where speech starts and stops.
+
+    A clip cut at `start + duration` lands wherever the arithmetic puts
+    it, which is usually the middle of a word. The moment is right and the
+    clip reads as broken -- and a broken-sounding clip is worse than no
+    clip, because it is the thing that gets posted.
+
+    The transcript already knows where speech begins and ends: every
+    segment carries the second it starts. So the end moves to a segment
+    boundary near the requested one, preferring a boundary where the line
+    before it finished a sentence; the start moves back to the beginning
+    of whatever segment it landed inside.
+
+    Both edges only ever move outward or to a boundary, never inward past
+    the moment being clipped -- the point is to include the whole thought,
+    not to trim it. Returns the original values unchanged when there is
+    nothing better within `slack`, so a clip is never made worse.
+    """
+    if not segments:
+        return start, end
+
+    starts = [float(s.get("t", 0.0)) for s in segments]
+
+    # Open at the top of the segment the start fell inside, so the first
+    # word is whole. Never move forward: that would clip the moment.
+    opening = [t for t in starts if t <= start]
+    if opening and start - opening[-1] <= slack:
+        start = opening[-1]
+
+    # Where do sentences actually finish? Not at segment boundaries --
+    # Whisper breaks a segment when it has heard enough audio, not when
+    # the speaker has finished a thought, so on real transcripts the
+    # boundaries land mid-clause ("a good trade right n-", "does have
+    # currentl-"). Cutting only on them leaves the clip hanging exactly
+    # the way it did before.
+    #
+    # The stops are inside the text instead, so each one is timed by how
+    # far through the line it falls. That is an estimate, and it is the
+    # same estimate build_captions already makes to time caption lines.
+    candidates: list[tuple[float, bool]] = []
+    for i, t in enumerate(starts):
+        text = segments[i].get("text", "") or ""
+        span = (starts[i + 1] - t) if i + 1 < len(starts) else 4.0
+        if text and span > 0:
+            for stop in _SENTENCE_STOP.finditer(text):
+                through = (stop.end() / len(text))
+                candidates.append((t + through * span, True))
+        candidates.append((t, False))          # the boundary, as a fallback
+
+    best, best_cost = None, None
+    for when, finished in candidates:
+        if abs(when - end) > slack or when <= start:
+            continue
+        # A finished sentence is worth up to the whole slack window; among
+        # equals, the cut nearest the requested length wins.
+        cost = abs(when - end) - (slack if finished else 0.0)
+        if best_cost is None or cost < best_cost:
+            best, best_cost = when, cost
+    if best is not None:
+        end = round(best, 2)
+    return start, end
+
+
 # ─── captions ─────────────────────────────────────────────────────────────
 
 def build_captions(segments: list[dict], start: float,
@@ -337,15 +422,11 @@ def make_backdrop(title: str, stamp: str, path: Path,
         draw.text(((size - w) / 2, y), line, font=font, fill="#e6e8ea")
         y += 34 * k
 
-    foot_font = _font(FONT_CANDIDATES_REGULAR, int(18 * k))
     stamp_font = _font(FONT_CANDIDATES_BOLD, int(18 * k))
-    gap = 12 * k
     sw = draw.textlength(stamp, font=stamp_font)
-    cw = draw.textlength(SITE_CREDIT, font=foot_font)
-    x = (size - (sw + gap + cw)) / 2
+    x = (size - sw) / 2
     y = size - 44 * k
     draw.text((x, y), stamp, font=stamp_font, fill="#e6e8ea")
-    draw.text((x + sw + gap, y), SITE_CREDIT, font=foot_font, fill=GREEN)
     img.save(path)
 
 
@@ -395,19 +476,22 @@ def make_wide_overlay(title: str, stamp: str, path: Path,
     label = short_title(title)
     title_font = _font(FONT_CANDIDATES_BOLD, int(25 * k))
     stamp_font = _font(FONT_CANDIDATES_BOLD, int(25 * k))
-    foot_font = _font(FONT_CANDIDATES_REGULAR, int(25 * k))
     dot_font = _font(FONT_CANDIDATES_REGULAR, int(25 * k))
 
     dot = "  ·  "
     parts = [(label, title_font, "#e6e8ea"),
              (dot, dot_font, "#8a939e"),
-             (stamp, stamp_font, "#e6e8ea"),
-             (dot, dot_font, "#8a939e"),
-             (SITE_CREDIT, foot_font, GREEN)]
+             (stamp, stamp_font, "#e6e8ea")]
     run = sum(draw.textlength(t, font=f) for t, f, _ in parts)
 
-    pad_x, pad_y = 20 * k, 11 * k
-    top = 5 * k + 14 * k
+    # Tucked up under the hairline rather than floating below it. The
+    # broadcast puts its own "LOS ANGELES / 1:59 PM PT" chyron in this
+    # same black band, starting about 48px down at 1080p, and the panel
+    # used to sit at 19..66 -- straight through it, our title crossing
+    # their clock. Everything above 48 is empty in every episode, so the
+    # panel is raised and its padding tightened to fit inside it.
+    pad_x, pad_y = 20 * k, 8 * k
+    top = 5 * k + 2 * k
     box_h = 25 * k + pad_y * 2
     box_w = run + pad_x * 2
     left = width - box_w - 28 * k

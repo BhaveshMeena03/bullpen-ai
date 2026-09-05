@@ -245,3 +245,63 @@ def test_memory_watching_still_returns_output_and_status():
         ["/bin/sh", "-c", "echo out; echo err 1>&2; exit 3"], timeout=30)
     assert done.returncode == 3
     assert "out" in done.stdout and "err" in done.stderr
+
+
+class TestClipsEndOnAFinishedSentence:
+    """A clip that stops mid-word is the half a viewer is left holding.
+
+    The first attempt at this only moved the cut to segment boundaries,
+    which does nothing on a real transcript: Whisper ends a segment when
+    it has heard enough audio, not when the speaker has finished, so the
+    boundaries land mid-clause. On the episode this was built for, seven
+    consecutive segments ended "a good trade right n-", "does have
+    currentl-", "But one" -- not one of them a sentence. The clip still
+    ended on "it's quantum resistant. It's also".
+
+    So the stops are found inside the line and timed by how far through
+    it they fall, which is the estimate build_captions already makes.
+    """
+
+    SEGS = [
+        {"t": 0.0, "text": "so anyway that was the whole thing. and then"},
+        {"t": 6.0, "text": "we got into it properly. i think the point is"},
+        {"t": 12.0, "text": "that nobody checks. and honestly it's fine. but"},
+        {"t": 18.0, "text": "there is one more thing worth saying here"},
+    ]
+
+    def test_it_does_not_stop_mid_clause(self):
+        from app.clipper import snap_to_speech
+        _, end = snap_to_speech(self.SEGS, 0.0, 16.0)
+        # The line at 12s holds two stops -- "nobody checks." near its
+        # start and "it's fine." near its end. Either is a real sentence;
+        # what must not happen is stopping on the trailing "but".
+        assert 13.0 < end < 18.0, end
+
+    def test_a_boundary_is_only_a_fallback(self):
+        # With no stop in reach the cut may still move to a boundary, but
+        # it must never invent one that is not there.
+        from app.clipper import snap_to_speech
+        segs = [{"t": 0.0, "text": "no stops at all here"},
+                {"t": 5.0, "text": "still nothing to end on"}]
+        start, end = snap_to_speech(segs, 0.0, 40.0)
+        assert (start, end) == (0.0, 40.0)
+
+    def test_the_start_never_moves_forward(self):
+        # Moving the start later would clip the moment being asked for.
+        from app.clipper import snap_to_speech
+        start, _ = snap_to_speech(self.SEGS, 7.5, 18.0)
+        assert start <= 7.5
+
+    def test_a_decimal_is_not_the_end_of_a_thought(self):
+        from app.clipper import snap_to_speech
+        segs = [{"t": 0.0, "text": "it went up 3.5 percent on the day and"},
+                {"t": 6.0, "text": "kept going after that too"}]
+        _, end = snap_to_speech(segs, 0.0, 5.0)
+        # "3.5" is not a full stop, so the only candidate left is the
+        # segment boundary. Landing before ~4s would mean it cut inside
+        # the number.
+        assert end >= 5.0, f"cut inside '3.5' at {end}"
+
+    def test_empty_segments_change_nothing(self):
+        from app.clipper import snap_to_speech
+        assert snap_to_speech([], 3.0, 40.0) == (3.0, 40.0)

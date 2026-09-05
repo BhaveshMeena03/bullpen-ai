@@ -39,6 +39,7 @@ from app.clipper import (CLIP_HEIGHT,   # noqa: E402
     ffmpeg_available,
     make_backdrop,
     render,
+    snap_to_speech,
     stamp,
 )
 
@@ -135,10 +136,17 @@ def main() -> None:
     # A clip that opens mid-syllable reads as broken, so back up a little.
     start = max(0.0, start - args.lead)
     end = start + args.seconds
+    # ...and one that STOPS mid-syllable reads worse, because that is the
+    # half a viewer is left on. The transcript knows where the sentences
+    # are, so both edges move to where speech actually starts and stops.
+    asked = end - start
+    start, end = snap_to_speech(episode["segments"], start, end)
+    if abs((end - start) - asked) > 0.05:
+        print(f"  snapped to the sentence: {asked:.0f}s → {end - start:.0f}s")
     on_x = episode.get("platform") != "youtube"
 
     print(f"  {episode['title'][:60]}")
-    print(f"  {stamp(start)} → {stamp(end)}  ({args.seconds:.0f}s, "
+    print(f"  {stamp(start)} → {stamp(end)}  ({end - start:.0f}s, "
           f"{args.width}p, {'X broadcast' if on_x else 'YouTube'})")
 
     captions = build_captions(episode["segments"], start, end)
