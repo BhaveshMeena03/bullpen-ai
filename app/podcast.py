@@ -97,6 +97,59 @@ REFUSAL_ANSWER = ("I can't help with that one — try asking about "
 # cache key — a test asserts the two stay in step.
 NOT_FOUND_ANSWER = "I couldn't find that in the episodes I've indexed"
 
+# The Musk archive answers from its own prompt, not this one.
+#
+# Sharing it shipped a bug straight into verification: asked what Elon says
+# about consciousness, the model replied "you're asking about the Market
+# Bubble podcast, but these excerpts are from Lex Fridman's conversations
+# with Elon Musk" -- it read the corpus as off-topic because the first
+# sentence told it what show it was on, and explained the mismatch to the
+# user instead of answering. A page of that was two days from going public.
+#
+# It is a separate prompt rather than one with the show name swapped, since
+# most of what makes the other one long is Market Bubble's own history:
+# rules 5b to 5d are about "FaZe Banks:" line prefixes, 5f is about the two
+# hosts correcting each other's price targets. None of that exists here.
+# What does exist is the same shape of failure in a different costume --
+# Lex talks for roughly half of every recording, and his words handed back
+# as Elon's is the one mistake this archive cannot survive.
+ELON_SYSTEM_PROMPT = """\
+You answer questions about long-form interviews with Elon Musk, using ONLY \
+the transcript excerpts provided in <excerpts> tags. Each excerpt is tagged \
+with its episode, timestamp, and the date it was published. Excerpts are \
+given oldest first.
+
+These are conversations: the interviewer (Lex Fridman) asks the questions \
+and Elon Musk answers them. Both voices are in the transcript.
+
+Rules:
+1. Answer strictly from the excerpts. If they do not contain the answer, \
+say "I couldn't find that in the episodes I've indexed" — do not use \
+outside knowledge about Elon Musk, however well known, and do not guess. \
+Say that plainly, without explaining what the excerpts are instead.
+2. Cite the moment. Every line inside an excerpt begins with its own \
+timestamp in square brackets, like [16:16]. Cite the timestamp of the line \
+you actually used and name the episode ("around 1:12:04 in the 2021 \
+conversation"). NEVER write a URL or a Markdown link — you are not given \
+the addresses, so writing one means inventing it.
+3. Separate the two speakers. A question, a framing, an anecdote from the \
+interviewer's own life, or a summary of somebody else's research is very \
+often Lex, not Elon. Attribute something to Elon only when the excerpt \
+shows him saying it; otherwise say "the interviewer" or describe what was \
+discussed without putting it in his mouth. Half of every recording is \
+somebody other than the person being asked about, and a quote under the \
+wrong name is the failure this archive does not recover from.
+4. Mind the years. These span 2019 to 2024 and his views moved. If \
+excerpts disagree, give the order and the dates rather than blending them \
+into one position he never held.
+5. Do not put words in anyone's mouth or invent quotes — paraphrase what \
+the excerpt says.
+6. This is an informational search tool. It is not investment advice, it \
+does not speak for Elon Musk or any of his companies, and it never claims \
+his endorsement of anything.
+7. Keep it tight and conversational — a couple of sentences plus the \
+citation, not an essay."""
+
 SYSTEM_PROMPT = """\
 You answer questions about the "Market Bubble" podcast (hosted by Ansem and \
 FaZe Banks) using ONLY the transcript excerpts provided in <excerpts> tags. \
@@ -405,6 +458,12 @@ class PodcastIndex:
         # about Market Bubble sourced from a Tesla interview would prove it
         # does not know the difference.
         self._namespace = namespace or NAMESPACE
+        # The prompt follows the corpus, because the first sentence of a
+        # prompt tells the model what it is reading, and being told the
+        # wrong thing is how Musk transcripts came back as "you're asking
+        # about the Market Bubble podcast".
+        self._system_prompt = (ELON_SYSTEM_PROMPT
+                               if self._namespace == "elon" else SYSTEM_PROMPT)
         self._ledger = ledger
         settings = get_settings()
         self._settings = settings
@@ -845,7 +904,8 @@ class PodcastIndex:
             "model": model,
             "max_tokens": self._settings.search_max_tokens,
             "system": [
-                {"type": "text", "text": SYSTEM_PROMPT,
+                {"type": "text",
+                 "text": getattr(self, "_system_prompt", SYSTEM_PROMPT),
                  "cache_control": {"type": "ephemeral"}}
             ],
             "messages": [
