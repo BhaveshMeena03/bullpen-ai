@@ -617,8 +617,6 @@ def fetch_section(url: str, start: float, end: float, dest: Path,
            "-f", (f"bv*[height<={height}][vcodec^=avc1]+ba[ext=m4a]/"
                   f"bv*[height<={height}]+ba/b[height<={height}]/b"),
            "--concurrent-fragments", "16"]
-    if is_youtube:
-        cmd += ["--remote-components", "ejs:github"]
     cmd += ["-o", str(dest), url]
     # ffmpeg has to go through the proxy too, not just yt-dlp.
     #
@@ -658,6 +656,11 @@ def fetch_section(url: str, start: float, end: float, dest: Path,
     # and the log finally says so.
     clients = PLAYER_CLIENTS if is_youtube else ("",)
     attempts = max(3, len(clients))
+    # Every attempt's outcome, not just the last one's. The job only ever
+    # surfaced the final error, so three different things could go wrong in
+    # one run and the report named one of them -- which is how four runs
+    # produced four errors and no idea which attempt each belonged to.
+    trail: list[str] = []
     direct_attempt = 2 if (is_youtube and proxy) else None
     last = ""
     for attempt in range(1, attempts + 1):
@@ -670,6 +673,15 @@ def fetch_section(url: str, start: float, end: float, dest: Path,
         if client:
             run = [*run[:-3], "--extractor-args",
                    f"youtube:player_client={client}", *run[-3:]]
+        # --remote-components fetches a JavaScript runtime from GitHub at
+        # request time so yt-dlp can solve YouTube's player challenge. When
+        # that fetch is blocked or slow the extractor comes back with no
+        # formats at all, which surfaces as "Requested format is not
+        # available" -- the error this has been failing with, and one that
+        # reads like a format-selector problem rather than a network one.
+        # The last attempt drops it so the trail can tell the two apart.
+        if is_youtube and attempt < attempts:
+            run = [*run[:-3], "--remote-components", "ejs:github", *run[-3:]]
         direct = attempt == direct_attempt
         if proxy and not direct:
             pinned = pin_one_exit_ip(proxy, uuid.uuid4().hex[:12])
@@ -706,6 +718,10 @@ def fetch_section(url: str, start: float, end: float, dest: Path,
         else:
             last = ((result.stderr or "").strip().splitlines()
                     or ["(no stderr)"])[-1]
+        trail.append(f"{client or 'default'}"
+                     f"{' direct' if direct else ''}"
+                     f"{' no-ejs' if is_youtube and attempt == attempts else ''}"
+                     f": {last[:110]}")
         # A partial file from the failed attempt would make the next one
         # look like it succeeded.
         dest.unlink(missing_ok=True)
@@ -714,7 +730,8 @@ def fetch_section(url: str, start: float, end: float, dest: Path,
                         attempt, client or "default", last[:90],
                         "was direct, next tries the proxy" if direct
                         else "retrying on a new exit IP")
-    raise RuntimeError(f"could not fetch that section: {last[:180]}")
+    raise RuntimeError("could not fetch that section — "
+                       + " | ".join(trail))
 
 
 def _blank_frame(path: Path, size: int, height: int) -> None:
