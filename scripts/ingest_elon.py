@@ -75,19 +75,35 @@ def fetch_audio(video_id: str) -> Path:
     path = AUDIO_DIR / f"{video_id}.m4a"
     if path.exists() and path.stat().st_size > 1_000_000:
         return path
-    cmd = [YTDLP, "--no-warnings", "-f", "bestaudio", "-o", str(path)]
+    # Clients rotate per attempt, and the format selector falls back rather
+    # than insisting. "bestaudio" alone is not always offered -- episode #49
+    # refused it outright with "Requested format is not available" -- and
+    # which client answers depends on what YouTube is challenging that day.
+    # Same lesson as the clipper: vary the client, not just the retry.
+    jar = None
     if COOKIES.is_file():
-        # The same jar the server uses, copied so yt-dlp may rewrite it.
         import shutil
         jar = Path("/tmp/yt-cookies-ingest.txt")
         shutil.copyfile(COOKIES, jar)
-        cmd += ["--cookies", str(jar)]
-    cmd += [f"https://www.youtube.com/watch?v={video_id}"]
-    done = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
-    if done.returncode != 0 or not path.exists():
-        tail = ((done.stderr or "").strip().splitlines() or ["?"])[-1]
-        raise RuntimeError(f"download failed: {tail[:160]}")
-    return path
+
+    last = ""
+    for client in ("tv_embedded", "", "web_embedded", "android"):
+        cmd = [YTDLP, "--no-warnings",
+               # Progressive audio, then any audio, then whatever exists.
+               "-f", "bestaudio[ext=m4a]/bestaudio/best",
+               "--extract-audio", "--audio-format", "m4a",
+               "-o", str(path)]
+        if client:
+            cmd += ["--extractor-args", f"youtube:player_client={client}"]
+        if jar:
+            cmd += ["--cookies", str(jar)]
+        cmd += [f"https://www.youtube.com/watch?v={video_id}"]
+        done = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
+        if done.returncode == 0 and path.exists():
+            return path
+        last = ((done.stderr or "").strip().splitlines() or ["?"])[-1]
+        path.unlink(missing_ok=True)
+    raise RuntimeError(f"download failed: {last[:160]}")
 
 
 def transcribe(path: Path) -> list[dict]:
