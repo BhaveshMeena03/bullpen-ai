@@ -46,9 +46,6 @@ YTDLP = str(ROOT / ".venv" / "bin" / "yt-dlp")
 if not Path(YTDLP).exists():
     YTDLP = "yt-dlp"
 
-# Enumerated in full. The earnings calls sit behind a wall of short
-# marketing clips -- an earlier run stopped at 60 videos and concluded
-# Tesla had never posted one.
 # Tesla curates its own earnings calls into a playlist, which is a better
 # source than the channel feed for the same reason a table of contents
 # beats a shelf: it is complete, it is theirs, and it does not stop.
