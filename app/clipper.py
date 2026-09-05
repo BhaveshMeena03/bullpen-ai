@@ -778,6 +778,48 @@ def _concat_list(captions, workdir: Path, size: int, height: int,
     return "\n".join(lines) + "\n"
 
 
+def _has_audio(source: Path) -> bool:
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "a",
+             "-show_entries", "stream=index", "-of", "csv=p=0", str(source)],
+            capture_output=True, text=True, timeout=30).stdout.strip()
+        return bool(out)
+    except (OSError, subprocess.SubprocessError):
+        return True            # assume there is; the render says so if not
+
+
+def leading_video_gap(source: Path) -> float:
+    """Seconds of audio at the start with no picture behind it.
+
+    --download-sections can only cut video at a keyframe, so a section
+    routinely begins with audio while the first video frame arrives a
+    second or so later. The file is internally correct -- a given instant
+    carries the same timestamp in both streams -- and it still plays wrong
+    in the place it matters: a player that honours the gap holds a frozen
+    frame, and a player that simply starts decoding, X's among them, runs
+    the picture that far behind the sound for the whole clip.
+
+    Reported as audio-start minus video-start, floored at zero. A negative
+    result means the video leads, which players handle without help.
+    """
+    def start(stream: str) -> float | None:
+        try:
+            out = subprocess.run(
+                ["ffprobe", "-v", "error", "-select_streams", stream,
+                 "-show_entries", "stream=start_time", "-of",
+                 "default=nw=1:nk=1", str(source)],
+                capture_output=True, text=True, timeout=30).stdout.strip()
+            return float(out.splitlines()[0])
+        except (ValueError, IndexError, OSError, subprocess.SubprocessError):
+            return None
+
+    video, audio = start("v:0"), start("a:0")
+    if video is None or audio is None:
+        return 0.0
+    return max(0.0, video - audio)
+
+
 def render(source: Path, captions, backdrop: Path, workdir: Path,
            out: Path, size: int = DEFAULT_SIZE, best: bool = False,
            wide: bool = False) -> None:
@@ -792,15 +834,37 @@ def render(source: Path, captions, backdrop: Path, workdir: Path,
     """
     height = int(size * 9 / 16) if wide else size
     inputs = ["-i", str(source), "-loop", "1", "-i", str(backdrop)]
+
+    # Drop the audio that plays before the first video frame, and start both
+    # streams at zero, so every player agrees where the clip begins. Without
+    # this the sound leads the picture by whatever the keyframe cost -- 1.3
+    # seconds on the clip that went out, for the whole clip.
+    #
+    # Trimming the audio rather than delaying the video is what keeps the
+    # words on the right faces: that leading audio belongs to a moment the
+    # section has no picture for, so it is the part with nothing to sync to.
+    # A section can come back with no audio at all -- it has, and the render
+    # then died on an audio bitrate flag with nothing to apply it to, which
+    # reads as a codec error rather than a missing stream.
+    has_audio = _has_audio(source)
+    steps_audio: list[str] = []
+    if has_audio:
+        gap = leading_video_gap(source)
+        trim = (f"atrim=start={gap:.3f},asetpts=PTS-STARTPTS"
+                if gap > 0.04 else "asetpts=PTS-STARTPTS")
+        steps_audio = [f"[0:a]{trim}[aud]"]
+    reset = "setpts=PTS-STARTPTS,"
+
     if wide:
         # Cover, not fit: fill the frame and crop the overflow rather than
         # leaving a bar. The source is already 16:9, so this crops nothing
         # in practice and protects the frame if one ever is not.
-        steps = [f"[0:v]scale={size}:{height}:force_original_aspect_ratio="
-                 f"increase,crop={size}:{height}[vid]",
+        steps = [f"[0:v]{reset}scale={size}:{height}:"
+                 f"force_original_aspect_ratio=increase,"
+                 f"crop={size}:{height}[vid]",
                  "[vid][1:v]overlay=0:0:shortest=1[base]"]
     else:
-        steps = [f"[0:v]scale={size}:-2[vid]",
+        steps = [f"[0:v]{reset}scale={size}:-2[vid]",
                  "[1:v][vid]overlay=(W-w)/2:(H-h)/2:shortest=1[base]"]
     label = "base"
     if captions:
@@ -827,9 +891,12 @@ def render(source: Path, captions, backdrop: Path, workdir: Path,
         label = "capped"
 
     result = subprocess.run(
-        ["ffmpeg", "-y", *inputs, "-filter_complex", ";".join(steps),
-         "-map", f"[{label}]", "-map", "0:a?", *_encoder(size, best),
-         "-c:a", "aac", "-b:a", "256k" if best else "128k",
+        ["ffmpeg", "-y", *inputs,
+         "-filter_complex", ";".join(steps + steps_audio),
+         "-map", f"[{label}]",
+         *(["-map", "[aud]", "-c:a", "aac",
+            "-b:a", "256k" if best else "128k"] if has_audio else ["-an"]),
+         *_encoder(size, best),
          "-movflags", "+faststart",
          "-shortest", str(out)],
         capture_output=True, text=True, timeout=300)

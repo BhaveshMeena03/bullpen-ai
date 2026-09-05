@@ -91,3 +91,52 @@ def test_a_cookie_file_that_exists_is_passed_to_yt_dlp(tmp_path):
         clipper.subprocess.run = original
     cmd = cmd_seen.get("cmd", [])
     assert "--cookies" in cmd and str(jar) in cmd
+
+
+# --- audio that starts before the picture -----------------------------------
+
+def _make(path, vstart=0.0, seconds=3, audio=True):
+    """A tiny clip whose video optionally starts late, like a real section."""
+    import subprocess
+    cmd = ["ffmpeg", "-y", "-f", "lavfi", "-i",
+           f"testsrc=size=320x180:rate=30:duration={seconds}"]
+    if audio:
+        cmd += ["-f", "lavfi", "-i", f"sine=frequency=440:duration={seconds}"]
+    if vstart:
+        cmd += ["-itsoffset", str(vstart), "-map", "0:v"]
+        if audio:
+            cmd += ["-map", "1:a"]
+    cmd += ["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p"]
+    if audio:
+        cmd += ["-c:a", "aac"]
+    cmd += [str(path)]
+    subprocess.run(cmd, capture_output=True, timeout=120)
+
+
+def test_a_section_with_no_audio_is_detected(tmp_path):
+    """A section came back video-only and the render died on an audio
+    bitrate flag with no stream to apply it to, which reads as a codec
+    error rather than a missing stream."""
+    from app.clipper import _has_audio
+    silent = tmp_path / "silent.mp4"
+    _make(silent, audio=False)
+    withsound = tmp_path / "sound.mp4"
+    _make(withsound, audio=True)
+    assert _has_audio(silent) is False
+    assert _has_audio(withsound) is True
+
+
+def test_leading_gap_is_zero_when_the_streams_start_together(tmp_path):
+    from app.clipper import leading_video_gap
+    aligned = tmp_path / "aligned.mp4"
+    _make(aligned)
+    assert leading_video_gap(aligned) < 0.05
+
+
+def test_leading_gap_never_goes_negative(tmp_path):
+    """Video leading audio is something players handle; only the other
+    direction needs correcting, so this must not report a trim."""
+    from app.clipper import leading_video_gap
+    f = tmp_path / "x.mp4"
+    _make(f)
+    assert leading_video_gap(f) >= 0.0
