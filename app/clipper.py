@@ -646,8 +646,19 @@ def fetch_section(url: str, start: float, end: float, dest: Path,
     # itself: a different address alone does not answer that, a different
     # client can. Every client in the list is offered the full ladder, so
     # falling back costs nothing in quality.
+    #
+    # One YouTube attempt deliberately goes direct, with no proxy at all.
+    # Nobody has ever tested whether YouTube actually refuses this host's
+    # own address: the proxy was added for the exit-IP mismatch, which is
+    # fixed, and it has since produced three different failures in three
+    # runs -- a 403, a bot challenge, and a proxy intercepting TLS with a
+    # self-signed certificate. Residential exits are not uniform, and a
+    # datacentre address that simply works would be faster, free, and
+    # nothing to keep alive. If it is refused, that costs one quick failure
+    # and the log finally says so.
     clients = PLAYER_CLIENTS if is_youtube else ("",)
     attempts = max(3, len(clients))
+    direct_attempt = 2 if (is_youtube and proxy) else None
     last = ""
     for attempt in range(1, attempts + 1):
         # One exit IP per attempt, shared by both processes. A new session
@@ -659,12 +670,19 @@ def fetch_section(url: str, start: float, end: float, dest: Path,
         if client:
             run = [*run[:-3], "--extractor-args",
                    f"youtube:player_client={client}", *run[-3:]]
-        if proxy:
+        direct = attempt == direct_attempt
+        if proxy and not direct:
             pinned = pin_one_exit_ip(proxy, uuid.uuid4().hex[:12])
             run = [*run[:-3], "--proxy", pinned, *run[-3:]]
             env = {**os.environ,
                    "http_proxy": pinned, "https_proxy": pinned,
                    "HTTP_PROXY": pinned, "HTTPS_PROXY": pinned}
+        elif direct:
+            # The inherited environment may carry proxy variables of its
+            # own, and this attempt is only meaningful if nothing routes.
+            env = {k: v for k, v in os.environ.items()
+                   if k.lower() not in ("http_proxy", "https_proxy",
+                                        "all_proxy")}
         result = subprocess.run(run, capture_output=True, text=True,
                                 timeout=180, env=env)
         if result.returncode == 0 and dest.exists():
@@ -675,8 +693,10 @@ def fetch_section(url: str, start: float, end: float, dest: Path,
                     # this host actually needs; the answer differs between
                     # a laptop on a home connection and a container behind
                     # a residential proxy, and only the second one matters.
-                    logger.info("fetched on attempt %d of %d (client %s)",
-                                attempt, attempts, client or "default")
+                    logger.info("fetched on attempt %d of %d (client %s, "
+                                "%s)", attempt, attempts,
+                                client or "default",
+                                "direct" if direct else "via proxy")
                 return
             # Exit code 0 and a playable file, with a hole in it.
             last = (f"the download is missing {gap:.1f}s of video "
@@ -690,9 +710,10 @@ def fetch_section(url: str, start: float, end: float, dest: Path,
         # look like it succeeded.
         dest.unlink(missing_ok=True)
         if attempt < attempts:
-            logger.info("fetch attempt %d failed on client %s (%s) — "
-                        "retrying on a new exit IP",
-                        attempt, client or "default", last[:90])
+            logger.info("fetch attempt %d failed on client %s (%s) — %s",
+                        attempt, client or "default", last[:90],
+                        "was direct, next tries the proxy" if direct
+                        else "retrying on a new exit IP")
     raise RuntimeError(f"could not fetch that section: {last[:180]}")
 
 
