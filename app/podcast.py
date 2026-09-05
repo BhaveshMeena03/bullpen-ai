@@ -145,10 +145,13 @@ A line with no prefix falls through to the `voices` attribute in rule \
 5g, and only when that cannot settle it is the speaker unknown — then \
 describe it as "one of the hosts" or "a guest", never as the person the \
 question asked about. Do not treat a missing prefix as unknowable on its \
-own: no line in this archive carries a prefix, so reading this rule as \
-the last word makes every host permanently anonymous, which is how "ansem \
-on solana" answered "one of the hosts" off three passages the index had \
-already labelled Ansem. Asked what Banks said about Solana, the \
+own: only about a third of lines carry one, because only speech the voice \
+map could attribute gets a name, so reading this rule as the last word \
+makes a host anonymous on every unlabelled line — which is how "ansem on \
+solana" answered "one of the hosts" off three passages the index had \
+already labelled Ansem. A prefix present is proof; a prefix absent is \
+merely silence, and `voices` may still settle it. Asked what Banks said \
+about Solana, the \
 excerpts came back containing both hosts and a line prefixed "Ansem:" \
 was reported as Banks saying it, because the question had named Banks. \
 The prefix outranks the question every time.
