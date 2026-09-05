@@ -310,6 +310,17 @@ async def lifespan(app: FastAPI):
         proxy=get_settings().clip_proxy or None,
         cookies=get_settings().yt_cookies_file or None)
                        if ffmpeg_available() else None)
+    # The second corpus, on the same engine and its own namespace. Built
+    # only when there is something in it: a page that says "the archive is
+    # not loaded" is honest, an empty index that answers confidently is not.
+    try:
+        app.state.elon = (PodcastIndex(ledger=app.state.usage,
+                                       namespace=ELON_NAMESPACE)
+                          if _elon_episodes() else None)
+    except Exception as exc:                                    # noqa: BLE001
+        logger.warning("the Musk archive did not start: %s", exc)
+        app.state.elon = None
+
     app.state.agent = ConciergeAgent(ledger=app.state.usage)
     app.state.clawpump_agent = ClawPumpAgent(ledger=app.state.usage)
     app.state.pipeline = IngestionPipeline()
@@ -1240,6 +1251,128 @@ async def podcast_episodes(
     """
     _track("episode_summary_views")
     return _listed(await summaries.list_all())
+
+
+
+# ─── the Musk archive ─────────────────────────────────────────────────────
+#
+# A second corpus on the same engine, in its own Pinecone namespace and
+# behind its own routes. Nothing is shared with the broadcast except the
+# code: @mbubbleSearch answers from Market Bubble and only from Market
+# Bubble, and one reply about that show sourced from a Tesla interview
+# would prove it cannot tell them apart.
+#
+# Interviews only, and that is a finding rather than a preference. Voice
+# attribution fails on the Tesla earnings calls -- 66% of a call collapsed
+# into one cluster that would not split, and the transcript's own hand-offs
+# disagreed with the clusters about who was speaking -- so a quarter's
+# guidance from the CFO could be served as Elon's words. The same test on a
+# two-person interview split 48/44 with the clusters matching by content.
+
+ELON_NAMESPACE = "elon"
+_ELON_FILE = _ROOT / "data" / "elon_episodes.json"
+_ELON_CACHE: list[dict] | None = None
+
+
+def _elon_episodes() -> list[dict]:
+    """The Musk transcripts, parsed once, on first use.
+
+    Lazily, like the clip cache and for the same reason: a deploy that
+    never serves this page should never pay for it.
+    """
+    global _ELON_CACHE
+    if _ELON_CACHE is not None:
+        return _ELON_CACHE
+    try:
+        _ELON_CACHE = json.loads(_ELON_FILE.read_text())
+        logger.info("loaded %d Musk recordings", len(_ELON_CACHE))
+    except Exception as exc:                                    # noqa: BLE001
+        # The page degrades to empty panels rather than a 500. Nothing else
+        # in the service reads this file.
+        logger.warning("could not load the Musk archive: %s", exc)
+        _ELON_CACHE = []
+    return _ELON_CACHE
+
+
+def _runtime(episode: dict) -> float:
+    return max((s.get("t", 0) for s in episode.get("segments") or []), default=0)
+
+
+@app.get("/v1/elon/archive", dependencies=[Depends(public_rate_limit)])
+async def elon_archive() -> dict:
+    """What the archive holds, for the readout the page opens with."""
+    episodes = _elon_episodes()
+    if not episodes:
+        raise HTTPException(status_code=503, detail="unavailable")
+    dates = sorted(e.get("published_at", "") for e in episodes if e.get("published_at"))
+    return {
+        "episodes": len(episodes),
+        "hours": round(sum(_runtime(e) for e in episodes) / 3600, 1),
+        "lines": sum(len(e.get("segments") or []) for e in episodes),
+        "first": dates[0] if dates else "",
+        "last": dates[-1] if dates else "",
+    }
+
+
+@app.get("/v1/elon/episodes", dependencies=[Depends(public_rate_limit)])
+async def elon_episodes() -> list[dict]:
+    """What is in the archive, newest last, for the shelf."""
+    return sorted(
+        ({"episode_id": e["episode_id"], "title": e.get("title", ""),
+          "url": e.get("url", ""), "channel": e.get("channel", ""),
+          "published_at": e.get("published_at", ""),
+          "seconds": int(_runtime(e))} for e in _elon_episodes()),
+        key=lambda e: e["published_at"])
+
+
+@app.post("/v1/elon/search",
+          dependencies=[Depends(public_rate_limit), Depends(global_rate_limit),
+                        Depends(daily_budget), Depends(per_client_daily)])
+async def elon_search(
+    body: PodcastSearchRequest,
+    request: Request,
+    answers: AnswerCache = Depends(get_answers),
+) -> dict:
+    """Ask the Musk archive. Same engine, different corpus."""
+    _track("elon_searches", q=body.query[:120])
+    index = getattr(request.app.state, "elon", None)
+    if index is None:
+        raise HTTPException(status_code=503, detail="The archive is not loaded.")
+
+    # Keyed by surface as well as query, so the two archives cannot serve
+    # each other's cached answers -- which would be the same failure as
+    # sharing a namespace, arriving by a different road.
+    key = make_key(body.query, surface="elon", top_k=body.top_k)
+    cached = answers.get(key)
+    if cached is not None:
+        per_client_daily.refund(request)
+        return _elon_payload(body.query, cached)
+
+    try:
+        result = await index.search(body.query, top_k=body.top_k)
+    except anthropic.RateLimitError as exc:
+        raise HTTPException(status_code=429,
+                            detail="Rate limited; retry shortly.") from exc
+    except anthropic.APIError as exc:
+        logger.error("Anthropic error on the Musk archive: %s",
+                     type(exc).__name__)
+        raise HTTPException(status_code=502,
+                            detail="Model provider error.") from exc
+    answers.put(key, result)
+    return _elon_payload(body.query, result)
+
+
+def _elon_payload(question: str, result) -> dict:
+    """The shape the page renders, including how far into each recording a
+    moment sits -- a timestamp alone says nothing about a conversation that
+    runs eight and a half hours."""
+    lengths = {e["episode_id"]: int(_runtime(e)) for e in _elon_episodes()}
+    hits = []
+    for hit in (result.hits or [])[:6]:
+        data = hit.model_dump() if hasattr(hit, "model_dump") else dict(hit)
+        data["episode_seconds"] = lengths.get(data.get("episode_id"), 0)
+        hits.append(data)
+    return {"question": question, "answer": result.answer, "hits": hits}
 
 
 # ─── clips ────────────────────────────────────────────────────────────────

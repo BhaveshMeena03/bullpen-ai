@@ -94,3 +94,41 @@ def test_a_second_archive_gets_its_own_namespace():
     index = PodcastIndex.__new__(PodcastIndex)
     index._namespace = "elon"
     assert index._namespace != PodcastIndex._namespace
+
+
+# --- the two archives stay apart end to end ---------------------------------
+
+def test_the_two_archives_cannot_serve_each_others_cached_answers():
+    """Sharing a namespace is the obvious way to mix the corpora. The cache
+    is the non-obvious one: the same question asked of both surfaces would
+    hit the same key and return the wrong archive's answer."""
+    from app.answer_cache import make_key
+    q = "what did he say about mars"
+    assert make_key(q, surface="podcast", top_k=6) != make_key(q, surface="elon", top_k=6)
+
+
+def test_the_archive_reports_how_long_each_recording_is():
+    """The page shows how far into a recording a moment sits, which needs
+    the whole length. A timestamp alone says nothing on a conversation that
+    runs eight and a half hours."""
+    import app.main as m
+    m._ELON_CACHE = [{
+        "episode_id": "x", "title": "t", "published_at": "2024-08-02",
+        "segments": [{"t": 0, "text": "a"}, {"t": 31080, "text": "b"}]}]
+    try:
+        assert m._runtime(m._ELON_CACHE[0]) == 31080
+    finally:
+        m._ELON_CACHE = None
+
+
+def test_a_missing_archive_file_does_not_take_the_service_down():
+    """Nothing else in the service reads this file, so the page degrades to
+    empty panels rather than a 500."""
+    import app.main as m
+    from pathlib import Path
+    original, m._ELON_CACHE = m._ELON_FILE, None
+    m._ELON_FILE = Path("/nonexistent/elon_episodes.json")
+    try:
+        assert m._elon_episodes() == []
+    finally:
+        m._ELON_FILE, m._ELON_CACHE = original, None
