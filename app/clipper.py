@@ -922,7 +922,10 @@ class ClipService:
                             end - start, out.stat().st_size / 1e6)
             except Exception as exc:  # noqa: BLE001
                 job.status = "failed"
-                job.error = str(exc)[:200]
+                # 200 was enough for one message and is not enough for a
+                # trail of three. The last attempt's line was being cut off
+                # entirely, which hid the one that mattered.
+                job.error = str(exc)[:600]
                 logger.warning("clip %s failed: %s", job.id, job.error)
 
     def _build(self, episode: dict, start: float,
