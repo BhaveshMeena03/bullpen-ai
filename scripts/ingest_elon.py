@@ -38,6 +38,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from app.episode_store import load as load_episodes, merge  # noqa: E402
 from app.provenance import admissible, drop_hallucinated   # noqa: E402
 
 OUT = ROOT / "data" / "elon_episodes.json"
@@ -66,7 +67,7 @@ SOURCES = [
 
 
 def load() -> list[dict]:
-    return json.loads(OUT.read_text()) if OUT.exists() else []
+    return load_episodes(OUT)
 
 
 def fetch_audio(video_id: str) -> Path:
@@ -132,8 +133,11 @@ def main() -> int:
         kept, dropped = drop_hallucinated(segments)
         if dropped:
             print(f"     dropped hallucinated: {', '.join(dropped)}")
-        episodes = load()
-        episodes.append({
+        # Through the store, which takes an exclusive lock and re-reads
+        # inside it. This runs for hours and something else may be writing;
+        # a plain write_text here would silently drop whatever landed
+        # between this script's last read and its next save.
+        merge([{
             "episode_id": vid,
             "title": title,
             "url": f"https://www.youtube.com/watch?v={vid}",
@@ -141,8 +145,7 @@ def main() -> int:
             "published_at": date,
             "channel": channel,
             "segments": kept,
-        })
-        OUT.write_text(json.dumps(episodes, indent=1))
+        }], path=OUT)
         hours = max((s["t"] for s in kept), default=0) / 3600
         print(f"     {len(kept)} segments, {hours:.1f}h -> {OUT.name}\n",
               flush=True)
