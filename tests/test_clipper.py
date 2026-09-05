@@ -35,31 +35,37 @@ def test_pinning_never_drops_the_credentials():
 
 # --- cookies, when a signed-in session is the only thing that works --------
 
+def test_a_read_only_secret_is_copied_somewhere_writable(tmp_path):
+    """yt-dlp rewrites the jar after every request, because YouTube rotates
+    the session. A secret file is mounted read-only, so pointing straight
+    at it failed every attempt with "[Errno 30] Read-only file system" --
+    correct cookies that never got used."""
+    from pathlib import Path
+    from app.clipper import _writable_cookie_jar
+    secret = tmp_path / "cookies.txt"
+    secret.write_text("# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tSID\tx\n")
+    secret.chmod(0o444)
+    jar = _writable_cookie_jar(str(secret))
+    assert jar is not None and jar != str(secret)
+    copy = Path(jar)
+    assert copy.read_text() == secret.read_text()
+    copy.write_text("refreshed")          # the point: writable
+    assert copy.read_text() == "refreshed"
+
+
+def test_no_cookie_setting_means_no_cookies():
+    from app.clipper import _writable_cookie_jar
+    assert _writable_cookie_jar(None) is None
+    assert _writable_cookie_jar("") is None
+
+
 def test_a_missing_cookie_file_is_a_warning_not_a_failure(tmp_path, caplog):
     """A secret file that did not mount would otherwise fail every attempt
     with an error about the path, hiding the real problem."""
     import logging
-    from app import clipper
-    cmd_seen = {}
-
-    def fake_run(cmd, **kw):
-        cmd_seen["cmd"] = cmd
-        raise RuntimeError("stop here")
-
-    monkey = getattr(clipper, "subprocess")
-    original = monkey.run
-    monkey.run = fake_run
-    try:
-        with caplog.at_level(logging.WARNING):
-            try:
-                clipper.fetch_section("https://www.youtube.com/watch?v=x",
-                                      0, 5, tmp_path / "out.mp4",
-                                      cookies=str(tmp_path / "nope.txt"))
-            except Exception:
-                pass
-    finally:
-        monkey.run = original
-    assert "--cookies" not in cmd_seen.get("cmd", [])
+    from app.clipper import _writable_cookie_jar
+    with caplog.at_level(logging.WARNING):
+        assert _writable_cookie_jar(str(tmp_path / "nope.txt")) is None
     assert any("no file there" in r.getMessage() for r in caplog.records)
 
 

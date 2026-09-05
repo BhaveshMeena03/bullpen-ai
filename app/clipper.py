@@ -619,14 +619,10 @@ def fetch_section(url: str, start: float, end: float, dest: Path,
                   f"bv*[height<={height}]+ba/b[height<={height}]/b"),
            "--concurrent-fragments", "16"]
     # A signed-in session is the one thing that answers "Sign in to confirm
-    # you're not a bot". Checked for existence rather than trusted: a
-    # missing secret file would otherwise fail every attempt with a
-    # confusing error about the path instead of the real problem.
+    # you're not a bot". The caller hands over a jar yt-dlp may write to;
+    # see _writable_cookie_jar.
     if cookies and Path(cookies).is_file():
         cmd += ["--cookies", cookies]
-    elif cookies:
-        logger.warning("YT_COOKIES_FILE is set to %s but there is no file "
-                       "there — continuing without cookies", cookies)
     cmd += ["-o", str(dest), url]
     # ffmpeg has to go through the proxy too, not just yt-dlp.
     #
@@ -861,6 +857,39 @@ class Job:
     seconds: float = 0.0
 
 
+def _writable_cookie_jar(source: str | None) -> str | None:
+    """A copy of the cookie file that yt-dlp is allowed to write to.
+
+    yt-dlp rewrites the jar after every request, because YouTube rotates
+    the session and the refreshed values are what keep it alive. A secret
+    file is mounted read-only, so pointing straight at it failed every
+    attempt with "[Errno 30] Read-only file system" -- the cookies were
+    correct and never got used.
+
+    Copied once per process rather than per fetch, so refreshed cookies
+    carry from one clip to the next; a restart takes a clean copy from the
+    secret again, which is also the way a corrupted jar repairs itself.
+    """
+    if not source:
+        return None
+    origin = Path(source)
+    if not origin.is_file():
+        logger.warning("YT_COOKIES_FILE is set to %s but there is no file "
+                       "there — continuing without cookies", source)
+        return None
+    try:
+        target = Path(tempfile.gettempdir()) / "yt-cookies.txt"
+        shutil.copyfile(origin, target)
+        target.chmod(0o600)
+        logger.info("cookies copied to %s so yt-dlp can refresh them",
+                    target)
+        return str(target)
+    except OSError as exc:
+        logger.warning("could not copy the cookie file (%s) — continuing "
+                       "without cookies", exc)
+        return None
+
+
 class ClipService:
     """Background clip jobs, one at a time, with everything bounded."""
 
@@ -869,7 +898,7 @@ class ClipService:
         self._jobs: dict[str, Job] = {}
         self._gate = asyncio.Semaphore(MAX_CONCURRENT)
         self._proxy = proxy
-        self._cookies = cookies
+        self._cookies = _writable_cookie_jar(cookies)
         self._dir = Path(tempfile.gettempdir()) / "clips"
         self._dir.mkdir(exist_ok=True)
 
