@@ -795,7 +795,25 @@ def _concat_list(captions, workdir: Path, size: int, height: int,
 # Measured peaks to size it against: 846MB at 720p, 1730MB at 1080p.
 #
 # Zero disables it, which is right for a laptop with memory to spare.
-CLIP_MEMORY_LIMIT_MB = 1400
+# DISABLED, because 1400 was measured against the wrong number and broke
+# every clip in production within twenty minutes of shipping.
+#
+# `ulimit -v` bounds VIRTUAL address space. The peaks this was sized
+# against -- 846MB at 720p, 1730MB at 1080p -- are RESIDENT memory, and
+# ffmpeg reserves far more address space than it ever makes resident, so a
+# 720p render that comfortably fits in RAM was refused an allocation and
+# died. The failure was mine and the mechanism was wrong, not the idea.
+#
+# Re-enabling it needs a virtual-size figure measured on Linux, not a
+# resident one measured on a laptop:
+#
+#   /usr/bin/time -v ffmpeg ...   → "Maximum resident set size" is not it;
+#   read VmPeak from /proc/<pid>/status while a render runs.
+#
+# Until that number exists this stays off, and an over-budget render can
+# still take the container down. That is the state it was in before, and a
+# broken clipper is worse than a rare crash.
+CLIP_MEMORY_LIMIT_MB = 0
 
 
 def _looks_like_out_of_memory(returncode: int, stderr: str) -> bool:
