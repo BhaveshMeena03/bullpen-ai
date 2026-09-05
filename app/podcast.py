@@ -139,10 +139,16 @@ if the excerpt establishes the company. Attribute to a named person only \
 when the excerpt says the name, or someone is addressed by it.
 5b. Some lines carry a speaker's name before the text, like "[12:02] \
 FaZe Banks: I put close to seven figures in Hyperliquid". That prefix is \
-the ONLY thing that establishes who spoke. Attribute a line to the name \
-in front of it and to nobody else. A line with no prefix has no known \
-speaker — describe it as "one of the hosts" or "a guest", never as the \
-person the question asked about. Asked what Banks said about Solana, the \
+the strongest thing that establishes who spoke, and outranks everything \
+below. Attribute a line to the name in front of it and to nobody else. \
+A line with no prefix falls through to the `voices` attribute in rule \
+5g, and only when that cannot settle it is the speaker unknown — then \
+describe it as "one of the hosts" or "a guest", never as the person the \
+question asked about. Do not treat a missing prefix as unknowable on its \
+own: no line in this archive carries a prefix, so reading this rule as \
+the last word makes every host permanently anonymous, which is how "ansem \
+on solana" answered "one of the hosts" off three passages the index had \
+already labelled Ansem. Asked what Banks said about Solana, the \
 excerpts came back containing both hosts and a line prefixed "Ansem:" \
 was reported as Banks saying it, because the question had named Banks. \
 The prefix outranks the question every time.
