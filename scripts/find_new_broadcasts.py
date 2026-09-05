@@ -126,6 +126,9 @@ async def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=20,
                     help="how many recent posts to examine")
+    ap.add_argument("--max-pages", type=int, default=10,
+                    help="pages of 100 posts to walk back (default 10). "
+                         "One page reaches about a fortnight.")
     ap.add_argument("--since", metavar="YYYY-MM-DD",
                     help="ignore anything older")
     ap.add_argument("--min-hours", type=float, default=2.0,
@@ -154,27 +157,70 @@ async def main() -> int:
         if not user_id:
             return 2
         url = f"{API}/users/{user_id}/tweets"
-        params = {
-            "max_results": str(max(5, min(args.limit, 100))),
-            "tweet.fields": "created_at,attachments,referenced_tweets",
-            "expansions": "attachments.media_keys",
-            "media.fields": "type,duration_ms",
-        }
-        response = await http.get(
-            url, params=params,
-            headers={"Authorization": cred.header("GET", url, params)})
-
-    if response.status_code != 200:
-        print(f"  could not read @{SHOW}: HTTP {response.status_code}")
-        print(response.text[:200])
-        return 2
-
-    payload = response.json()
-    media = {m["media_key"]: m
-             for m in (payload.get("includes", {}).get("media") or [])}
+        # Paged, because one page is 100 posts and @MarketBubble posts many
+        # times a day. Asking "what have we never ingested" and reading one
+        # page answers it for the last week or two and reports "nothing
+        # missing" for everything before that -- which it did, while four
+        # broadcasts sat unindexed.
+        #
+        # --since is the stop condition rather than a filter applied at the
+        # end: the timeline comes back newest first, so the first page
+        # older than the date wanted is the last page worth asking for.
+        posts: list[dict] = []
+        media: dict[str, dict] = {}
+        token = None
+        for page in range(1, args.max_pages + 1):
+            params = {
+                # Always a full page. --limit is how many to look at, not
+                # how many to ask for, and asking for 20 at a time turned
+                # 30 pages into 590 posts instead of 3,000.
+                "max_results": "100",
+                "tweet.fields": "created_at,attachments,referenced_tweets",
+                "expansions": "attachments.media_keys",
+                "media.fields": "type,duration_ms",
+            }
+            if token:
+                params["pagination_token"] = token
+            try:
+                response = await http.get(
+                    url, params=params,
+                    headers={"Authorization": cred.header("GET", url, params)})
+            except httpx.HTTPError as exc:
+                # A walk of thirty pages is thirty chances for the network
+                # to blink, and losing twenty-nine good pages to the
+                # thirtieth is the wrong trade. What was read still answers
+                # the question for everything newer than where it stopped.
+                if posts:
+                    print(f"  stopped after {page - 1} page(s): {exc}")
+                    break
+                print(f"  could not read @{SHOW}: {exc}")
+                return 2
+            if response.status_code != 200:
+                if posts:
+                    # Partial is useful; silence is not. Say how far it got.
+                    print(f"  stopped after {page - 1} page(s): "
+                          f"HTTP {response.status_code}")
+                    break
+                print(f"  could not read @{SHOW}: HTTP {response.status_code}")
+                print(response.text[:200])
+                return 2
+            payload = response.json()
+            batch = payload.get("data") or []
+            posts.extend(batch)
+            media.update({m["media_key"]: m for m in
+                          (payload.get("includes", {}).get("media") or [])})
+            token = (payload.get("meta") or {}).get("next_token")
+            oldest = min((p.get("created_at", "") for p in batch), default="")
+            if not token or not batch:
+                break
+            if args.since and oldest and oldest[:10] < args.since:
+                break
+        span = sorted(p.get("created_at", "")[:10] for p in posts if p.get("created_at"))
+        print(f"  read {len(posts)} posts"
+              + (f", back to {span[0]}" if span else ""))
 
     missing, too_soon = new_broadcasts(
-        payload.get("data") or [], media, indexed,
+        posts, media, indexed,
         min_hours=args.min_hours, since=args.since,
         settle_hours=args.settle_hours)
 
@@ -188,8 +234,8 @@ async def main() -> int:
                   f"processing the recording. Check again later.")
 
     if not missing:
-        print(f"  nothing new — every broadcast @{SHOW} has posted in the "
-              f"last {args.limit} posts is already indexed")
+        print(f"  nothing new — every broadcast in those posts is already "
+              f"indexed. Older broadcasts need more --max-pages.")
         waiting()
         return 0
 
