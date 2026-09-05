@@ -142,3 +142,63 @@ class TestExcerptEscaping:
         assert "&lt;/excerpt&gt;" in out
         # exactly one real closing wrapper
         assert out.count("</excerpts>") == 1
+
+
+class TestVoicesReachTheModel:
+    """Speaker labels exist in the index; the prompt has to actually see them.
+
+    They were written into Pinecone metadata by the labelling run, returned
+    on every hit, and filterable — and for that whole time `_format` did not
+    render them, so the model answering the question never had them. Rules
+    5b-5d meanwhile told it to attribute from "FaZe Banks:" prefixes that
+    appear in none of the 91,190 lines, leaving host-named questions with no
+    evidence and only one way to resolve: "banks on polymarket" refused on
+    eleven good hits, one of them Banks explaining Polymarket at 3:25:14.
+
+    Nothing failed when that link was missing. The index was right, the API
+    response was right, and the answer was wrong — so these assert the two
+    ends stay tied together.
+    """
+
+    def _hit(self, speakers):
+        return PodcastHit(
+            episode_id="ep1", title="Test Ep", start_seconds=61,
+            timestamp="1:01", deep_link="https://x.com/a?t=61",
+            text="the transcript moment", score=0.9, speakers=speakers,
+        )
+
+    def test_a_labelled_passage_names_its_voices(self):
+        from app.podcast import PodcastIndex
+        out = PodcastIndex._format([self._hit(["FaZe Banks"])])
+        assert 'voices="FaZe Banks"' in out, out
+
+    def test_both_hosts_are_both_listed(self):
+        from app.podcast import PodcastIndex
+        out = PodcastIndex._format([self._hit(["Ansem", "FaZe Banks"])])
+        assert "Ansem" in out and "FaZe Banks" in out
+
+    def test_an_unlabelled_passage_claims_no_speaker(self):
+        # Silence, not a guess. Episodes indexed before the labelling run
+        # have no speakers, and an empty voices="" would read as "nobody
+        # spoke here" rather than "we don't know".
+        from app.podcast import PodcastIndex
+        assert "voices=" not in PodcastIndex._format([self._hit([])])
+
+    def test_the_prompt_explains_the_attribute_it_is_given(self):
+        # The bug this whole class exists for was a renderer and a prompt
+        # that disagreed about what the model could see. Ship one without
+        # the other and the model is either blind to an attribute or told
+        # to read one that is not there.
+        from app.podcast import SYSTEM_PROMPT, PodcastIndex
+        assert "voices" in SYSTEM_PROMPT
+        rendered = PodcastIndex._format([self._hit(["Ansem"])])
+        assert ("voices" in rendered) == ("voices" in SYSTEM_PROMPT)
+
+    def test_one_voice_does_not_license_naming_every_line(self):
+        # A passage can hold a host and a guest. The prompt must not let a
+        # single name become "he said all of this" -- that is rule 5a's
+        # failure, which published another man's portfolio as Banks losing
+        # $254,000.
+        from app.podcast import SYSTEM_PROMPT
+        assert "passage-level" in SYSTEM_PROMPT
+        assert "Guests are never listed" in SYSTEM_PROMPT

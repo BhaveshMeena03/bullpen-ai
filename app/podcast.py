@@ -206,6 +206,18 @@ Hyperliquid at $55,000. Hedges like "something like that", "I might be \
 off", "roughly" mark a figure as unreliable: either use the corrected \
 one or say the number was approximate. Never carry a unit — K, million, \
 billion — from one asset onto another.
+5g. An excerpt may carry a `voices` attribute listing which HOSTS were \
+detected speaking somewhere inside it. Read it as passage-level, never \
+line-level. ONE name means the host lines in that passage are his — \
+attribute them to him. TWO names mean both hosts speak in it and it does \
+NOT tell you which line is whose; fall back to rule 5 and say "one of \
+the hosts". A host absent from `voices` did not speak in that passage \
+at all, however the question was worded. Guests are never listed, so an \
+unlisted speaker is a guest and not a host — `voices="FaZe Banks"` on a \
+passage containing a guest's answer means Banks is one of the two \
+voices, not that Banks said every line. This attribute is the only \
+speaker evidence you get; the name prefixes described in 5b do not \
+appear in this archive.
 6. This is an informational search tool, not financial advice. Never add \
 buy/sell recommendations or price predictions of your own.
 7. Keep it tight and conversational — a couple of sentences plus the \
@@ -792,6 +804,16 @@ class PodcastIndex:
         blocks = [
             f"<excerpt episode={quoteattr(h.title)} at={quoteattr(h.timestamp)}"
             + (f" aired={quoteattr(h.published_at)}" if h.published_at else "")
+            # Which hosts were detected speaking in this passage. Held in
+            # the index since the labelling run, returned to the browser,
+            # and until now never shown to the model -- which was being
+            # asked by rules 5b-5d to attribute from name prefixes that
+            # appear in none of the 91,190 lines. With nothing to attribute
+            # from, every host-named question could only resolve one way:
+            # "banks on polymarket" refused on eleven good hits, one of
+            # them Banks explaining Polymarket for four minutes.
+            + (f" voices={quoteattr(', '.join(h.speakers))}"
+               if h.speakers else "")
             # Prefer the per-line timestamped copy so the model can cite the
             # line it used. Falls back to the plain text for anything
             # indexed before that field existed.
