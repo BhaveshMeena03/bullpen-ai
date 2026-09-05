@@ -32,7 +32,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from app.clipper import (  # noqa: E402
+from app.clipper import (CLIP_HEIGHT,   # noqa: E402
     make_wide_overlay,  # noqa: E402
     build_captions,
     fetch_section,
@@ -82,8 +82,14 @@ def main() -> None:
     ap.add_argument("--lead", type=float, default=3.0,
                     help="seconds of run-up before the moment, so it does "
                          "not open mid-word (default 3)")
-    ap.add_argument("--height", type=int, default=1080,
-                    choices=[480, 720, 1080, 1920], help="output height")
+    # Defaults to whatever the website renders, so a clip cut here and a
+    # clip a viewer cuts from the site are the same file. They were not: a
+    # posted clip was 1080p and anyone who tried the button on the same
+    # moment got 720p, which makes the tool look worse than the thing
+    # advertising it. Pass --width to deliberately differ.
+    ap.add_argument("--width", "--height", dest="width", type=int,
+                    default=CLIP_HEIGHT, choices=[480, 720, 1080, 1280, 1920],
+                    help=f"canvas width; the site uses {CLIP_HEIGHT}")
     # The broadcast is 1920 wide and the canvas is square, so a 1080
     # canvas scales it down to 1080 across and throws away nearly half
     # the horizontal detail before anything is even encoded. --best keeps
@@ -102,8 +108,10 @@ def main() -> None:
     ap.add_argument("--out", help="output file (default: ~/Desktop)")
     args = ap.parse_args()
     args.best, args.wide = not args.fast, not args.square
-    if args.best and "--height" not in sys.argv:
-        args.height = 1920
+    # There used to be a silent bump to 1920 here whenever --height was not
+    # passed, which is how a posted clip came out 1080p while every viewer
+    # cutting the same moment on the site got 720p. The default is now the
+    # site's canvas, stated in --help, and differing takes an argument.
 
     if not ffmpeg_available():
         sys.exit("ffmpeg is not on PATH — brew install ffmpeg")
@@ -131,30 +139,30 @@ def main() -> None:
 
     print(f"  {episode['title'][:60]}")
     print(f"  {stamp(start)} → {stamp(end)}  ({args.seconds:.0f}s, "
-          f"{args.height}p, {'X broadcast' if on_x else 'YouTube'})")
+          f"{args.width}p, {'X broadcast' if on_x else 'YouTube'})")
 
     captions = build_captions(episode["segments"], start, end)
     out = Path(args.out) if args.out else (
         Path.home() / "Desktop" /
-        f"clip-{episode_id}-{int(start)}s-{args.height}p.mp4")
+        f"clip-{episode_id}-{int(start)}s-{args.width}p.mp4")
 
     began = time.time()
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp)
         source = work / "src.mp4"
         print("  downloading the section…")
-        fetch_section(episode["url"], start, end, source, height=args.height)
+        fetch_section(episode["url"], start, end, source, height=args.width)
 
         backdrop = work / "backdrop.png"
         if args.wide:
             make_wide_overlay(episode["title"], stamp(start), backdrop,
-                              args.height, int(args.height * 9 / 16))
+                              args.width, int(args.width * 9 / 16))
         else:
             make_backdrop(episode["title"], stamp(start), backdrop,
-                          args.height)
+                          args.width)
 
         print(f"  rendering {len(captions)} caption(s)…")
-        render(source, captions, backdrop, work, out, args.height,
+        render(source, captions, backdrop, work, out, args.width,
                best=args.best, wide=args.wide)
 
     size_mb = out.stat().st_size / 1_048_576

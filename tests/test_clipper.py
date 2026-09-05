@@ -1,3 +1,4 @@
+from pathlib import Path
 import pytest
 
 
@@ -184,3 +185,41 @@ def test_out_of_memory_is_told_apart_from_a_broken_graph(returncode, stderr,
     small for the canvas gets mistaken for a code defect."""
     from app.clipper import _looks_like_out_of_memory
     assert _looks_like_out_of_memory(returncode, stderr) is expected
+
+
+# --- what goes over the picture --------------------------------------------
+
+from app.clipper import short_title                            # noqa: E402
+
+
+@pytest.mark.parametrize("full,expected", [
+    ("LIVE W/ WILL CLEMENTE, NET NET CAPITAL, & TYLER BERNABE: "
+     "Market Bubble Ep 18 - Presented by @Polymarket", "Market Bubble Ep 18"),
+    ("Why Ansem Thinks Ethereum Is Done.. | Market Bubble #4",
+     "Market Bubble Ep 4"),
+    ("Market Bubble: The Ansem Edition - Presented by @Polymarket",
+     "The Ansem Edition"),
+])
+def test_the_title_on_the_clip_is_short(full, expected):
+    """The full title ran across the broadcast's own Polymarket wordmark
+    and neither could be read. A guest list is not what a viewer needs on
+    a thirty-second clip; the caption carries that."""
+    assert short_title(full) == expected
+
+
+def test_an_unparseable_title_is_trimmed_not_dropped():
+    long = "$100K POLYMARKET FANTASY FOOTBALL DRAFT NIGHT"
+    out = short_title(long)
+    assert out.endswith("…") and len(out) <= 31
+
+
+def test_the_local_script_defaults_to_the_sites_canvas():
+    """A clip cut locally and a clip a viewer cuts from the site have to be
+    the same file. A silent bump to 1920 here meant a posted clip was 1080p
+    while the button on the same moment gave 720p."""
+    import re
+    from app.clipper import CLIP_HEIGHT
+    src = (Path(__file__).resolve().parent.parent
+           / "scripts" / "make_clip.py").read_text()
+    assert "default=CLIP_HEIGHT" in src
+    assert not re.search(r'if args\.best and "--height" not in sys\.argv', src)

@@ -52,6 +52,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
+from .dedupe import episode_number
+
 logger = logging.getLogger(__name__)
 
 # The canvas is a parameter, not a constant. A clip made on a laptop should
@@ -347,83 +349,84 @@ def make_backdrop(title: str, stamp: str, path: Path,
     img.save(path)
 
 
+def short_title(title: str) -> str:
+    """The show and the episode number, and nothing else.
+
+    The full title is "LIVE W/ WILL CLEMENTE, NET NET CAPITAL, & TYLER
+    BERNABE: Market Bubble Ep 18 - Presented by @Polymarket". Painted
+    across the top of the frame it ran straight through the broadcast's own
+    Polymarket wordmark and neither could be read. A guest list is also not
+    what a viewer needs on a thirty-second clip; the caption carries that.
+    """
+    number = episode_number(title or "")
+    if number:
+        return f"Market Bubble Ep {number}"
+    plain = (title or "").split(" - Presented")[0].split(":")[-1].strip()
+    return (plain[:30].rstrip(" .|-") + "…") if len(plain) > 30 else plain
+
+
 def make_wide_overlay(title: str, stamp: str, path: Path,
                       width: int = 1920, height: int = 1080) -> None:
     """Title and credit painted ON the picture, for a 16:9 clip.
 
-    The square layout parks the video in a band and fills the space above
-    and below it with a title and a credit. That reads well in a feed, and
-    it means anything playing the file in a 16:9 window pillarboxes it —
-    black down both sides, which is what people actually notice.
+    Everything sits in the top-RIGHT corner, and that is the whole design.
+    The broadcast puts its Polymarket wordmark top-left, its own Market
+    Bubble logo and a sponsor chyron bottom-left, and a scrolling ticker
+    across the very bottom. The top right is the one corner of the frame it
+    leaves alone.
 
-    Here the picture fills the frame and the text sits on top of it. The
-    only furniture is a scrim behind each line, dark enough to read against
-    a bright frame and short enough to leave the faces alone.
+    It used to be a full-width band with the title along the left, which
+    covered the Polymarket mark on every clip -- the show's sponsor,
+    obscured by a tool that exists to serve the show. A clip should look
+    like it came from the broadcast, not like something was bolted over it.
+
+    The scrim is only as wide as the text needs, so the picture is
+    untouched everywhere else, and the type is outlined, which is what
+    actually carries legibility over a moving frame.
     """
     from PIL import Image, ImageDraw
 
     k = width / 1920                 # 1.0 at 1080p, and scales from there
     img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    draw.rectangle([0, 0, width, int(7 * k)], fill=GREEN)
+    # The one full-width mark that stays: a hairline, not a bar.
+    draw.rectangle([0, 0, width, int(5 * k)], fill=GREEN)
 
-    # A gradient, not a flat band. At a flat 225 this covered the frame it
-    # sat on — the broadcast's own Polymarket and Market Bubble marks are
-    # right there in the top strip and vanished behind it, which reads as a
-    # bar bolted over the video rather than part of it.
-    #
-    # Strongest along the top edge where the text sits and falling away to
-    # nearly clear at the bottom of the band, so the picture comes through
-    # the lower half while the type keeps something to sit on. The text is
-    # outlined as well, which is what actually carries legibility here —
-    # that is why the flat band could be dropped this far. It was raised to
-    # 225 once because the broadcast's "LOS ANGELES 1:42 PM PT" read
-    # through the credit; the outline solves that without the paint.
-    band = int(74 * k)
-    scrim = Image.new("RGBA", (width, band), (0, 0, 0, 0))
-    sd = ImageDraw.Draw(scrim)
-    for row in range(band):
-        # 170 at the top edge, 40 at the bottom.
-        alpha = int(170 - (170 - 40) * (row / max(1, band - 1)))
-        sd.line([(0, row), (width, row)], fill=(0, 0, 0, alpha))
-    img.paste(scrim, (0, int(7 * k)), scrim)
+    label = short_title(title)
+    title_font = _font(FONT_CANDIDATES_BOLD, int(25 * k))
+    stamp_font = _font(FONT_CANDIDATES_BOLD, int(25 * k))
+    foot_font = _font(FONT_CANDIDATES_REGULAR, int(25 * k))
+    dot_font = _font(FONT_CANDIDATES_REGULAR, int(25 * k))
 
-    # Shrink to fit rather than crop. Taking the first wrapped line cut
-    # "Why Ansem Thinks Ethereum Is Done.. | Market" and threw away the
-    # episode number, which is the half a reader needs.
-    foot_font = _font(FONT_CANDIDATES_REGULAR, int(24 * k))
-    stamp_font = _font(FONT_CANDIDATES_BOLD, int(24 * k))
-    gap = 14 * k
-    credit_w = (draw.textlength(stamp, font=stamp_font) + gap
-                + draw.textlength(SITE_CREDIT, font=foot_font))
-    room = width - 68 * k - credit_w - 40 * k
-    for pt in (36, 33, 30, 27, 24):
-        font = _font(FONT_CANDIDATES_BOLD, int(pt * k))
-        if draw.textlength(title, font=font) <= room:
-            break
-    shown = title
-    while draw.textlength(shown, font=font) > room and len(shown) > 12:
-        shown = shown[:-2]
-    if shown != title:
-        shown = shown.rstrip(" .|-") + "…"
-    _outlined(draw, (34 * k, (74 * k - pt * k) / 2 + 7 * k), shown,
-              font, "#e6e8ea", outline=max(2, int(3 * k)))
+    dot = "  ·  "
+    parts = [(label, title_font, "#e6e8ea"),
+             (dot, dot_font, "#8a939e"),
+             (stamp, stamp_font, "#e6e8ea"),
+             (dot, dot_font, "#8a939e"),
+             (SITE_CREDIT, foot_font, GREEN)]
+    run = sum(draw.textlength(t, font=f) for t, f, _ in parts)
 
-    # In the top band beside the title, not along the bottom. The
-    # broadcast runs its own logo, chyron and ticker across the lower third
-    # of every frame, so anything put down there is competing with three
-    # things at once — and the captions have to live there too.
-    # Two pieces, not one string. The timestamp is the evidence — bold and
-    # white, the same weight as the title it sits beside — and the domain is
-    # the credit, lighter and green so it reads as a mark rather than as
-    # part of the sentence. One flat green run made them look like the same
-    # fact, which they are not.
-    baseline = (74 * k - 24 * k) / 2 + 7 * k
+    pad_x, pad_y = 20 * k, 11 * k
+    top = 5 * k + 14 * k
+    box_h = 25 * k + pad_y * 2
+    box_w = run + pad_x * 2
+    left = width - box_w - 28 * k
+
+    # A soft rounded panel behind just this line. Wide enough to read
+    # against a bright frame, small enough that the rest of the picture is
+    # exactly what the broadcast showed.
+    panel = Image.new("RGBA", (int(box_w), int(box_h)), (0, 0, 0, 0))
+    ImageDraw.Draw(panel).rounded_rectangle(
+        [0, 0, int(box_w) - 1, int(box_h) - 1], radius=int(10 * k),
+        fill=(0, 0, 0, 105))
+    img.paste(panel, (int(left), int(top)), panel)
+
+    x = left + pad_x
+    baseline = top + pad_y
     ring = max(2, int(3 * k))
-    x = width - credit_w - 34 * k
-    _outlined(draw, (x, baseline), stamp, stamp_font, "#e6e8ea", outline=ring)
-    x += draw.textlength(stamp, font=stamp_font) + gap
-    _outlined(draw, (x, baseline), SITE_CREDIT, foot_font, GREEN, outline=ring)
+    for text, font, colour in parts:
+        _outlined(draw, (x, baseline), text, font, colour, outline=ring)
+        x += draw.textlength(text, font=font)
 
     img.save(path)
 
