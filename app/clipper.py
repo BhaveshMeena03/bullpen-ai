@@ -116,11 +116,31 @@ MAX_JOBS_TRACKED = 200
 # Nothing in the pipeline could have recovered it; the detail was never
 # downloaded.
 #
-# Empty means yt-dlp picks, and what it picks offers the real ladder up to
-# 1920x1080 60fps. The 403 this was working around comes from handing a
-# client-bound URL to ffmpeg, which only happens on the streaming path —
-# the download here writes a file first, so it does not apply.
-PLAYER_CLIENT = ""
+# So the clients are tried in order rather than chosen once, and only
+# clients that are offered the full ladder are in the list.
+#
+# Measured against a real episode, counting formats and the tallest on
+# offer:
+#
+#   tv_embedded    43 formats, 1080p     <- first choice
+#   default        43 formats, 1080p
+#   web_embedded   29 formats, 1080p
+#   android        1 format,   360p      <- excluded
+#   mweb           1 format,   360p      <- excluded
+#   ios            0 formats            <- excluded
+#   tv             refuses outright     <- excluded
+#
+# android and mweb are left out on purpose even though they succeed. A
+# 360p source scaled up to a 1080x1920 canvas is a visibly soft clip going
+# out under this account's name, and the whole reason this renders at CRF
+# 16 is that it is a source for someone else's re-encode. Failing honestly
+# is better than shipping that quietly.
+#
+# tv_embedded leads because it is the client least likely to be met with
+# "Sign in to confirm you're not a bot", which is what a residential proxy
+# IP now draws from YouTube once the exit-IP mismatch is fixed. Empty
+# string means no extractor-args at all, which is yt-dlp's own default.
+PLAYER_CLIENTS = ("tv_embedded", "", "web_embedded")
 
 # Fonts have to be found on both a Mac and a slim Debian image; neither
 # has the other's. Missing fonts degrade to Pillow's bitmap default, which
@@ -598,9 +618,6 @@ def fetch_section(url: str, start: float, end: float, dest: Path,
                   f"bv*[height<={height}]+ba/b[height<={height}]/b"),
            "--concurrent-fragments", "16"]
     if is_youtube:
-        if PLAYER_CLIENT:
-            cmd += ["--extractor-args",
-                    f"youtube:player_client={PLAYER_CLIENT}"]
         cmd += ["--remote-components", "ejs:github"]
     cmd += ["-o", str(dest), url]
     # ffmpeg has to go through the proxy too, not just yt-dlp.
@@ -621,7 +638,16 @@ def fetch_section(url: str, start: float, end: float, dest: Path,
     #
     # Three attempts whether or not a proxy is set: a dropped fragment is a
     # network event, and the direct path drops them too, just less often.
-    attempts = 3
+    #
+    # On YouTube each attempt also changes the player client, so two
+    # independent things vary per try rather than one. Fixing the exit-IP
+    # mismatch turned "ffmpeg exited with code 8" into "Sign in to confirm
+    # you're not a bot", which is YouTube challenging the residential IP
+    # itself: a different address alone does not answer that, a different
+    # client can. Every client in the list is offered the full ladder, so
+    # falling back costs nothing in quality.
+    clients = PLAYER_CLIENTS if is_youtube else ("",)
+    attempts = max(3, len(clients))
     last = ""
     for attempt in range(1, attempts + 1):
         # One exit IP per attempt, shared by both processes. A new session
@@ -629,9 +655,13 @@ def fetch_section(url: str, start: float, end: float, dest: Path,
         # the whole reason retrying works -- while yt-dlp and ffmpeg inside
         # one attempt agree on which address that is.
         env, run = None, list(cmd)
+        client = clients[(attempt - 1) % len(clients)]
+        if client:
+            run = [*run[:-3], "--extractor-args",
+                   f"youtube:player_client={client}", *run[-3:]]
         if proxy:
             pinned = pin_one_exit_ip(proxy, uuid.uuid4().hex[:12])
-            run = [*cmd[:-3], "--proxy", pinned, *cmd[-3:]]
+            run = [*run[:-3], "--proxy", pinned, *run[-3:]]
             env = {**os.environ,
                    "http_proxy": pinned, "https_proxy": pinned,
                    "HTTP_PROXY": pinned, "HTTPS_PROXY": pinned}
@@ -641,8 +671,12 @@ def fetch_section(url: str, start: float, end: float, dest: Path,
             gap = largest_frame_gap(dest)
             if gap <= FRAME_GAP_TOLERANCE:
                 if attempt > 1:
-                    logger.info("fetched on attempt %d of %d", attempt,
-                                attempts)
+                    # Which client worked is the only way to learn what
+                    # this host actually needs; the answer differs between
+                    # a laptop on a home connection and a container behind
+                    # a residential proxy, and only the second one matters.
+                    logger.info("fetched on attempt %d of %d (client %s)",
+                                attempt, attempts, client or "default")
                 return
             # Exit code 0 and a playable file, with a hole in it.
             last = (f"the download is missing {gap:.1f}s of video "
@@ -656,8 +690,9 @@ def fetch_section(url: str, start: float, end: float, dest: Path,
         # look like it succeeded.
         dest.unlink(missing_ok=True)
         if attempt < attempts:
-            logger.info("fetch attempt %d failed (%s) — retrying on a new "
-                        "exit IP", attempt, last[:90])
+            logger.info("fetch attempt %d failed on client %s (%s) — "
+                        "retrying on a new exit IP",
+                        attempt, client or "default", last[:90])
     raise RuntimeError(f"could not fetch that section: {last[:180]}")
 
 
