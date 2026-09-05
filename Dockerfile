@@ -9,7 +9,35 @@ WORKDIR /srv
 # --no-install-recommends keeps this to what is actually needed.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core \
+       ca-certificates curl unzip \
     && rm -rf /var/lib/apt/lists/*
+
+# A JavaScript runtime, for YouTube and nothing else.
+#
+# YouTube answers a download request with a JavaScript challenge, and
+# yt-dlp has to execute it to derive the signature on the media URL. With
+# no runtime present it cannot, and every attempt fails with "The page
+# needs to be reloaded" -- a message that names neither JavaScript nor the
+# missing dependency, which is why this took four rounds of chasing
+# proxies and player clients to find.
+#
+# It is also exactly why every client worked on a laptop and none worked
+# here: a developer machine has node or deno installed for other reasons,
+# and this image had neither. The environments differed in a way nothing
+# in the logs pointed at.
+#
+# Deno rather than node because it is the runtime yt-dlp supports for this,
+# it is a single static binary, and it needs no package manager at
+# runtime. Pinned, because "latest" makes the image non-reproducible and
+# hands a third party the ability to change what ships here.
+ENV DENO_VERSION=v2.9.6
+RUN curl -fsSL --retry 3 \
+      "https://github.com/denoland/deno/releases/download/${DENO_VERSION}/deno-x86_64-unknown-linux-gnu.zip" \
+      -o /tmp/deno.zip \
+    && unzip -q /tmp/deno.zip -d /usr/local/bin \
+    && rm /tmp/deno.zip \
+    && chmod +x /usr/local/bin/deno \
+    && deno --version
 
 # Install dependencies first so this layer caches across code changes.
 COPY requirements.txt .
