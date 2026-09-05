@@ -140,3 +140,47 @@ def test_leading_gap_never_goes_negative(tmp_path):
     f = tmp_path / "x.mp4"
     _make(f)
     assert leading_video_gap(f) >= 0.0
+
+
+# --- a render that goes over budget must not take the service with it ------
+
+def test_the_cap_wraps_the_command_without_mangling_arguments(monkeypatch):
+    """A filename with a space in it must not become two arguments. That is
+    the failure mode of building a shell string instead of exec "$@"."""
+    import app.clipper as clipper
+    monkeypatch.setattr(clipper.sys, "platform", "linux")
+    cmd = ["ffmpeg", "-i", "/tmp/a file.mp4", "-vf", "scale=2:2", "/tmp/o.mp4"]
+    wrapped = clipper._capped(cmd, 1400)
+    assert wrapped[:2] == ["/bin/sh", "-c"]
+    assert "ulimit -v 1433600" in wrapped[2]
+    assert 'exec "$@"' in wrapped[2]
+    # Everything after the sh placeholder is the original command, intact.
+    assert wrapped[4:] == cmd
+
+
+def test_the_cap_is_off_where_it_would_misfire(monkeypatch):
+    """macOS counts mapped address space differently and a generous limit
+    still refuses allocations ffmpeg makes routinely."""
+    import app.clipper as clipper
+    cmd = ["ffmpeg", "-i", "x.mp4", "y.mp4"]
+    monkeypatch.setattr(clipper.sys, "platform", "darwin")
+    assert clipper._capped(cmd, 1400) == cmd
+    monkeypatch.setattr(clipper.sys, "platform", "linux")
+    assert clipper._capped(cmd, 0) == cmd          # zero disables
+
+
+@pytest.mark.parametrize("returncode,stderr,expected", [
+    (137, "", True),                                # SIGKILL, the OOM killer
+    (-9, "", True),
+    (1, "Cannot allocate memory", True),
+    (1, "std::bad_alloc", True),
+    (1, "Error allocating a picture", True),
+    (1, "Invalid argument", False),                 # a real filter error
+    (1, "No such file or directory", False),
+])
+def test_out_of_memory_is_told_apart_from_a_broken_graph(returncode, stderr,
+                                                         expected):
+    """Reading an allocation failure as a filter bug is how an instance too
+    small for the canvas gets mistaken for a code defect."""
+    from app.clipper import _looks_like_out_of_memory
+    assert _looks_like_out_of_memory(returncode, stderr) is expected

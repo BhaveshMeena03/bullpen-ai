@@ -44,6 +44,7 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import uuid
@@ -778,6 +779,52 @@ def _concat_list(captions, workdir: Path, size: int, height: int,
     return "\n".join(lines) + "\n"
 
 
+# How much memory one render may use before it is killed, in megabytes.
+#
+# The render is the largest thing this service does and it runs inside the
+# web process's container. On 4 September a 1920x1080 clip peaked at 1.7GB
+# on a 2GB instance and the kernel killed the container, which took search
+# down with it -- a clip nobody was waiting for cost every search request
+# that minute.
+#
+# A ceiling turns that into a failed clip. ffmpeg's allocation fails, it
+# exits non-zero, the job reports an error, and search never notices.
+# Measured peaks to size it against: 846MB at 720p, 1730MB at 1080p.
+#
+# Zero disables it, which is right for a laptop with memory to spare.
+CLIP_MEMORY_LIMIT_MB = 1400
+
+
+def _looks_like_out_of_memory(returncode: int, stderr: str) -> bool:
+    """Whether ffmpeg died against the ceiling rather than on the input."""
+    if returncode in (137, -9):                 # SIGKILL, the kernel's OOM
+        return True
+    lowered = (stderr or "").lower()
+    return any(mark in lowered for mark in
+               ("cannot allocate memory", "out of memory",
+                "error allocating", "std::bad_alloc", "killed"))
+
+
+def _capped(cmd: list[str], limit_mb: int = CLIP_MEMORY_LIMIT_MB) -> list[str]:
+    """The same command, unable to use more than `limit_mb` of memory.
+
+    Wrapped in a shell running `ulimit -v` rather than passed through
+    subprocess's preexec_fn: preexec_fn runs between fork and exec in a
+    process that has threads, which is documented as unsafe and this render
+    is called from a thread pool. `exec "$@"` hands the arguments on
+    without going back through shell quoting, so a filename with a space in
+    it cannot become two arguments.
+
+    Linux only. macOS counts mapped address space very differently and a
+    limit that is generous there still refuses allocations ffmpeg makes
+    routinely, so a developer machine is left alone.
+    """
+    if not limit_mb or not sys.platform.startswith("linux"):
+        return cmd
+    return ["/bin/sh", "-c", f'ulimit -v {limit_mb * 1024}; exec "$@"',
+            "sh", *cmd]
+
+
 def _has_audio(source: Path) -> bool:
     try:
         out = subprocess.run(
@@ -891,17 +938,24 @@ def render(source: Path, captions, backdrop: Path, workdir: Path,
         label = "capped"
 
     result = subprocess.run(
-        ["ffmpeg", "-y", *inputs,
+        _capped(["ffmpeg", "-y", *inputs,
          "-filter_complex", ";".join(steps + steps_audio),
          "-map", f"[{label}]",
          *(["-map", "[aud]", "-c:a", "aac",
             "-b:a", "256k" if best else "128k"] if has_audio else ["-an"]),
          *_encoder(size, best),
          "-movflags", "+faststart",
-         "-shortest", str(out)],
+         "-shortest", str(out)]),
         capture_output=True, text=True, timeout=300)
     if result.returncode != 0:
         tail = "; ".join((result.stderr or "").strip().splitlines()[-3:])
+        # Say which failure this is. Out of memory surfaces as a generic
+        # allocation error, and reading that as a broken filter graph is
+        # how an instance too small for the canvas gets mistaken for a bug.
+        if _looks_like_out_of_memory(result.returncode, tail):
+            raise RuntimeError(
+                f"render ran out of memory at {size}px — the ceiling is "
+                f"{CLIP_MEMORY_LIMIT_MB}MB")
         raise RuntimeError(f"render failed: {tail[:220]}")
 
 
