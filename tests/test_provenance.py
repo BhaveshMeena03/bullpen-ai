@@ -76,3 +76,21 @@ def test_the_game_time_reupload_is_refused_by_channel():
     ok, why = admissible("Game Time",
                          "Elon Musk : Tesla Autopilot, Lex Fridman Podcast")
     assert ok is False and "Game Time" in why
+
+
+# --- the two archives must not share a vector -------------------------------
+
+def test_the_index_defaults_to_the_market_bubble_corpus():
+    from app.podcast import PodcastIndex, NAMESPACE
+    assert PodcastIndex._namespace == NAMESPACE == "podcast"
+
+
+def test_a_second_archive_gets_its_own_namespace():
+    """@mbubbleSearch's standing is that it answers from the Market Bubble
+    broadcast. One reply about that show sourced from a Tesla interview
+    would prove it cannot tell the difference, so the corpora never share
+    a namespace."""
+    from app.podcast import PodcastIndex
+    index = PodcastIndex.__new__(PodcastIndex)
+    index._namespace = "elon"
+    assert index._namespace != PodcastIndex._namespace

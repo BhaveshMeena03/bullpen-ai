@@ -366,8 +366,24 @@ def _prefer_seekable(hits: list[PodcastHit]) -> list[PodcastHit]:
 
 class PodcastIndex:
     SURFACE = "market-bubble-search"
+    # A class-level default so an instance built without __init__ -- which
+    # the tests do, to exercise retrieval without a network client -- still
+    # knows which corpus it reads. Without it the exact-match fetch fails
+    # with an AttributeError that the surrounding code swallows into
+    # "continuing with the vector results alone", so the term index would
+    # quietly stop contributing and nothing would say so.
+    _namespace = NAMESPACE
 
-    def __init__(self, ledger=None) -> None:
+    def __init__(self, ledger=None, namespace: str | None = None) -> None:
+        # Which corpus this instance answers from. The default is the Market
+        # Bubble broadcast; a second archive passes its own namespace and
+        # gets the same retrieval without sharing a single vector.
+        #
+        # Sharing one would be the end of the account. @mbubbleSearch's
+        # entire standing is that it answers from that show, and one reply
+        # about Market Bubble sourced from a Tesla interview would prove it
+        # does not know the difference.
+        self._namespace = namespace or NAMESPACE
         self._ledger = ledger
         settings = get_settings()
         self._settings = settings
@@ -498,7 +514,7 @@ class PodcastIndex:
         def _upsert() -> None:
             for start in range(0, len(vectors), 100):
                 self.index.upsert(
-                    vectors=vectors[start:start + 100], namespace=NAMESPACE
+                    vectors=vectors[start:start + 100], namespace=self._namespace
                 )
 
         # Bound the write: the Pinecone client has no read timeout, so a dead
@@ -561,7 +577,7 @@ class PodcastIndex:
             return hits
 
         def _fetch():
-            return self.index.fetch(ids=wanted, namespace=NAMESPACE)
+            return self.index.fetch(ids=wanted, namespace=self._namespace)
 
         try:
             fetched = await asyncio.wait_for(
@@ -643,7 +659,7 @@ class PodcastIndex:
             kwargs = {
                 "vector": vector,
                 "top_k": fetch_k,
-                "namespace": NAMESPACE,
+                "namespace": self._namespace,
                 "include_metadata": True,
             }
             if restrict:
