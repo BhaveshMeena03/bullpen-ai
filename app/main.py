@@ -306,7 +306,9 @@ async def lifespan(app: FastAPI):
         path=writable_path(_ROOT / "data" / ".usage.json"))
     # Only where the binaries exist. On an image without ffmpeg the
     # endpoints answer 503 rather than accepting a job that can never run.
-    app.state.clips = (ClipService(proxy=get_settings().clip_proxy or None)
+    app.state.clips = (ClipService(
+        proxy=get_settings().clip_proxy or None,
+        cookies=get_settings().yt_cookies_file or None)
                        if ffmpeg_available() else None)
     app.state.agent = ConciergeAgent(ledger=app.state.usage)
     app.state.clawpump_agent = ClawPumpAgent(ledger=app.state.usage)

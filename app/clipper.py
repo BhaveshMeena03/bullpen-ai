@@ -565,7 +565,8 @@ def pin_one_exit_ip(proxy: str, session: str) -> str:
 
 
 def fetch_section(url: str, start: float, end: float, dest: Path,
-                  proxy: str | None = None, height: int = DEFAULT_SIZE) -> None:
+                  proxy: str | None = None, height: int = DEFAULT_SIZE,
+                  cookies: str | None = None) -> None:
     """Download just the requested seconds of a video, at most `height` tall.
 
     Works for YouTube and for an X broadcast replay. The two need different
@@ -617,6 +618,15 @@ def fetch_section(url: str, start: float, end: float, dest: Path,
            "-f", (f"bv*[height<={height}][vcodec^=avc1]+ba[ext=m4a]/"
                   f"bv*[height<={height}]+ba/b[height<={height}]/b"),
            "--concurrent-fragments", "16"]
+    # A signed-in session is the one thing that answers "Sign in to confirm
+    # you're not a bot". Checked for existence rather than trusted: a
+    # missing secret file would otherwise fail every attempt with a
+    # confusing error about the path instead of the real problem.
+    if cookies and Path(cookies).is_file():
+        cmd += ["--cookies", cookies]
+    elif cookies:
+        logger.warning("YT_COOKIES_FILE is set to %s but there is no file "
+                       "there — continuing without cookies", cookies)
     cmd += ["-o", str(dest), url]
     # ffmpeg has to go through the proxy too, not just yt-dlp.
     #
@@ -854,10 +864,12 @@ class Job:
 class ClipService:
     """Background clip jobs, one at a time, with everything bounded."""
 
-    def __init__(self, proxy: str | None = None):
+    def __init__(self, proxy: str | None = None,
+                 cookies: str | None = None):
         self._jobs: dict[str, Job] = {}
         self._gate = asyncio.Semaphore(MAX_CONCURRENT)
         self._proxy = proxy
+        self._cookies = cookies
         self._dir = Path(tempfile.gettempdir()) / "clips"
         self._dir.mkdir(exist_ok=True)
 
@@ -924,7 +936,7 @@ class ClipService:
             # preview — and a viewer sharing this has no other way to point
             # anyone at an X broadcast, since X cannot link to a timestamp.
             fetch_section(episode["url"], start, end, raw, self._proxy,
-                          height=CLIP_HEIGHT)
+                          height=CLIP_HEIGHT, cookies=self._cookies)
             backdrop = work / "backdrop.png"
             make_wide_overlay(episode.get("title", ""), stamp(start),
                               backdrop, CLIP_HEIGHT,

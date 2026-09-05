@@ -347,6 +347,23 @@ class Settings(BaseSettings):
     # on a laptop. Empty means direct, which is the right default: a proxy
     # sees every request, so it is opt-in rather than always on.
     clip_proxy: str = ""
+    # Path to a Netscape-format cookies.txt for the clip downloader.
+    #
+    # YouTube answers an unauthenticated request from a flagged address
+    # with "Sign in to confirm you're not a bot", and no amount of retrying
+    # or changing player client gets past that; a signed-in session does.
+    #
+    # It is a secret file rather than a value in the environment on
+    # purpose: the file is a live session, and anyone holding it can act as
+    # that account. Use a throwaway Google account signed in to nothing
+    # else. Google also flags accounts whose cookies appear from datacentre
+    # addresses and rotating residential exits, which is exactly what this
+    # does, so expect the account to be locked eventually and do not let
+    # that matter.
+    #
+    # Empty means no cookies, which is the right default: the clipper works
+    # without them for X, which is most of the archive.
+    yt_cookies_file: str = ""
 
     x_bot_verified_only: bool = False
     # Longest reply to compose. 280 is what X API v2 is widely reported to
