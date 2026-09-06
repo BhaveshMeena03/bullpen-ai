@@ -174,8 +174,15 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
   .rec .title{font-size:14.5px}
   .rec a{color:inherit;text-decoration:none}
   .rec a:hover{color:var(--blue)}
-  .more{margin:16px 0 0;font-family:"IBM Plex Mono",monospace;font-size:12px;
-    color:var(--dim)}
+  .more{margin:18px 0 0;display:flex;align-items:center;gap:14px;
+    font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--dim)}
+  /* 434 episodes behind a sentence is 434 episodes nobody opens. The
+     button says the number, because "view all" gives no sense of what
+     is being asked for. */
+  .more button{background:transparent;border:1px solid var(--rule-dark);
+    color:var(--blue);font-family:"IBM Plex Mono",monospace;font-size:12px;
+    letter-spacing:.06em;padding:8px 14px;cursor:pointer}
+  .more button:hover{border-color:var(--blue)}
 
   footer{margin-top:52px;padding-top:18px;border-top:1px solid var(--rule-dark);
     font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--faint);
@@ -383,6 +390,7 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
   // The shelf shows the most recent. 458 rows is a list nobody reaches the
   // end of, and the useful end is the top.
   var SHOWN = 24;
+  var ALL_ROWS = [];
   var SUMMARIES = {};
   // Summaries first, then the shelf: a row has to know whether it has one
   // before it decides to be a <details> or a plain line.
@@ -394,42 +402,55 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
     .then(function(r){ return r.ok ? r.json() : []; })
     .then(function(rows){
       if (!rows || !rows.length) return;
-      // Each row folds open into the episode's summary, when there is
-      // one. A link straight to YouTube is still there in the summary;
-      // the row itself opens rather than navigating, because leaving the
-      // page is the thing this archive exists to avoid.
-      $("shelf").innerHTML = rows.slice(0, SHOWN).map(function(e){
-        var mins = Math.round((e.seconds || 0) / 60);
-        var head = '<span class="tw">\u25B6</span>'
-          + '<span class="date">' + esc((e.published_at||"").slice(0,10)) + "</span>"
-          + '<span class="title">' + esc(e.title || "") + "</span>"
-          + '<span class="len">' + (mins ? mins + " min" : "") + "</span>";
-        var s = SUMMARIES[e.episode_id];
-        if (!s) {
-          // Nothing to open: keep the columns aligned but show no caret.
-          return '<div class="rec plain">'
-            + head.replace('<span class="tw">\u25B6</span>', '<span></span>')
-            + "</div>";
-        }
-        var topics = (s.topics || []).map(function(t){
-          return '<div class="topic"><button data-url="' + esc(e.url || "")
-            + '" data-sec="' + Math.round(t.t || 0) + '">' + clock(t.t || 0)
-            + "</button><span>" + esc(t.text || "") + "</span></div>";
-        }).join("");
-        return '<details class="rec"><summary>' + head + "</summary>"
-          + '<div class="sum"><p class="tldr">' + esc(s.tldr || "") + "</p>"
-          + topics
-          + '<div class="player"></div></div></details>';
-      }).join("");
+      ALL_ROWS = rows;
+      paint(rows.slice(0, SHOWN));
       if (rows.length > SHOWN) {
-        $("more").textContent = "+ " + (rows.length - SHOWN).toLocaleString()
-          + " more episodes, all searchable above.";
+        $("more").innerHTML =
+          '<button id="all">show all ' + rows.length.toLocaleString()
+          + " episodes</button><span>every one searchable above</span>";
+        $("all").addEventListener("click", function(){
+          // Rendered in one pass rather than paged: 458 rows of text is
+          // nothing to a browser, and a second "show more" is just the
+          // same question again.
+          paint(ALL_ROWS);
+          $("more").innerHTML = '<span>all ' + ALL_ROWS.length.toLocaleString()
+            + " episodes, newest first</span>";
+        });
       }
     })
     .catch(function(){});
 
   // A passage runs minutes, so a citation can sit well inside the window
   // that produced it. Beyond this the nearest hit is not evidence.
+  // Each row folds open into the episode's summary, when there is one. A
+  // link straight to YouTube is still inside the summary; the row itself
+  // opens rather than navigating, because leaving the page is the thing
+  // this archive exists to avoid.
+  function paint(rows){
+    $("shelf").innerHTML = rows.map(function(e){
+      var mins = Math.round((e.seconds || 0) / 60);
+      var head = '<span class="tw">\u25B6</span>'
+        + '<span class="date">' + esc((e.published_at||"").slice(0,10)) + "</span>"
+        + '<span class="title">' + esc(e.title || "") + "</span>"
+        + '<span class="len">' + (mins ? mins + " min" : "") + "</span>";
+      var sm = SUMMARIES[e.episode_id];
+      if (!sm) {
+        // Nothing to open: keep the columns aligned but show no caret.
+        return '<div class="rec plain">'
+          + head.replace('<span class="tw">\u25B6</span>', "<span></span>")
+          + "</div>";
+      }
+      var topics = (sm.topics || []).map(function(t){
+        return '<div class="topic"><button data-url="' + esc(e.url || "")
+          + '" data-sec="' + Math.round(t.t || 0) + '">' + clock(t.t || 0)
+          + "</button><span>" + esc(t.text || "") + "</span></div>";
+      }).join("");
+      return '<details class="rec"><summary>' + head + "</summary>"
+        + '<div class="sum"><p class="tldr">' + esc(sm.tldr || "") + "</p>"
+        + topics + '<div class="player"></div></div></details>';
+    }).join("");
+  }
+
   var CITE_REACH = 420;
 
   function stampSeconds(stamp){
