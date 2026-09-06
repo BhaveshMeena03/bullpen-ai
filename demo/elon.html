@@ -106,47 +106,45 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
   .cell dd em{font-style:normal;font-size:12px;color:var(--dim);margin-left:5px}
 
   /* ── the planet ─────────────────────────────────────────────────── */
-  /* A sphere lit hard from the left, so most of it is the night side and
-     the eye reads a terminator rather than a circle. Everything is a
-     gradient: the mottling is four soft blobs of rust at low opacity, the
-     atmosphere is a single inset ring on the lit edge, and the stars are
-     points behind it. Nothing to download, nothing that 404s, and it
-     survives any screen because it is all percentages.
+  /* Not a circle. The first attempt clipped the footage to a disc, which
+     crops into the planet and turns a photograph of space into a sticker.
+     The frame already holds the planet against black, so the frame is
+     what goes on the page: a block down the right-hand side, masked away
+     on the left so it dissolves into the background rather than ending at
+     an edge. Nothing to align, and it reads as depth instead of decoration.
 
-     It sits behind the text and is pushed off the right edge, which is
-     what makes it read as a body in space rather than a circle on a page:
-     you never see the whole thing. */
-  .orb{position:absolute;right:-26%;top:-72px;width:min(720px,80vw);
-    aspect-ratio:1;pointer-events:none;z-index:0}
-  .orb::before{content:"";position:absolute;inset:-18% -12% -6% -30%;
-    background-image:
-      radial-gradient(1.5px 1.5px at 14% 26%, #fff, transparent),
-      radial-gradient(1px 1px at 31% 62%, #d8c9c4, transparent),
-      radial-gradient(1.7px 1.7px at 46% 12%, #fff, transparent),
-      radial-gradient(1px 1px at 8% 74%, #cbb9b3, transparent),
-      radial-gradient(1.3px 1.3px at 63% 82%, #fff, transparent),
-      radial-gradient(1px 1px at 22% 46%, #e0d2cd, transparent),
-      radial-gradient(1.4px 1.4px at 52% 40%, #fff, transparent),
-      radial-gradient(1px 1px at 71% 20%, #bfa9a2, transparent);
-    opacity:.55}
-  /* The real planet. NASA's Mars globe (public domain), cut round and
-     shaded so the sun sits off the left limb -- the terminator is baked
-     into the file rather than faked with a gradient over the top, because
-     a gradient over a photograph looks like a gradient over a photograph.
-     960px, 21KB of WebP. */
-  .orb .body{position:absolute;inset:0;border-radius:50%;
-    background-image:url("/demo/mars.webp");
-    background-size:cover;background-position:center;
-    /* Only the atmosphere is drawn: a rim of scattered light on the lit
-       limb, and a breath of it outside the disc. The shading itself is in
-       the file. */
-    box-shadow:
-      inset 14px 0 40px -32px rgba(255,201,158,.55),
-      -14px 0 90px -58px rgba(217,122,58,.40)}
+     A 15-second push-in, ping-ponged to 30 so the loop has no seam --
+     played forward then back, the zoom becomes a slow breath instead of
+     snapping from full frame to a dot every fifteen seconds. Audio
+     stripped: it can never play, and it was a third of the file. 509KB of
+     VP9, H.264 behind it for Safari, and a 7KB poster holding the frame
+     until one of them arrives. */
+  .orb{position:absolute;right:-8%;top:-96px;width:min(760px,72%);
+    height:calc(100% + 150px);pointer-events:none;z-index:0;
+    -webkit-mask-image:linear-gradient(90deg,transparent,#000 42%,#000);
+    mask-image:linear-gradient(90deg,transparent,#000 42%,#000)}
+  .orb video.body,.orb .still{position:absolute;inset:0;
+    width:100%;height:100%;object-fit:cover;object-position:52% 44%}
+
+  /* Nothing behind the headline may be brighter than the headline. The
+     footage carries a sun flare, so a scrim rides over it -- heaviest on
+     the side the text sits on, gone before the far edge. */
+  .orb::after{content:"";position:absolute;inset:0;
+    background:linear-gradient(96deg,
+      rgba(0,0,0,.92) 0%, rgba(0,0,0,.70) 22%,
+      rgba(0,0,0,.34) 46%, rgba(0,0,0,.08) 70%, transparent 88%)}
+
+  /* Asked for stillness: the poster is already painted, so this only
+     stops the motion. */
+  @media (prefers-reduced-motion:reduce){ .orb video.body{display:none} }
+
+  /* On a phone the planet is scenery behind a search box, and a megabyte
+     of it is somebody's data. The poster carries it; the video is not
+     fetched at all. */
   @media (max-width:900px){
-    .orb{right:-34%;top:10px;width:min(560px,96vw);opacity:.62}
+    .orb{right:-22%;top:-40px;width:78%;opacity:.55}
   }
-  @media (max-width:640px){ .orb{opacity:.42} }
+  @media (max-width:640px){ .orb{opacity:.38} }
 
   /* ── the ask ─────────────────────────────────────────────────────── */
   h1{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:700;
@@ -283,7 +281,15 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
        and the footer says independent project, not affiliated. Two dozen
        gradients get the same silhouette and contradict nothing. -->
   <div class="hero">
-  <div class="orb" aria-hidden="true"><i class="body"></i></div>
+  <div class="orb" aria-hidden="true">
+    <!-- The sources are attached by script, not markup, so a phone and a
+         reader who asked for no motion never fetch a megabyte of scenery.
+         The poster is a real attribute, so the frame is painted either
+         way and nothing pops in later. -->
+    <video class="body" muted loop playsinline preload="none"
+           poster="/demo/mars-poster.webp" disablepictureinpicture
+           data-webm="/demo/mars-loop.webm" data-mp4="/demo/mars-loop.mp4"></video>
+  </div>
 
   <h1>Every answer he has given, <i>to the second.</i></h1>
   <p class="sub">Five long-form conversations, transcribed and indexed by meaning
@@ -474,6 +480,32 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
         $("go").disabled = false;
       });
   }
+
+  // Load the planet only where it is worth its bytes: a wide screen, and
+  // nobody who has asked for reduced motion. Everywhere else the poster
+  // stands in, which is 7KB and already painted.
+  (function(){
+    var v = document.querySelector(".orb video.body");
+    if (!v || !window.matchMedia) return;
+    var wide = window.matchMedia("(min-width: 901px)").matches;
+    var still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!wide || still) return;
+    [["data-webm", "video/webm"], ["data-mp4", "video/mp4"]].forEach(function(pair){
+      var src = v.getAttribute(pair[0]);
+      if (!src) return;
+      var el = document.createElement("source");
+      el.src = src; el.type = pair[1];
+      v.appendChild(el);
+    });
+    v.preload = "metadata";
+    v.load();
+    // autoplay is set here rather than in the markup so the attribute and
+    // the sources arrive together; a video told to play with no source
+    // logs an error in Safari.
+    v.autoplay = true;
+    var p = v.play();
+    if (p && p.catch) p.catch(function(){ /* poster stays; fine */ });
+  })();
 
   $("f").addEventListener("submit", function(e){
     e.preventDefault();
