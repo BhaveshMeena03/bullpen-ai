@@ -13,8 +13,16 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
   one person's statements over five years, and the thing it has to earn is
   not affection but trust — that the quote is real, that the second is
   right, that it came from the recording it claims. So it reads as an
-  instrument: monospaced readouts, tabular figures, hairline rules, amber
-  on black like a panel that reports rather than persuades.
+  instrument: monospaced readouts, tabular figures, hairline rules, a
+  panel that reports rather than persuades.
+
+  It wears X's palette, at X's own values — true black, #16181c cards,
+  #2f3336 hairlines, #1d9bf0. Almost everyone who opens this arrives from
+  a post, and the archive is of the person who owns that platform, so
+  borrowing the palette makes the page feel like somewhere they already
+  are instead of somewhere they were sent. The typography stays: X's
+  colours on an instrument's layout, not an imitation of X itself, which
+  would suggest an affiliation that does not exist.
 
   The one element that carries the idea is the position bar on every
   result. A moment in an eight-and-a-half-hour conversation is meaningless
@@ -29,16 +37,21 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
 
 <style>
   :root{
-    --void:#08090b;
-    --panel:#0e1014;
-    --line:#1c2027;
-    --line-lit:#2b323c;
-    --ink:#e9ecef;
-    --dim:#7d858f;
-    --faint:#4a525c;
-    --amber:#ffb000;      /* phosphor. the one warm thing on the page */
-    --amber-dim:#8a6100;
-    --ice:#7fd1e0;
+    /* X's own dark palette, taken at its values rather than approximated.
+       The archive is one man's statements, it is read almost entirely by
+       people arriving from X, and it is about the person who owns the
+       place -- so the page wearing that palette reads as native rather
+       than as a tribute. */
+    --void:#000000;       /* X "lights out", true black */
+    --panel:#16181c;      /* card */
+    --line:#2f3336;       /* hairline between rows */
+    --line-lit:#3e4245;   /* the same, awake */
+    --ink:#e7e9ea;        /* primary text */
+    --dim:#71767b;        /* secondary text */
+    --faint:#565a5e;      /* labels */
+    --accent:#1d9bf0;     /* the blue. the one bright thing on the page */
+    --accent-dim:#1a5a80;
+    --ice:#00ba7c;        /* X's green, for the position tick */
   }
   *{box-sizing:border-box}
   html{-webkit-text-size-adjust:100%}
@@ -51,8 +64,8 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
      that keeps large flat areas from banding on cheap screens. */
   body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
     background:
-      radial-gradient(680px 380px at 50% -6%, rgba(255,176,0,.055), transparent 70%),
-      radial-gradient(900px 600px at 80% 10%, rgba(127,209,224,.03), transparent 70%)}
+      radial-gradient(680px 380px at 50% -6%, rgba(29,155,240,.075), transparent 70%),
+      radial-gradient(900px 600px at 80% 10%, rgba(0,186,124,.025), transparent 70%)}
   body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
     opacity:.5;mix-blend-mode:overlay;
     background-image:url("data:image/svg+xml;utf8,\
@@ -69,11 +82,11 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
   .mark b{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:700;
     font-size:19px;letter-spacing:.02em;color:var(--ink)}
   .mark span{font-family:"IBM Plex Mono",monospace;font-size:11px;
-    letter-spacing:.16em;text-transform:uppercase;color:var(--amber)}
+    letter-spacing:.16em;text-transform:uppercase;color:var(--accent)}
   nav{display:flex;gap:20px;font-family:"IBM Plex Mono",monospace;font-size:11.5px;
     letter-spacing:.1em;text-transform:uppercase}
   nav a{color:var(--dim);text-decoration:none;transition:color .15s}
-  nav a:hover{color:var(--amber)}
+  nav a:hover{color:var(--accent)}
 
   /* The readout strip. Real figures, tabular, the way a panel states
      what it is holding rather than boasting about it. */
@@ -91,20 +104,20 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
   h1{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:700;
     font-size:clamp(30px,5.4vw,52px);line-height:1.04;letter-spacing:-.015em;
     margin:56px 0 14px;max-width:16ch}
-  h1 i{font-style:normal;color:var(--amber)}
+  h1 i{font-style:normal;color:var(--accent)}
   .sub{color:var(--dim);max-width:60ch;margin:0 0 34px;font-size:16px}
 
   form{position:relative;display:flex;align-items:stretch;
     border:1px solid var(--line-lit);background:var(--panel);
     transition:border-color .18s, box-shadow .18s}
-  form:focus-within{border-color:var(--amber);
-    box-shadow:0 0 0 1px var(--amber-dim), 0 20px 60px -40px var(--amber)}
-  .prompt{display:flex;align-items:center;padding:0 0 0 18px;color:var(--amber);
+  form:focus-within{border-color:var(--accent);
+    box-shadow:0 0 0 1px var(--accent-dim), 0 20px 60px -40px var(--accent)}
+  .prompt{display:flex;align-items:center;padding:0 0 0 18px;color:var(--accent);
     font-family:"IBM Plex Mono",monospace;font-size:15px;user-select:none}
   #q{flex:1;background:transparent;border:0;outline:0;color:var(--ink);
     font-family:"IBM Plex Mono",monospace;font-size:15px;padding:20px 14px}
   #q::placeholder{color:var(--faint)}
-  #go{border:0;background:var(--amber);color:#12100a;cursor:pointer;
+  #go{border:0;background:var(--accent);color:#ffffff;cursor:pointer;
     font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:600;
     letter-spacing:.14em;text-transform:uppercase;padding:0 26px;
     transition:filter .15s}
@@ -115,14 +128,14 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
   .seed{background:transparent;border:1px solid var(--line);color:var(--dim);
     font-family:"IBM Plex Mono",monospace;font-size:12px;padding:7px 12px;
     cursor:pointer;transition:border-color .15s,color .15s}
-  .seed:hover{border-color:var(--amber-dim);color:var(--amber)}
+  .seed:hover{border-color:var(--accent-dim);color:var(--accent)}
 
   /* ── working state ───────────────────────────────────────────────── */
   .working{display:none;align-items:center;gap:10px;margin-top:26px;
     font-family:"IBM Plex Mono",monospace;font-size:12px;letter-spacing:.1em;
-    text-transform:uppercase;color:var(--amber)}
+    text-transform:uppercase;color:var(--accent)}
   .working.on{display:flex}
-  .working i{width:6px;height:6px;background:var(--amber);border-radius:50%;
+  .working i{width:6px;height:6px;background:var(--accent);border-radius:50%;
     animation:pulse 1s ease-in-out infinite}
   @keyframes pulse{0%,100%{opacity:.25}50%{opacity:1}}
 
@@ -142,17 +155,17 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
      says nothing about a conversation eight hours long. */
   .moment{border-top:1px solid var(--line);padding:18px 20px}
   .moment .line{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
-  .at{font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--amber);
+  .at{font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--accent);
     text-decoration:none;font-variant-numeric:tabular-nums;
-    border-bottom:1px solid var(--amber-dim);padding-bottom:1px}
-  .at:hover{border-bottom-color:var(--amber)}
+    border-bottom:1px solid var(--accent-dim);padding-bottom:1px}
+  .at:hover{border-bottom-color:var(--accent)}
   /* A cited moment inside the answer. Reads as part of the sentence until
      you want it, which is why it is underlined rather than coloured like
      a link -- the answer should stay readable prose, not a row of buttons. */
   a.cite{color:inherit;text-decoration:none;font-variant-numeric:tabular-nums;
-    border-bottom:1px dashed var(--amber-dim);cursor:pointer}
-  a.cite:hover{color:var(--amber);border-bottom-style:solid;
-    border-bottom-color:var(--amber)}
+    border-bottom:1px dashed var(--accent-dim);cursor:pointer}
+  a.cite:hover{color:var(--accent);border-bottom-style:solid;
+    border-bottom-color:var(--accent)}
   .who{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.12em;
     text-transform:uppercase;color:var(--ice)}
   .from{color:var(--faint);font-size:12.5px}
@@ -160,8 +173,8 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
 
   /* the position bar — the signature of this page */
   .bar{margin-top:12px;height:3px;background:var(--line);position:relative}
-  .bar i{position:absolute;top:-3px;width:2px;height:9px;background:var(--amber);
-    box-shadow:0 0 8px var(--amber)}
+  .bar i{position:absolute;top:-3px;width:2px;height:9px;background:var(--accent);
+    box-shadow:0 0 8px var(--accent)}
   .bar-note{margin-top:6px;font-family:"IBM Plex Mono",monospace;font-size:10.5px;
     letter-spacing:.08em;color:var(--faint);display:flex;justify-content:space-between}
 
@@ -181,7 +194,7 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
     color:var(--faint);display:flex;justify-content:space-between;gap:20px;
     flex-wrap:wrap}
   footer a{color:var(--dim);text-decoration:none}
-  footer a:hover{color:var(--amber)}
+  footer a:hover{color:var(--accent)}
 
   @media(max-width:720px){
     .readout{grid-template-columns:repeat(2,1fr)}
