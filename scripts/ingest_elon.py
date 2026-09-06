@@ -73,6 +73,32 @@ SOURCES = [
     ("Kbk9BiPhm7o", "Lex Fridman", "2024-08-02",
      "Elon Musk: Neuralink and the Future of Humanity | "
      "Lex Fridman Podcast #438"),
+
+    # Rogan. Same two-person shape the pipeline handles, on the channel
+    # that recorded it.
+    #
+    # The dates are not all YouTube's. #1609 and #2054 both report
+    # 2024-06-27, which is the day JRE re-uploaded its Spotify-era back
+    # catalogue, not the day they aired -- and a wrong date here is not
+    # cosmetic: rule 4 of the Musk prompt uses dates to say when a view
+    # was held, so a 2021 conversation stamped 2024 would report his
+    # thinking as three years newer than it is. The pre-Spotify episodes
+    # (#1169 in 2018, #1470 in May 2020) kept their real upload dates and
+    # are taken from YouTube; the two re-uploads carry their original air
+    # dates instead. Worth a check against the transcripts, since those
+    # two are the only dates here that a person supplied.
+    ("ycPr5-27vSI", "PowerfulJRE", "2018-09-07",
+     "Joe Rogan Experience #1169 - Elon Musk"),
+    ("RcYjXbSJBN8", "PowerfulJRE", "2020-05-07",
+     "Joe Rogan Experience #1470 - Elon Musk"),
+    ("Gbb2rV7Vpnw", "PowerfulJRE", "2021-02-11",
+     "Joe Rogan Experience #1609 - Elon Musk"),
+    ("tAJUwiAqW38", "PowerfulJRE", "2023-11-01",
+     "Joe Rogan Experience #2054 - Elon Musk"),
+    ("sSOxPJD-VNo", "PowerfulJRE", "2025-02-28",
+     "Joe Rogan Experience #2281 - Elon Musk"),
+    ("O4wBUysNe2k", "PowerfulJRE", "2025-10-31",
+     "Joe Rogan Experience #2404 - Elon Musk"),
 ]
 
 

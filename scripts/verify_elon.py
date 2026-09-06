@@ -134,11 +134,16 @@ def quotes_hold(answer: str, episodes: dict, hits) -> str | None:
     if not windows:
         return f"cites {stamps[0]}, which no returned recording covers"
     titles = {e["title"].lower() for e in episodes.values()}
-    # No newlines inside a quote. Without that, an unbalanced quote mark
-    # pairs across two sentences and "checks" a fragment nobody said as
-    # one span -- which is how a correctly cited answer about AI risk was
-    # reported as unsupported.
-    for quote in re.findall(r'"([^"\n]{16,160})"', answer):
+    # Quote marks only pair when there is an even number of them. An
+    # answer that opens one and never closes it -- a model writing he
+    # called it "futile" and then quoting again later -- makes every
+    # subsequent pair off by one, so the checker "verifies" spans that
+    # were never quoted at all. It flagged three correct answers that way
+    # before this guard existed. When the marks do not balance, there is
+    # nothing to check and saying so is better than guessing.
+    if answer.count('"') % 2:
+        return None
+    for quote in (q.strip() for q in re.findall(r'"([^"\n]{16,160})"', answer)):
         if any(quote.lower()[:40] in t for t in titles):
             continue
         target = {w for w in re.findall(r"[a-z0-9']{4,}", quote.lower())}

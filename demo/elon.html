@@ -146,6 +146,13 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
     text-decoration:none;font-variant-numeric:tabular-nums;
     border-bottom:1px solid var(--amber-dim);padding-bottom:1px}
   .at:hover{border-bottom-color:var(--amber)}
+  /* A cited moment inside the answer. Reads as part of the sentence until
+     you want it, which is why it is underlined rather than coloured like
+     a link -- the answer should stay readable prose, not a row of buttons. */
+  a.cite{color:inherit;text-decoration:none;font-variant-numeric:tabular-nums;
+    border-bottom:1px dashed var(--amber-dim);cursor:pointer}
+  a.cite:hover{color:var(--amber);border-bottom-style:solid;
+    border-bottom-color:var(--amber)}
   .who{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.12em;
     text-transform:uppercase;color:var(--ice)}
   .from{color:var(--faint);font-size:12.5px}
@@ -293,12 +300,64 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
     })
     .catch(function(){});
 
+  // A passage is minutes long, so a citation can sit well inside the
+  // window that produced it and still belong to it. Beyond this, the
+  // nearest hit is not evidence that the moment is where it says.
+  var CITE_REACH = 420;
+
+  function stampSeconds(stamp){
+    var p = String(stamp).split(":").map(function(n){ return parseInt(n, 10); });
+    if (p.some(isNaN)) return null;
+    return p.length === 3 ? p[0]*3600 + p[1]*60 + p[2] : p[0]*60 + p[1];
+  }
+
+  // The recording a cited second actually falls in, or nothing.
+  function nearestHit(hits, sec){
+    var best = null, gap = Infinity;
+    hits.forEach(function(h){
+      var t = h.start_seconds;
+      if (typeof t !== "number") return;
+      var d = Math.abs(t - sec);
+      if (d < gap){ gap = d; best = h; }
+    });
+    return gap <= CITE_REACH ? best : null;
+  }
+
+  // Make the moments named inside the answer clickable.
+  //
+  // Without this the page half-keeps its promise: the answer says "around
+  // 28:08 he framed Mars as insurance", and the card underneath links to
+  // 26:47 -- the start of the window that passage came from, eighty
+  // seconds earlier. You land before the thing you were told about. The
+  // cited second is the one worth pressing.
+  //
+  // A timestamp only becomes a link when a returned hit covers it. A
+  // number welded to whichever recording happened to rank first is a link
+  // that looks checkable and is not, which is worse than plain text.
+  function citeTimestamps(hits){
+    var body = $("answer-body");
+    if (!body || !hits || !hits.length) return;
+    body.innerHTML = body.innerHTML.replace(
+      /(^|[\s(>])(\d{1,2}:\d{2}(?::\d{2})?)(?![\d:])/g,
+      function(all, before, stamp){
+        var sec = stampSeconds(stamp);
+        if (sec === null) return all;
+        var hit = nearestHit(hits, sec);
+        if (!hit || !hit.deep_link) return all;
+        var base = String(hit.deep_link).split(/[?&]t=/)[0];
+        var url = base + (base.indexOf("?") > -1 ? "&" : "?") + "t=" + sec + "s";
+        return before + '<a class="cite" target="_blank" rel="noopener" href="'
+             + esc(url) + '" title="open this moment">' + esc(stamp) + "</a>";
+      });
+  }
+
   function render(data){
     $("answer-body").innerHTML = (data.answer || "")
       .split(/\n{2,}/).map(function(p){ return "<p>" + esc(p) + "</p>"; }).join("");
     $("answer-head").textContent = data.question ? '"' + data.question + '"' : "answer";
 
     var hits = data.hits || [];
+    citeTimestamps(hits);
     $("moments").innerHTML = hits.slice(0, 4).map(function(h){
       var at = h.start_seconds || 0;
       var total = h.episode_seconds || 0;
