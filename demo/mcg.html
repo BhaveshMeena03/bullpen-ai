@@ -241,13 +241,22 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
      forty-minute interview, with every heading a link into the video. */
   .rec{cursor:default}
   details.rec{display:block;padding:0;border-bottom:1px solid var(--rule)}
-  details.rec > summary{display:grid;grid-template-columns:88px 1fr auto;
-    gap:14px;padding:9px 0;align-items:baseline;cursor:pointer;
+  /* The caret is the whole point: without it a row looks like a link and
+     people click expecting to leave, or do not click at all. It turns
+     when the row opens, so the state is legible without reading. */
+  details.rec > summary{display:grid;grid-template-columns:14px 88px 1fr auto;
+    gap:12px;padding:9px 0;align-items:baseline;cursor:pointer;
     list-style:none}
+  details.rec > summary .tw{color:var(--blue);font-size:10px;
+    transition:transform .15s;display:inline-block;line-height:1.6}
+  details.rec[open] > summary .tw{transform:rotate(90deg)}
+  /* A row with no summary has nothing to open, so its caret slot is
+     empty rather than showing a caret that does nothing. */
+  .rec.plain{display:grid;grid-template-columns:14px 88px 1fr auto;gap:12px}
   details.rec > summary::-webkit-details-marker{display:none}
   details.rec > summary:hover .title{color:var(--blue)}
   details.rec[open] > summary .title{color:var(--blue)}
-  .sum{padding:4px 0 18px 102px;max-width:78ch}
+  .sum{padding:2px 0 18px 26px;max-width:80ch}
   .sum .tldr{margin:0 0 12px;color:var(--ink);font-size:14.5px}
   .sum .topic{display:flex;gap:12px;align-items:baseline;margin:0 0 7px}
   .sum .topic button{background:transparent;border:0;padding:0;
@@ -255,8 +264,16 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
     cursor:pointer;font-variant-numeric:tabular-nums;white-space:nowrap}
   .sum .topic button:hover{text-decoration:underline}
   .sum .topic span{color:var(--dim);font-size:14px}
-  .sum .player{margin:12px 0 0}
-  @media (max-width:720px){ .sum{padding-left:0} }
+  /* Full width of the summary, not indented behind it. Sitting at the
+     text's left margin made the video look dropped in by accident. */
+  .sum .player{margin:14px 0 0;max-width:none}
+  .sum .player iframe{width:100%;aspect-ratio:16/9;
+    border:1px solid var(--rule-dark);display:block;background:#000}
+  @media (max-width:720px){
+    .sum{padding-left:0}
+    details.rec > summary,.rec.plain{grid-template-columns:14px 1fr auto}
+    details.rec > summary .date,.rec.plain .date{display:none}
+  }
 
 </style>
 
@@ -383,12 +400,16 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
       // page is the thing this archive exists to avoid.
       $("shelf").innerHTML = rows.slice(0, SHOWN).map(function(e){
         var mins = Math.round((e.seconds || 0) / 60);
-        var head = '<span class="date">' + esc((e.published_at||"").slice(0,10)) + "</span>"
+        var head = '<span class="tw">\u25B6</span>'
+          + '<span class="date">' + esc((e.published_at||"").slice(0,10)) + "</span>"
           + '<span class="title">' + esc(e.title || "") + "</span>"
           + '<span class="len">' + (mins ? mins + " min" : "") + "</span>";
         var s = SUMMARIES[e.episode_id];
         if (!s) {
-          return '<div class="rec">' + head + "</div>";
+          // Nothing to open: keep the columns aligned but show no caret.
+          return '<div class="rec plain">'
+            + head.replace('<span class="tw">\u25B6</span>', '<span></span>')
+            + "</div>";
         }
         var topics = (s.topics || []).map(function(t){
           return '<div class="topic"><button data-url="' + esc(e.url || "")
