@@ -189,6 +189,18 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
     form{flex-wrap:wrap}
     #go{width:100%;padding:14px 0}
   }
+  /* Play it here rather than sending people to YouTube.
+     A citation you have to leave the page to check is a citation most
+     people do not check. The embed starts at the cited second, so the
+     claim is verified in the place the claim was made. */
+  .play{background:transparent;border:1px solid var(--rule-dark);
+    color:var(--blue);font-family:"IBM Plex Mono",monospace;font-size:11.5px;
+    padding:5px 10px;cursor:pointer;margin-left:10px}
+  .play:hover{border-color:var(--blue)}
+  .player{margin:12px 0 0}
+  .player iframe{width:100%;aspect-ratio:16/9;border:1px solid var(--rule-dark);
+    display:block;background:#000}
+
 </style>
 
 <div class="wrap">
@@ -369,7 +381,7 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
         + '<div class="line"><a class="at" href="' + esc(h.deep_link || h.url || "#")
         + '" target="_blank" rel="noopener">' + clock(at) + "</a></div>"
         + (h.text ? '<p class="said">' + esc(h.text.slice(0, 300)) + "</p>" : "")
-        + bar + "</div>";
+        + bar + '<div class="player"></div></div>';
     }).join("");
 
     $("answer").classList.add("on");
@@ -400,6 +412,43 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
         $("go").disabled = false;
       });
   }
+
+  // A citation you have to leave the page to check is a citation most
+  // people do not check. Every recording here is on YouTube, so the
+  // moment can play in place, starting at the second the answer names.
+  //
+  // youtube-nocookie, rel=0, modestbranding: this is a citation, not a
+  // channel page.
+  function embedFor(url){
+    var u = String(url || "");
+    var id = (/[?&]v=([A-Za-z0-9_-]{6,})/.exec(u)
+           || /youtu\.be\/([A-Za-z0-9_-]{6,})/.exec(u) || [])[1];
+    if (!id) return null;
+    var at = (/[?&]t=(\d+)/.exec(u) || [])[1] || "0";
+    return "https://www.youtube-nocookie.com/embed/" + id
+         + "?start=" + at + "&rel=0&modestbranding=1&autoplay=1";
+  }
+
+  // Delegated, because the cards are built after this runs. One player at
+  // a time: two videos talking over each other is nobody's idea of a
+  // citation.
+  document.addEventListener("click", function(ev){
+    var b = ev.target.closest ? ev.target.closest("button.play") : null;
+    if (!b) return;
+    var src = embedFor(b.getAttribute("data-url"));
+    if (!src) return;
+    document.querySelectorAll(".player").forEach(function(o){ o.innerHTML = ""; });
+    document.querySelectorAll("button.play").forEach(function(o){
+      o.textContent = "\u25B6 play here"; });
+    var slot = b.closest(".moment").querySelector(".player");
+    if (!slot) return;
+    var f = document.createElement("iframe");
+    f.src = src; f.loading = "lazy"; f.title = "this moment in the episode";
+    f.setAttribute("allow", "autoplay; encrypted-media; picture-in-picture");
+    f.setAttribute("allowfullscreen", "");
+    slot.appendChild(f);
+    b.textContent = "\u25A0 playing";
+  });
 
   $("f").addEventListener("submit", function(e){
     e.preventDefault();
