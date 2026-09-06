@@ -3646,8 +3646,11 @@ def test_the_bot_resolves_before_it_searches():
     import pathlib
     source = (pathlib.Path(__file__).resolve().parent.parent
               / "app" / "x_bot.py").read_text()
+    # The call is routed now -- corpus_for picks the archive and the
+    # search runs on `index`, not on self._index directly -- so this looks
+    # for the line that actually retrieves.
     assert source.index("resolve_back_reference(") < source.index(
-        "result = await self._index.search(")
+        "result = await index.search(")
 
 
 # Every one of these was posted. Somebody cheered, somebody explained the
@@ -3692,3 +3695,49 @@ def test_a_real_question_is_untouched(said):
     from app.x_bot import looks_like_a_question
 
     assert looks_like_a_question(said)
+
+
+class TestWhichArchiveAnswers:
+    """The broadcast wins every tie, and that is the entire point.
+
+    This account's standing is that it answers from Market Bubble. One
+    reply about the show sourced from a Tesla interview would end that,
+    and no amount of Musk coverage is worth it -- so a mention reaches the
+    Musk archive only when it names him and names nothing from the show.
+    """
+
+    def _route(self, q):
+        from app.x_bot import corpus_for
+        return corpus_for(q)
+
+    def test_a_plain_musk_question_goes_to_the_musk_archive(self):
+        assert self._route("what did elon say about mars") == "elon"
+        assert self._route("does musk think ai is dangerous") == "elon"
+        # No person named, but Neuralink is his and the broadcast has no
+        # depth on it. A subject that belongs to one archive is enough;
+        # requiring the name would make the feature useless, since anyone
+        # replying under a Musk post writes "he".
+        assert self._route("what did he say about neuralink") == "elon"
+
+    def test_anything_naming_the_show_stays_on_the_show(self):
+        assert self._route("what did ansem say about bitcoin") == "podcast"
+        assert self._route("what did banks say last night") == "podcast"
+        assert self._route("what happened in ep 18") == "podcast"
+
+    def test_a_question_naming_both_stays_on_the_show(self):
+        # The asker wants Ansem's opinion of Musk. Ansem is not in the Musk
+        # archive at all, so answering there would be answering a different
+        # question with somebody else's words.
+        assert self._route("what did ansem say about elon") == "podcast"
+        assert self._route("does banks think spacex is a good bet") == "podcast"
+
+    def test_tesla_and_twitter_do_not_route_away_from_the_show(self):
+        # Both come up constantly on the broadcast. Routing on them would
+        # send "what do they think of tesla" to an archive the hosts are
+        # not in -- which is the failure this whole split exists to avoid.
+        assert self._route("what do they think about tesla") == "podcast"
+        assert self._route("thoughts on twitter") == "podcast"
+
+    def test_an_unrelated_question_defaults_to_the_show(self):
+        assert self._route("what about solana") == "podcast"
+        assert self._route("") == "podcast"

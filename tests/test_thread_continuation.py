@@ -137,7 +137,8 @@ class TestChatterInAnAnsweredThread:
         no embedding, no Pinecone query, no rerank, no model call."""
         source = (ROOT / "app" / "x_bot.py").read_text()
         gate = source.index("no question in a thread already answered")
-        search = source.index("await self._index.search(")
+        # Routed through `index` since the Musk archive was added.
+        search = source.index("result = await index.search(")
         assert gate < search
 
 

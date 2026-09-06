@@ -2506,6 +2506,48 @@ def deserves_a_highlight(text: str) -> bool:
     return bool(_READS_AS_PRAISE.search(q))
 
 
+# ─── which archive a mention is asking about ──────────────────────────────
+
+# Things that only exist on the broadcast. A mention naming any of these is
+# about the show, whatever else it also says.
+_OF_THE_SHOW = re.compile(
+    r"(?i)\b(ansem|blknoiz|faze\s*banks|banks|market\s*bubble|mbubble"
+    r"|the\s+show|the\s+broadcast|the\s+stream|last\s+(?:night|week)'?s"
+    r"|ep(?:isode)?\s*\d|mizkif|will\s+clemente|tyler\s+bernabe"
+    r"|al\s+dunlap|easy\s+eats|orangie|poorgoat|luca\s+netz|tjr"
+    r"|jesse\s+pollak|erik\s+voorhees|mike\s+majlak|greg\s+osuri"
+    r"|brian\s+armstrong|kendrick\s+perkins|mert|mayne|polymarket)\b")
+
+# Things that are only in the Musk archive. Deliberately narrow: "tesla"
+# and "twitter" are absent because the hosts discuss both constantly, and
+# a question about what Ansem thinks of Tesla must not be answered from an
+# interview Ansem was never in.
+_OF_THE_MUSK_ARCHIVE = re.compile(
+    r"(?i)\b(elon(\s+musk)?|musk|neuralink|spacex|starship"
+    r"|lex\s+fridman|joe\s+rogan)\b")
+
+
+def corpus_for(question: str) -> str:
+    """"podcast" or "elon" — which archive should answer this.
+
+    The broadcast wins every tie, and that is the whole design. This
+    account's standing is that it answers from Market Bubble; one reply
+    about the show sourced from a Tesla interview would end that, and no
+    amount of Musk coverage is worth it. So the Musk archive is used only
+    when a mention names him and names nothing from the show.
+
+    "what did ansem say about elon" therefore stays on the broadcast,
+    which is right: the asker wants Ansem's opinion, and Ansem is not in
+    the Musk archive at all.
+    """
+    text = question or ""
+    if _OF_THE_SHOW.search(text):
+        return "podcast"
+    if _OF_THE_MUSK_ARCHIVE.search(text):
+        return "elon"
+    return "podcast"
+
+
 class MentionBot:
     """One poll cycle, with the caps that keep a bug from becoming a bill."""
 
@@ -2523,9 +2565,15 @@ class MentionBot:
                  priority_authors: set | None = None,
                  site: str | None = None,
                  token_label: str | None = None,
+                 elon_index=None,
                  state_path: Path = STATE_PATH) -> None:
         self._client = client
         self._index = index
+        # The Musk archive, when one is wired. Optional on purpose: every
+        # existing caller and every test builds this bot with one index,
+        # and a missing second archive must mean "answer from the show"
+        # rather than an exception in the reply loop.
+        self._elon_index = elon_index
         self.cap = daily_reply_cap
         self.include_links = include_links
         self._min_question = min_question_chars
@@ -3126,7 +3174,16 @@ class MentionBot:
                         mention.id, asked)
 
         priority = mention.author_id in self._priority
-        result = await self._index.search(
+
+        # Which archive answers. The broadcast wins every tie; see
+        # corpus_for. Falls back to the broadcast whenever the Musk index
+        # is not wired, so this can be deployed before that index exists.
+        corpus = corpus_for(asked) if self._elon_index else "podcast"
+        index = self._elon_index if corpus == "elon" else self._index
+        if corpus != "podcast":
+            logger.info("%s: answering from the %s archive", mention.id, corpus)
+
+        result = await index.search(
             asked, instruction=reply_style(self._post_limit))
 
         # Ask once more before giving up. The same question has produced a
@@ -3139,7 +3196,7 @@ class MentionBot:
                 and len(result.hits) >= 3):
             logger.info("%s missed on the first pass — asking again",
                         mention.id)
-            retry = await self._index.search(
+            retry = await index.search(
                 asked, instruction=reply_style(self._post_limit))
             if not is_a_miss(retry.answer):
                 result = retry
@@ -3183,7 +3240,14 @@ class MentionBot:
                         mention.id, denial[:70])
             result = result.model_copy(update={"answer": plain})
 
-        fixed, demoted = attribution.correct(result.answer, result.hits)
+        # Only on the broadcast. This demotes a named host to "one of the
+        # hosts" when the transcript does not place him there -- correct on
+        # Market Bubble, wrong everywhere else: on a Musk answer it would
+        # take "Elon said" off a line Elon actually said, because the check
+        # knows about two hosts and nothing about him.
+        fixed, demoted = ((result.answer, [])
+                          if corpus != "podcast"
+                          else attribution.correct(result.answer, result.hits))
         if demoted:
             logger.warning("%s: attribution corrected — %s",
                            mention.id, "; ".join(demoted))

@@ -219,6 +219,16 @@ async def _run_x_bot(app: FastAPI, settings) -> None:
             bot_user_id=settings.x_bot_user_id,
         ),
         app.state.podcast,
+        # The Musk archive the page already uses, handed to the bot as
+        # well rather than built a second time. It is None when nothing is
+        # loaded, and the bot treats that as "answer from the show", so a
+        # deploy with an empty second corpus behaves exactly as before.
+        #
+        # The bot routes per mention (see corpus_for) and the broadcast
+        # wins every tie, so this can only add answers to questions the
+        # show cannot answer. It never changes what a Market Bubble
+        # question returns.
+        elon_index=getattr(app.state, "elon", None),
         daily_reply_cap=settings.x_bot_daily_reply_cap,
         per_thread_cap=settings.x_bot_per_thread_cap,
         include_links=settings.x_bot_include_links,
