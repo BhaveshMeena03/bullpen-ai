@@ -336,9 +336,21 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
       });
   }
 
+  // The model writes markdown whether or not it is asked to, and this
+  // page escapes everything before printing it -- so an answer listing
+  // projects came out as "**Projects that have launched:**", asterisks
+  // and all, which reads as broken rather than as emphasis. Escape first,
+  // then promote the two things it actually uses.
+  function rich(text){
+    return esc(text)
+      .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/(^|\n)\s*[-•]\s+/g, "$1— ")
+      .replace(/\n/g, "<br>");
+  }
+
   function render(data){
     $("answer-body").innerHTML = (data.answer || "")
-      .split(/\n{2,}/).map(function(p){ return "<p>" + esc(p) + "</p>"; }).join("");
+      .split(/\n{2,}/).map(function(p){ return "<p>" + rich(p) + "</p>"; }).join("");
     $("answer-head").textContent = data.question ? '"' + data.question + '"' : "answer";
 
     var hits = data.hits || [];

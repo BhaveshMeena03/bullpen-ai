@@ -459,9 +459,18 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
       });
   }
 
+  // Same as the MCG page: the model writes markdown regardless, and
+  // escaping it verbatim prints the asterisks.
+  function rich(text){
+    return esc(text)
+      .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/(^|\n)\s*[-•]\s+/g, "$1— ")
+      .replace(/\n/g, "<br>");
+  }
+
   function render(data){
     $("answer-body").innerHTML = (data.answer || "")
-      .split(/\n{2,}/).map(function(p){ return "<p>" + esc(p) + "</p>"; }).join("");
+      .split(/\n{2,}/).map(function(p){ return "<p>" + rich(p) + "</p>"; }).join("");
     $("answer-head").textContent = data.question ? '"' + data.question + '"' : "answer";
 
     var hits = data.hits || [];
