@@ -202,3 +202,52 @@ class TestVoicesReachTheModel:
         from app.podcast import SYSTEM_PROMPT
         assert "passage-level" in SYSTEM_PROMPT
         assert "Guests are never listed" in SYSTEM_PROMPT
+
+
+class TestTradingQuestionsDeclineInCode:
+    """The decline is prepended in code, not asked for in the prompt.
+
+    Measured on the MCG service before this was ported: told in the prompt
+    not to relay a buy or sell call, the model complied about five times
+    in six on identical repeated runs. Fine for style, not fine for this.
+    Asked whether the hosts were saying to buy the dip, it answered "the
+    hosts are advocating a buy the dip strategy" and named a coin --
+    cited, true, and indistinguishable from a recommendation to anybody
+    screenshotting it.
+
+    The answer still follows the decline. Refusing outright would make the
+    tool useless on a show about markets; only the framing is taken out of
+    the model's hands.
+    """
+
+    def test_the_ordinary_way_people_ask(self):
+        # The shape the ported pattern could not see. Its first branch
+        # wants buy/sell followed by dip|now|this|it within forty
+        # characters, and "the clawpump token" is none of those.
+        from app.podcast import is_market_call
+        assert is_market_call("should i buy the clawpump token")
+        assert is_market_call("should i sell my zcash")
+        assert is_market_call("should we ape in")
+
+    def test_the_shapes_it_already_caught(self):
+        from app.podcast import is_market_call
+        assert is_market_call("are they bullish on solana")
+        assert is_market_call("is clawpump going to 100x")
+        assert is_market_call("is this a good investment")
+
+    def test_a_question_about_what_was_said_is_not_a_market_call(self):
+        # Guarding these would put a financial disclaimer on top of every
+        # ordinary answer, which trains people to scroll past it.
+        from app.podcast import is_market_call
+        assert not is_market_call("what is clawpump")
+        assert not is_market_call("what did ansem say about zcash")
+        assert not is_market_call("who founded ratspeak")
+
+    def test_an_answer_that_already_declines_is_left_alone(self):
+        from app.podcast import already_declines
+        assert already_declines("I can't tell you what to buy. Here is what was said.")
+        assert already_declines("I couldn't find that in the episodes I've indexed.")
+        # Only the opening counts: a caveat at the end arrives after the
+        # reader has already read the recommendation.
+        assert not already_declines(
+            "They were buying heavily. This is not investment advice.")

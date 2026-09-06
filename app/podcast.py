@@ -430,6 +430,60 @@ def _body(hit: PodcastHit, with_source: bool) -> str:
 
 
 
+# Questions whose honest answer would be a trading instruction.
+#
+# Ported from the MCG service, where it was measured rather than assumed:
+# told in the prompt not to relay a buy or sell call, the model complied
+# about five times in six on identical repeated runs. Fine for style,
+# not fine for this. Asked whether the hosts were saying to buy the dip,
+# it answered "the hosts are advocating a buy the dip strategy" and named
+# a coin -- cited, true, and indistinguishable from a recommendation to
+# anybody screenshotting it.
+#
+# So the decline is prepended in code, where a model cannot talk itself
+# out of it. The answer still follows: what was said is worth knowing,
+# and refusing outright would make the tool useless on a show about
+# markets. Only the framing is taken out of the model's hands.
+_MARKET_CALL = re.compile(
+    r"\b(buy|buying|sell|selling|short|long|ape|aping)\b.{0,40}\b"
+    r"(dip|now|this|it|in|into)\b"
+    r"|\bbullish\b|\bbearish\b|\bprice target\b|\bbetting on\b"
+    r"|\bwhat (should|would) (i|you) (buy|sell|invest|allocate)"
+    # "should i buy the clawpump token" matched none of the above: the
+    # first branch wants buy/sell followed by dip|now|this|it within
+    # forty characters, and "the clawpump token" is none of them. It is
+    # the most ordinary way anybody asks, and it was the one shape this
+    # pattern could not see.
+    r"|\b(should|shall) (i|we|you) (buy|sell|short|long|ape|get|hold|"
+    r"invest|allocate|dca)\b"
+    r"|\b(is|are) (it|this|that|they|\w+) (a )?(good|bad) (buy|investment)\b"
+    r"|\bworth (buying|selling|investing|a buy)\b"
+    r"|\b(moon|pump|100x|10x|50x)\b",
+    re.IGNORECASE)
+
+MARKET_CALL_PREFIX = (
+    "I can't tell you what to buy or sell, and anything said on the show "
+    "is their view at that moment, not a recommendation from this tool. "
+    "What was actually said:")
+
+
+def is_market_call(question: str) -> bool:
+    return bool(_MARKET_CALL.search(question or ""))
+
+
+def already_declines(answer: str) -> bool:
+    """Has the answer opened by declining on its own?
+
+    Only the opening counts. An answer that names a coin and adds the
+    caveat at the end has already been read by then.
+    """
+    opening = " ".join(
+        re.split(r"(?<=[.!?])\s", (answer or "").strip())[:1]).lower()
+    return any(p in opening for p in (
+        "i can't", "i cannot", "i won't", "i will not",
+        "couldn't find", "could not find", "not investment advice"))
+
+
 def _timestamp(seconds: float) -> str:
     seconds = int(seconds)
     h, rem = divmod(seconds, 3600)
@@ -1202,6 +1256,15 @@ class PodcastIndex:
         if removed:
             logger.info("dropped a denial the answer contradicts: %r",
                         removed[:80])
+        # A trading question gets its decline from here, not from the
+        # prompt. Measured on the MCG service: told not to relay a buy or
+        # sell call, the model complied five times in six. The answer
+        # still follows -- what was said is worth knowing on a show about
+        # markets -- but the framing is not left to a model that gets it
+        # right most of the time.
+        if is_market_call(query) and not already_declines(answer):
+            logger.info("market-call question — prefixing the decline")
+            answer = f"{MARKET_CALL_PREFIX}\n\n{answer}"
         return PodcastSearchResponse(answer=answer, hits=hits, model=response.model)
 
     # How much of the opening to hold before deciding. Every denial this has
