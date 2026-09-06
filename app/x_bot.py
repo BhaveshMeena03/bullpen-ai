@@ -831,6 +831,8 @@ _ABOUT_PHRASINGS = (
     "that way.\n\n"
     "You get the answer and the exact second it was said. The live "
     "broadcasts are in there alongside the uploads.\n\n"
+    "There is a second archive too: every long-form Elon Musk interview, "
+    "2018 to 2025. Name him and I'll answer from those instead.\n\n"
     "I only answer from what was actually said. If it isn't in the "
     "archive I'll tell you so rather than guess.",
 
@@ -841,6 +843,8 @@ _ABOUT_PHRASINGS = (
     "Ask me anything from any episode and you get the answer plus the "
     "timestamp it was said at. The live broadcasts are indexed too, not "
     "just the uploads.\n\n"
+    "I also hold every long-form Elon Musk interview, 2018 to 2025 — ask "
+    "about him and you get those.\n\n"
     "Everything is grounded in the transcripts. No guessing.",
 
     "I've transcribed and indexed every Market Bubble episode, then made it "
@@ -849,6 +853,8 @@ _ABOUT_PHRASINGS = (
     "knowing which episode, and get back what he said and the second he "
     "said it.\n\n"
     "The live broadcasts are indexed as well as the uploads.\n\n"
+    "Elon Musk's long-form interviews are a separate archive I hold too, "
+    "2018 to 2025. The two never mix.\n\n"
     "I answer only from the transcripts, and say so when something isn't "
     "in there.",
 )
@@ -867,7 +873,8 @@ _ABOUT_PHRASINGS = (
 _INTRO_PHRASINGS = (
     "I'm a search engine over the Market Bubble archive: tag me with a "
     "question about anything said on the show and I answer from the "
-    "transcripts, with the timestamp it was said at.\n\n"
+    "transcripts, with the timestamp it was said at. I hold a second "
+    "archive of Elon Musk's long-form interviews as well.\n\n"
     "I only answer from what is actually in the episodes. If it is not "
     "in there, I say so.",
 
@@ -970,10 +977,17 @@ def asks_about_us(text: str) -> bool:
 # Said plainly, and it declines in the same breath. The honest answer to
 # "will you do a buyback" is that this account is not the one who would
 # know, and saying so is worth more than a citation about somebody else's.
+#
+# It names both archives now. It used to say "i only answer questions
+# about what was said on the Market Bubble broadcast", which stopped being
+# true the day the Musk interviews went in -- and a refusal that
+# misdescribes what the thing can do is a refusal that turns people away
+# from the half it can.
 _NOT_OUR_LANE = (
-    "i only answer questions about what was said on the Market Bubble "
-    "broadcast — i can't speak for any token, its price or its plans. "
-    "ask me something from the show and i'll find the timestamp \U0001FAE1")
+    "i answer questions about what was said on the market bubble "
+    "broadcast, and in elon musk's long-form interviews — i can't speak "
+    "for any token, its price or its plans. ask me something from either "
+    "and i'll find the timestamp \U0001FAE1")
 
 # Somebody else's address is not ours to hand out, and answering "send me
 # ansem's address" with THIS project's contract address is the shape of a
