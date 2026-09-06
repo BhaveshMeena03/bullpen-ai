@@ -342,9 +342,17 @@ async def lifespan(app: FastAPI):
     # because an empty index that answers confidently is worse than a page
     # saying it is not loaded.
     try:
+        # get_settings() rather than _s, which is not bound until later in
+        # this function. Using it here raised a NameError that the except
+        # below swallowed into "the MCG archive did not start", so the
+        # routes deployed and answered 503 while the archive endpoint --
+        # which reads a file and never touches settings -- worked fine.
+        # A broad except around startup hides a typo as convincingly as it
+        # hides an outage.
+        _settings = get_settings()
         app.state.mcg = (PodcastIndex(ledger=app.state.usage,
-                                      namespace=_s.mcg_namespace,
-                                      index_name=_s.mcg_pinecone_index)
+                                      namespace=_settings.mcg_namespace,
+                                      index_name=_settings.mcg_pinecone_index)
                          if _mcg_episodes() else None)
     except Exception as exc:                                    # noqa: BLE001
         logger.warning("the MCG archive did not start: %s", exc)
