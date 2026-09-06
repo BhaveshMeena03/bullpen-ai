@@ -59,6 +59,9 @@ COPY data/highlights.json ./data/highlights.json
 # ingest with scripts/pack_episodes.py, or newly added episodes cannot be
 # clipped (they 404 — nothing else is affected).
 COPY data/episodes.json.gz ./data/episodes.json.gz
+# The Musk archive, same treatment. Without this line the /v1/elon
+# routes deploy complete and answer from nothing.
+COPY data/elon_episodes.json.gz ./data/elon_episodes.json.gz
 # The exact-token index. Without it every lookup returns nothing and
 # search silently loses the names and numbers it was built for.
 COPY data/term_index.json ./data/term_index.json

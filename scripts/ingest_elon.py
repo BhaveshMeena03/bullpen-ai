@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -43,7 +44,16 @@ from app.provenance import admissible, drop_hallucinated   # noqa: E402
 
 OUT = ROOT / "data" / "elon_episodes.json"
 AUDIO_DIR = Path("/tmp/elon_audio")
-YTDLP = str(ROOT / ".venv" / "bin" / "yt-dlp")
+# The project's own yt-dlp when there is one, otherwise whatever is on
+# PATH. Hardcoding the venv path meant this script could only run from a
+# checkout that had one: in a worktree it failed with "No such file or
+# directory: .venv/bin/yt-dlp", which reads like a download failure and
+# is not one. Episode #49 looked like a YouTube problem for a day because
+# of it.
+YTDLP = next((str(p) for p in (ROOT / ".venv" / "bin" / "yt-dlp",
+                               Path.home() / "bullpen-concierge" / ".venv"
+                               / "bin" / "yt-dlp")
+              if p.is_file()), shutil.which("yt-dlp") or "yt-dlp")
 COOKIES = Path.home() / "Downloads" / "cookies.txt"
 
 # Verified by hand against the collector's output: every one is on the

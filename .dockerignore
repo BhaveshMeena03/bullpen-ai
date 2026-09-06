@@ -17,5 +17,6 @@ data/
 # The clipper's source of the media URL and the per-second segments.
 # Gzipped because the raw file is 7.6MB and every ingest rewrites it.
 !data/episodes.json.gz
+!data/elon_episodes.json.gz
 redteam_report.md
 PITCH_PREP.md

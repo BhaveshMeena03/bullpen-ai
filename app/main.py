@@ -1284,7 +1284,19 @@ def _elon_episodes() -> list[dict]:
     if _ELON_CACHE is not None:
         return _ELON_CACHE
     try:
-        _ELON_CACHE = json.loads(_ELON_FILE.read_text())
+        # The plain file locally, the gzipped one in the image, exactly as
+        # episodes.json does it. .dockerignore excludes data/ and lets a
+        # named few back in, so a transcript that is merely committed does
+        # not reach the server: /v1/elon/episodes served [] from a build
+        # that had every route and none of the words.
+        packed = _ELON_FILE.with_suffix(".json.gz")
+        if _ELON_FILE.exists():
+            _ELON_CACHE = json.loads(_ELON_FILE.read_text())
+        elif packed.exists():
+            with gzip.open(packed, "rt", encoding="utf-8") as fh:
+                _ELON_CACHE = json.load(fh)
+        else:
+            raise FileNotFoundError(f"neither {_ELON_FILE} nor {packed}")
         logger.info("loaded %d Musk recordings", len(_ELON_CACHE))
     except Exception as exc:                                    # noqa: BLE001
         # The page degrades to empty panels rather than a 500. Nothing else
