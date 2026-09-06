@@ -129,26 +129,20 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
       radial-gradient(1.4px 1.4px at 52% 40%, #fff, transparent),
       radial-gradient(1px 1px at 71% 20%, #bfa9a2, transparent);
     opacity:.55}
+  /* The real planet. NASA's Mars globe (public domain), cut round and
+     shaded so the sun sits off the left limb -- the terminator is baked
+     into the file rather than faked with a gradient over the top, because
+     a gradient over a photograph looks like a gradient over a photograph.
+     960px, 21KB of WebP. */
   .orb .body{position:absolute;inset:0;border-radius:50%;
-    /* Layered front to back: mottling, then the terminator, then the
-       unlit body. The light comes from upper-left, so the lit crescent
-       is on that edge and the sphere falls away to true black. */
-    background-image:
-      /* surface, only visible where the light already falls */
-      radial-gradient(22% 16% at 14% 40%, rgba(232,150,86,.22), transparent 72%),
-      radial-gradient(16% 13% at 9% 62%, rgba(150,72,38,.26), transparent 74%),
-      radial-gradient(14% 12% at 20% 26%, rgba(120,58,34,.24), transparent 74%),
-      /* The sun sits just OFF the disc, so what it lights is the limb and
-         nothing else. Centre the light inside the circle and you get a
-         glowing ball; put it outside and you get a crescent, which is the
-         thing that reads as a planet. */
-      radial-gradient(circle at -6% 44%,
-        #e08a48 0%, #c0602e 9%, #8e3f1e 17%,
-        #4d2111 26%, #23100a 36%, #0a0506 46%, #000 58%);
+    background-image:url("/demo/mars.webp");
+    background-size:cover;background-position:center;
+    /* Only the atmosphere is drawn: a rim of scattered light on the lit
+       limb, and a breath of it outside the disc. The shading itself is in
+       the file. */
     box-shadow:
-      /* atmosphere, on the lit limb only */
-      inset 16px 0 44px -34px rgba(255,196,150,.85),
-      -16px 0 90px -56px rgba(217,122,58,.45)}
+      inset 14px 0 40px -32px rgba(255,201,158,.55),
+      -14px 0 90px -58px rgba(217,122,58,.40)}
   @media (max-width:900px){
     .orb{right:-34%;top:10px;width:min(560px,96vw);opacity:.62}
   }
