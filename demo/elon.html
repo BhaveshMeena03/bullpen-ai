@@ -268,10 +268,10 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
        hand-typed line does. The markup carries the correct-at-deploy
        numbers so the panel reads properly before any script runs. -->
   <dl class="readout" id="readout">
-    <div class="cell"><dt>Recordings</dt><dd id="r-eps">5</dd></div>
-    <div class="cell"><dt>Runtime</dt><dd id="r-hours">14.6<em>hrs</em></dd></div>
+    <div class="cell"><dt>Recordings</dt><dd id="r-eps">11</dd></div>
+    <div class="cell"><dt>Runtime</dt><dd id="r-hours">31.8<em>hrs</em></dd></div>
     <div class="cell"><dt>Spoken lines</dt><dd id="r-lines">—</dd></div>
-    <div class="cell"><dt>Span</dt><dd id="r-span">2019<em>–2024</em></dd></div>
+    <div class="cell"><dt>Span</dt><dd id="r-span">2018<em>–2025</em></dd></div>
   </dl>
 
   <!-- Mars, off to the right, half in shadow — the shape SpaceX opens on.
@@ -292,7 +292,7 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
   </div>
 
   <h1>Every answer he has given, <i>to the second.</i></h1>
-  <p class="sub">Five long-form conversations, transcribed and indexed by meaning
+  <p class="sub"><span id="count-word">Eleven</span> long-form conversations, transcribed and indexed by meaning
   rather than keywords. Ask what he said about something and get the moment
   he said it — the recording, the timestamp, and the words.</p>
 
@@ -354,6 +354,17 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
     .then(function(r){ return r.ok ? r.json() : null; })
     .then(function(a){
       if (!a) return;
+      // The sentence under the headline counts them too, and a page that
+      // says "five" above a readout saying 11 is a page nobody trusts with
+      // a timestamp. Written out, because prose does not use numerals for
+      // small numbers, and falling back to the digits past twenty.
+      var WORDS = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven",
+                   "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen",
+                   "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen",
+                   "Nineteen", "Twenty"];
+      if (a.episodes && $("count-word")) {
+        $("count-word").textContent = WORDS[a.episodes] || String(a.episodes);
+      }
       if (a.episodes) $("r-eps").textContent = a.episodes;
       if (a.hours) $("r-hours").innerHTML = a.hours + "<em>hrs</em>";
       if (a.lines) $("r-lines").textContent = a.lines.toLocaleString();
