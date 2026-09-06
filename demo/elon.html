@@ -17,7 +17,7 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
   panel that reports rather than persuades.
 
   It wears X's palette, at X's own values — true black, #16181c cards,
-  #2f3336 hairlines, #1d9bf0. Almost everyone who opens this arrives from
+  #2f3336 hairlines, and Tesla's Deep Crimson Multicoat for the accent. Almost everyone who opens this arrives from
   a post, and the archive is of the person who owns that platform, so
   borrowing the palette makes the page feel like somewhere they already
   are instead of somewhere they were sent. The typography stays: X's
@@ -37,11 +37,12 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
 
 <style>
   :root{
-    /* X's own dark palette, taken at its values rather than approximated.
-       The archive is one man's statements, it is read almost entirely by
-       people arriving from X, and it is about the person who owns the
-       place -- so the page wearing that palette reads as native rather
-       than as a tribute. */
+    /* Black, and Tesla's Deep Crimson Multicoat.
+       The paint itself is #6e1f2a, which is beautiful on a car and
+       unreadable as text: 3.6:1 against black, under the 4.5:1 body-text
+       line. So the paint is the deep tone -- rules, the atmosphere on the
+       horizon, the dim edge -- and anything a reader has to read sits on
+       a lifted crimson at 4.5:1. Same colour, two jobs. */
     --void:#000000;       /* X "lights out", true black */
     --panel:#16181c;      /* card */
     --line:#2f3336;       /* hairline between rows */
@@ -49,9 +50,9 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
     --ink:#e7e9ea;        /* primary text */
     --dim:#71767b;        /* secondary text */
     --faint:#565a5e;      /* labels */
-    --accent:#1d9bf0;     /* the blue. the one bright thing on the page */
-    --accent-dim:#1a5a80;
-    --ice:#00ba7c;        /* X's green, for the position tick */
+    --accent:#d93a4f;     /* crimson, lifted to 4.5:1 so it can be read */
+    --accent-dim:#6e1f2a; /* Deep Crimson Multicoat, at its own value */
+    --ice:#e8927c;        /* the position tick, warm to match */
   }
   *{box-sizing:border-box}
   html{-webkit-text-size-adjust:100%}
@@ -64,8 +65,8 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
      that keeps large flat areas from banding on cheap screens. */
   body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
     background:
-      radial-gradient(680px 380px at 50% -6%, rgba(29,155,240,.075), transparent 70%),
-      radial-gradient(900px 600px at 80% 10%, rgba(0,186,124,.025), transparent 70%)}
+      radial-gradient(680px 380px at 50% -6%, rgba(217,58,79,.085), transparent 70%),
+      radial-gradient(900px 600px at 80% 10%, rgba(110,31,42,.10), transparent 70%)}
   body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
     opacity:.5;mix-blend-mode:overlay;
     background-image:url("data:image/svg+xml;utf8,\
@@ -125,11 +126,11 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
   .limb i{position:absolute;left:50%;top:112px;transform:translateX(-50%);
     width:180%;padding-top:180%;border-radius:50%;
     background:radial-gradient(circle at 50% 0%,
-      rgba(29,155,240,.30) 0 1px,
-      rgba(29,155,240,.13) 2px 6px,
-      rgba(10,30,48,.85) 7px 22px,
+      rgba(217,58,79,.34) 0 1px,
+      rgba(160,40,56,.15) 2px 6px,
+      rgba(44,12,18,.88) 7px 22px,
       #000 23px);
-    box-shadow:0 -1px 46px -6px rgba(29,155,240,.42)}
+    box-shadow:0 -1px 46px -6px rgba(217,58,79,.40)}
   @media (max-width:640px){ .limb{height:140px;margin:26px 0 -36px} }
   @media (prefers-reduced-motion:no-preference){
     .limb{animation:limb-in 1.1s ease both}
