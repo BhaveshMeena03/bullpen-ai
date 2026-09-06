@@ -3741,3 +3741,34 @@ class TestWhichArchiveAnswers:
     def test_an_unrelated_question_defaults_to_the_show(self):
         assert self._route("what about solana") == "podcast"
         assert self._route("") == "podcast"
+
+    # Everything below is text as actually posted, handles included. The
+    # first version of this router was tested only on phrasings I made up
+    # -- "what did elon say about mars" -- and shipped. The first real
+    # question was "yoo @mbubbleSearch when did @elonmusk first warn about
+    # ai?", which matched nothing: "@elonmusk" is one word, so \belon\b
+    # wants a boundary after "elon" and finds "m". It was answered from
+    # the broadcast, in public, within a minute of going live.
+
+    def test_the_question_that_actually_got_posted(self):
+        assert self._route(
+            "yoo @mbubbleSearch when did @elonmusk first warn about ai?"
+        ) == "elon"
+
+    def test_handles_are_how_people_write_names(self):
+        assert self._route("@mbubbleSearch what did @elonmusk say about mars") == "elon"
+        assert self._route("@mbubbleSearch did @lexfridman ask him about aliens") == "elon"
+        assert self._route("@mbubbleSearch what did he tell @joerogan about ai") == "elon"
+
+    def test_show_handles_still_win(self):
+        assert self._route("@mbubbleSearch what did @blknoiz06 say about zcash") == "podcast"
+        assert self._route("@mbubbleSearch what did @blknoiz06 think of @elonmusk") == "podcast"
+        assert self._route("@mbubbleSearch ask @FaZeBanks about polymarket") == "podcast"
+
+    def test_the_bots_own_handle_is_not_a_vote(self):
+        # It appears in every mention there will ever be. If it counted as
+        # naming the show, no question could ever reach the other archive.
+        from app.x_bot import corpus_for
+        assert corpus_for("@mbubbleSearch what did @elonmusk say about mars") == "elon"
+        assert corpus_for("@MBubbleSearch what did @elonmusk say") == "elon"
+        assert corpus_for("hey @mbubblesearch, @elonmusk on neuralink?") == "elon"

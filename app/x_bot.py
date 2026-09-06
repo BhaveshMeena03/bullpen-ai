@@ -2508,10 +2508,19 @@ def deserves_a_highlight(text: str) -> bool:
 
 # ─── which archive a mention is asking about ──────────────────────────────
 
+# The bot's own handle, which is in every single mention by definition and
+# therefore cannot mean anything about which archive to use.
+_OWN_HANDLE = re.compile(r"(?i)@\s*mbubble\w*")
+
 # Things that only exist on the broadcast. A mention naming any of these is
 # about the show, whatever else it also says.
+#
+# Handles are written the way people write them. "@blknoiz06" is one token
+# to a word-boundary, so \bblknoiz\b never fires on it -- the trailing
+# digits have to be part of the pattern, not assumed away.
 _OF_THE_SHOW = re.compile(
-    r"(?i)\b(ansem|blknoiz|faze\s*banks|banks|market\s*bubble|mbubble"
+    r"(?i)\b(ansem|blknoiz\d*|faze\s*banks|fazebanks|banks"
+    r"|market\s*bubble|marketbubble"
     r"|the\s+show|the\s+broadcast|the\s+stream|last\s+(?:night|week)'?s"
     r"|ep(?:isode)?\s*\d|mizkif|will\s+clemente|tyler\s+bernabe"
     r"|al\s+dunlap|easy\s+eats|orangie|poorgoat|luca\s+netz|tjr"
@@ -2522,9 +2531,16 @@ _OF_THE_SHOW = re.compile(
 # and "twitter" are absent because the hosts discuss both constantly, and
 # a question about what Ansem thinks of Tesla must not be answered from an
 # interview Ansem was never in.
+#
+# "elon(?:\s*musk)?" rather than "elon(\s+musk)?" is the whole fix. On X
+# people tag the handle, and "@elonmusk" is a single word: \belon\b wants
+# a boundary after "elon" and finds "m", so the first real question this
+# ever got -- "when did @elonmusk first warn about ai" -- matched nothing
+# and was answered from the broadcast. Optional whitespace lets "elon"
+# and "elonmusk" both land.
 _OF_THE_MUSK_ARCHIVE = re.compile(
-    r"(?i)\b(elon(\s+musk)?|musk|neuralink|spacex|starship"
-    r"|lex\s+fridman|joe\s+rogan)\b")
+    r"(?i)\b(elon(?:\s*musk)?|musk|neuralink|spacex|starship"
+    r"|lex\s*fridman|lexfridman|joe\s*rogan|joerogan|jre)\b")
 
 
 def corpus_for(question: str) -> str:
@@ -2540,7 +2556,10 @@ def corpus_for(question: str) -> str:
     which is right: the asker wants Ansem's opinion, and Ansem is not in
     the Musk archive at all.
     """
-    text = question or ""
+    # The bot is tagged in every mention, so its own handle is stripped
+    # before anything is matched -- otherwise "@mbubbleSearch" would be a
+    # vote for the broadcast on literally every question asked.
+    text = _OWN_HANDLE.sub(" ", question or "")
     if _OF_THE_SHOW.search(text):
         return "podcast"
     if _OF_THE_MUSK_ARCHIVE.search(text):
