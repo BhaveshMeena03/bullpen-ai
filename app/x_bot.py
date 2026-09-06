@@ -2640,13 +2640,78 @@ def _mcg_projects() -> set[str]:
     return names
 
 
-# Project names that are also just words. Matching these would send
-# ordinary broadcast questions to the wrong archive.
+# Project names that are also just words, or that the other two archives
+# already say. Matching these would send ordinary broadcast questions to
+# the wrong archive.
+#
+# The second half is not guesswork: every MCG project name was checked
+# against the full text of the Market Bubble and Musk transcripts, and
+# any that appears in either is excluded. That found the ones no
+# stoplist would have caught -- "long" is a real MCG project and is said
+# 816 times on the broadcast, "polymarket" is the show's own sponsor at
+# 137, and "meta", "wonder", "motion", "opus" and "spark" are all both.
+# "are they long on solana" would have been answered from MCG.
+#
+# Excluding a genuine project like metadao or collector crypt costs an
+# MCG question its archive and sends it to the broadcast, which is the
+# safe direction and the rule everywhere else here: the show wins ties.
+# Regenerate this when episodes are added on either side.
 _TOO_ORDINARY = {
-    "earn", "yield", "swap", "vault", "bridge", "stake", "trade", "flow",
-    "index", "market", "pump", "chain", "layer", "node", "block", "coin",
-    "token", "wallet", "agent", "agents", "protocol", "finance", "capital",
-    "programmable", "live", "update", "interviews", "crypto", "solana",
+    'agent',
+    'agents',
+    'bean',
+    'block',
+    'bridge',
+    'capital',
+    'chain',
+    'coin',
+    'collector crypt',
+    'credible',
+    'crypto',
+    'derive',
+    'dreams',
+    'earn',
+    'finance',
+    'flow',
+    'index',
+    'interviews',
+    'kanye west',
+    'layer',
+    'live',
+    'long',
+    'loyal',
+    'market',
+    'marvin',
+    'merge',
+    'meta',
+    'metadao',
+    'meteora',
+    'motion',
+    'netnet capital',
+    'node',
+    'opus',
+    'pantheon',
+    'paragon',
+    'polymarket',
+    'programmable',
+    'protocol',
+    'pump',
+    'soar',
+    'solana',
+    'spark',
+    'stake',
+    'sunrise',
+    'swap',
+    'token',
+    'trade',
+    'trojan',
+    'update',
+    'uplift',
+    'vault',
+    'virtuals',
+    'wallet',
+    'wonder',
+    'yield',
 }
 
 _MCG_NAMES = _mcg_projects()

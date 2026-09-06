@@ -3902,3 +3902,43 @@ async def test_an_unwired_archive_falls_back_to_the_broadcast(tmp_path):
         conversation_id="1", author_verified=True,
         author_verified_type="blue"))
     assert show.asked, "with no MCG index the question must reach the show"
+
+
+def test_no_mcg_project_name_can_steal_a_broadcast_question():
+    """No routable MCG name may be a word the other archives say.
+
+    This is the check that found the problem rather than a rule that
+    assumed it away. "Long" is a real MCG project and is said 816 times on
+    the broadcast; "polymarket" is the show's own sponsor at 137; "meta",
+    "wonder", "motion", "opus" and "spark" are all both. Before this,
+    "are they long on solana" routed to MCG.
+
+    Runs over the real transcripts, so adding episodes to any archive can
+    reintroduce a collision and this will say so. The fix is to add the
+    name to _TOO_ORDINARY: losing an MCG question to the broadcast is the
+    safe direction, and the show wins ties everywhere else here.
+    """
+    import json
+    import re
+    from pathlib import Path
+    from app.x_bot import _MCG_NAMES
+
+    data = Path(__file__).resolve().parent.parent / "data"
+    said = []
+    for name in ("episodes.json", "elon_episodes.json"):
+        path = data / name
+        if not path.exists():                      # a slim checkout
+            continue
+        said.append(" ".join(
+            seg.get("text", "")
+            for episode in json.loads(path.read_text())
+            for seg in episode.get("segments", [])).lower())
+    if not said:
+        return
+    blob = " ".join(said)
+
+    clashes = [n for n in _MCG_NAMES
+               if re.search(r"\b" + re.escape(n) + r"\b", blob)]
+    assert not clashes, (
+        "these MCG project names are also said on the broadcast or in the "
+        f"Musk interviews, so they would misroute: {sorted(clashes)[:8]}")
