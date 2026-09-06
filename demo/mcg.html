@@ -201,6 +201,41 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
   .player iframe{width:100%;aspect-ratio:16/9;border:1px solid var(--rule-dark);
     display:block;background:#000}
 
+  /* The channel's mark is two angled bars — a chrome gem set on mint.
+     Drawn here as a flat echo of it rather than a copy: three parallelo-
+     grams, mint on black, sitting behind the headline. It is the only
+     ornament on the page and it is the thing that makes it read as MCG
+     rather than as a generic dark search box. */
+  .hero{position:relative}
+  .gem{position:absolute;right:-2%;top:-26px;width:min(340px,34vw);
+    aspect-ratio:1;pointer-events:none;z-index:0;opacity:.9}
+  .gem i{position:absolute;display:block;border-radius:3px;
+    transform:skewX(-18deg);
+    background:linear-gradient(160deg, rgba(110,207,158,.85),
+      rgba(110,207,158,.28) 45%, rgba(110,207,158,.06));
+    box-shadow:0 18px 60px -30px rgba(110,207,158,.7)}
+  .gem i:nth-child(1){left:8%;top:24%;width:30%;height:22%}
+  .gem i:nth-child(2){left:34%;top:8%;width:52%;height:26%;opacity:.55}
+  .gem i:nth-child(3){left:26%;top:46%;width:62%;height:30%;opacity:.28}
+  .hero h1,.hero .sub,.hero form,.hero .seeds{position:relative;z-index:1}
+  @media (max-width:860px){ .gem{display:none} }
+
+  /* A worked example, before anything is typed. The broadcast page has
+     had one for months and it is the single best thing on it: a visitor
+     sees what an answer looks like instead of being asked to imagine it.
+     This one is chosen because no keyword search finds it — "accident"
+     appears nowhere in the passage. */
+  .eg{border:1px solid var(--rule-dark);background:var(--card);
+    padding:18px;margin:26px 0 0}
+  .eg .tag{font-family:"IBM Plex Mono",monospace;font-size:10px;
+    letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
+  .eg .ask{font-family:"IBM Plex Mono",monospace;font-size:13.5px;
+    color:var(--blue);margin:8px 0 12px}
+  .eg .quote{font-size:17px;line-height:1.55;margin:0 0 12px}
+  .eg .meta{font-family:"IBM Plex Mono",monospace;font-size:11.5px;
+    color:var(--dim)}
+  .eg .meta a{color:var(--blue);text-decoration:none}
+
 </style>
 
 <div class="wrap">
@@ -221,6 +256,9 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
     <div class="cell"><dt>Span</dt><dd id="r-span">2025<em>–2026</em></dd></div>
   </dl>
 
+  <div class="hero">
+  <div class="gem" aria-hidden="true"><i></i><i></i><i></i></div>
+
   <h1>Ask MCG Live <i>anything.</i></h1>
   <p class="sub">458 interviews, one project an episode, transcribed and indexed
   by meaning rather than keywords. Ask what a project does, who built it or what
@@ -236,6 +274,24 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
     <button class="seed">which projects are building on robinhood chain</button>
     <button class="seed">what is metadao's fundraising model</button>
     <button class="seed">who is building encrypted mesh networks</button>
+  </div>
+
+  </div><!-- /hero -->
+
+  <!-- Verified against the transcript: 21:34 in the Claude Memory episode,
+       27 January. The founder is asked whether he launched his own token
+       and says he did not. Nothing in that passage contains the word
+       "accident", which is the point. -->
+  <div class="eg" id="eg">
+    <div class="tag">For example</div>
+    <div class="ask">&gt; who launched a token by accident</div>
+    <p class="quote">&ldquo;Somebody launched a token on my behalf. I didn't
+      even do it for myself.&rdquo;</p>
+    <div class="meta">21:34 in
+      <a href="https://www.youtube.com/watch?v=1FoAqkI8UKc&amp;t=1294s"
+         target="_blank" rel="noopener">Claude Memory ($CMEM)</a>
+      &middot; the word &ldquo;accident&rdquo; is nowhere in that passage
+    </div>
   </div>
 
   <div class="working" id="working"><i></i>searching the archive</div>
@@ -287,7 +343,7 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
 
   // The shelf shows the most recent. 458 rows is a list nobody reaches the
   // end of, and the useful end is the top.
-  var SHOWN = 40;
+  var SHOWN = 24;
   fetch(API + "/v1/mcg/episodes")
     .then(function(r){ return r.ok ? r.json() : []; })
     .then(function(rows){
@@ -385,6 +441,10 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
     }).join("");
 
     $("answer").classList.add("on");
+    // The example was there to show what an answer looks like. There is
+    // now a real one directly below it, so it stops earning its space.
+    var eg = $("eg");
+    if (eg) eg.style.display = "none";
   }
 
   function ask(question){
