@@ -19,5 +19,6 @@ data/
 !data/episodes.json.gz
 !data/elon_episodes.json.gz
 !data/mcg_index.json
+!data/mcg_summaries.json.gz
 redteam_report.md
 PITCH_PREP.md

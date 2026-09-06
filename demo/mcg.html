@@ -236,6 +236,28 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
     color:var(--dim)}
   .eg .meta a{color:var(--blue);text-decoration:none}
 
+  /* Episode summaries, folded away. 404 of them: a TL;DR and the seconds
+     each topic starts at. Open one and it is a two-minute read of a
+     forty-minute interview, with every heading a link into the video. */
+  .rec{cursor:default}
+  details.rec{display:block;padding:0;border-bottom:1px solid var(--rule)}
+  details.rec > summary{display:grid;grid-template-columns:88px 1fr auto;
+    gap:14px;padding:9px 0;align-items:baseline;cursor:pointer;
+    list-style:none}
+  details.rec > summary::-webkit-details-marker{display:none}
+  details.rec > summary:hover .title{color:var(--blue)}
+  details.rec[open] > summary .title{color:var(--blue)}
+  .sum{padding:4px 0 18px 102px;max-width:78ch}
+  .sum .tldr{margin:0 0 12px;color:var(--ink);font-size:14.5px}
+  .sum .topic{display:flex;gap:12px;align-items:baseline;margin:0 0 7px}
+  .sum .topic button{background:transparent;border:0;padding:0;
+    color:var(--blue);font-family:"IBM Plex Mono",monospace;font-size:12px;
+    cursor:pointer;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .sum .topic button:hover{text-decoration:underline}
+  .sum .topic span{color:var(--dim);font-size:14px}
+  .sum .player{margin:12px 0 0}
+  @media (max-width:720px){ .sum{padding-left:0} }
+
 </style>
 
 <div class="wrap">
@@ -302,7 +324,7 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
     <div id="moments"></div>
   </section>
 
-  <div class="shelf-head">In the archive</div>
+  <div class="shelf-head">In the archive &middot; open one for a two-minute read</div>
   <div id="shelf"></div>
   <p class="more" id="more"></p>
 
@@ -344,17 +366,39 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
   // The shelf shows the most recent. 458 rows is a list nobody reaches the
   // end of, and the useful end is the top.
   var SHOWN = 24;
-  fetch(API + "/v1/mcg/episodes")
+  var SUMMARIES = {};
+  // Summaries first, then the shelf: a row has to know whether it has one
+  // before it decides to be a <details> or a plain line.
+  fetch(API + "/v1/mcg/summaries")
+    .then(function(r){ return r.ok ? r.json() : {}; })
+    .then(function(d){ SUMMARIES = (d && d.summaries) || {}; })
+    .catch(function(){})
+    .then(function(){ return fetch(API + "/v1/mcg/episodes"); })
     .then(function(r){ return r.ok ? r.json() : []; })
     .then(function(rows){
       if (!rows || !rows.length) return;
+      // Each row folds open into the episode's summary, when there is
+      // one. A link straight to YouTube is still there in the summary;
+      // the row itself opens rather than navigating, because leaving the
+      // page is the thing this archive exists to avoid.
       $("shelf").innerHTML = rows.slice(0, SHOWN).map(function(e){
         var mins = Math.round((e.seconds || 0) / 60);
-        return '<div class="rec">'
-          + '<span class="date">' + esc((e.published_at||"").slice(0,10)) + "</span>"
-          + '<span class="title"><a href="' + esc(e.url || "#")
-          + '" target="_blank" rel="noopener">' + esc(e.title || "") + "</a></span>"
-          + '<span class="len">' + (mins ? mins + " min" : "") + "</span></div>";
+        var head = '<span class="date">' + esc((e.published_at||"").slice(0,10)) + "</span>"
+          + '<span class="title">' + esc(e.title || "") + "</span>"
+          + '<span class="len">' + (mins ? mins + " min" : "") + "</span>";
+        var s = SUMMARIES[e.episode_id];
+        if (!s) {
+          return '<div class="rec">' + head + "</div>";
+        }
+        var topics = (s.topics || []).map(function(t){
+          return '<div class="topic"><button data-url="' + esc(e.url || "")
+            + '" data-sec="' + Math.round(t.t || 0) + '">' + clock(t.t || 0)
+            + "</button><span>" + esc(t.text || "") + "</span></div>";
+        }).join("");
+        return '<details class="rec"><summary>' + head + "</summary>"
+          + '<div class="sum"><p class="tldr">' + esc(s.tldr || "") + "</p>"
+          + topics
+          + '<div class="player"></div></div></details>';
       }).join("");
       if (rows.length > SHOWN) {
         $("more").textContent = "+ " + (rows.length - SHOWN).toLocaleString()
@@ -492,6 +536,26 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
   // Delegated, because the cards are built after this runs. One player at
   // a time: two videos talking over each other is nobody's idea of a
   // citation.
+  // A topic heading inside a summary, played in that episode's own card
+  // so the summary stays readable underneath it.
+  document.addEventListener("click", function(ev){
+    var t = ev.target.closest ? ev.target.closest(".sum .topic button") : null;
+    if (!t) return;
+    var url = t.getAttribute("data-url") || "";
+    var src = embedFor(url + (url.indexOf("?") > -1 ? "&" : "?")
+                       + "t=" + t.getAttribute("data-sec"));
+    if (!src) return;
+    document.querySelectorAll(".player").forEach(function(o){ o.innerHTML = ""; });
+    var slot = t.closest(".sum").querySelector(".player");
+    if (!slot) return;
+    var f = document.createElement("iframe");
+    f.src = src; f.loading = "lazy"; f.title = "this moment in the episode";
+    f.setAttribute("allow", "autoplay; encrypted-media; picture-in-picture");
+    f.setAttribute("allowfullscreen", "");
+    slot.appendChild(f);
+    slot.scrollIntoView({block: "nearest"});
+  });
+
   document.addEventListener("click", function(ev){
     var b = ev.target.closest ? ev.target.closest("button.play") : null;
     if (!b) return;

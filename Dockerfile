@@ -69,6 +69,8 @@ COPY data/elon_episodes.json.gz ./data/elon_episodes.json.gz
 # archive, because .dockerignore excludes data/ and lets a named few
 # back in.
 COPY data/mcg_index.json ./data/mcg_index.json
+# 404 episode summaries, gzipped: 873KB of JSON down to a fifth.
+COPY data/mcg_summaries.json.gz ./data/mcg_summaries.json.gz
 # The exact-token index. Without it every lookup returns nothing and
 # search silently loses the names and numbers it was built for.
 COPY data/term_index.json ./data/term_index.json

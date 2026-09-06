@@ -1346,6 +1346,29 @@ async def podcast_episodes(
 
 ELON_NAMESPACE = "elon"
 MCG_INDEX = _ROOT / "data" / "mcg_index.json"
+MCG_SUMMARIES = _ROOT / "data" / "mcg_summaries.json.gz"
+_MCG_SUMMARIES_CACHE: dict | None = None
+
+
+def _mcg_summaries() -> dict:
+    """A TL;DR and a list of timestamped topics per episode.
+
+    404 of them, written when the MCG archive was its own service and
+    never surfaced here. Gzipped in the image: 873KB of JSON is 291KB
+    compressed, and it is read once on first use rather than at boot,
+    since a deploy that never serves the page should not pay for it.
+    """
+    global _MCG_SUMMARIES_CACHE
+    if _MCG_SUMMARIES_CACHE is not None:
+        return _MCG_SUMMARIES_CACHE
+    try:
+        with gzip.open(MCG_SUMMARIES, "rt", encoding="utf-8") as fh:
+            _MCG_SUMMARIES_CACHE = json.load(fh)
+        logger.info("loaded %d MCG summaries", len(_MCG_SUMMARIES_CACHE))
+    except Exception as exc:                                    # noqa: BLE001
+        logger.warning("could not load the MCG summaries: %s", exc)
+        _MCG_SUMMARIES_CACHE = {}
+    return _MCG_SUMMARIES_CACHE
 _MCG_CACHE: list[dict] | None = None
 
 
@@ -1513,6 +1536,12 @@ async def mcg_episodes() -> list[dict]:
           "seconds": int(float(e.get("seconds") or 0))}
          for e in _mcg_episodes()),
         key=lambda e: e["published_at"], reverse=True)
+
+
+@app.get("/v1/mcg/summaries", dependencies=[Depends(public_rate_limit)])
+async def mcg_summaries() -> dict:
+    """Every episode condensed, with the seconds each topic starts at."""
+    return {"count": len(_mcg_summaries()), "summaries": _mcg_summaries()}
 
 
 @app.post("/v1/mcg/search",
