@@ -652,6 +652,34 @@ _HOST_LANDING = {
 _DEFAULT_LANDING = "/demo/podcast.html"
 
 
+# Short paths for the two newer archives.
+#
+# They live at /demo/elon.html and /demo/mcg.html because that is where
+# the static files are, and "demo" is a poor thing to have in a URL
+# somebody is asked to click from a post -- it undersells the archive and
+# reads as unfinished. A redirect costs nothing and the file stays put.
+#
+# One route per path rather than a "/{anything}" catch-all. The catch-all
+# was tried and it swallowed /healthz, because FastAPI matches in
+# registration order and every single-segment route declared after it
+# became unreachable. A liveness probe returning 404 is how a deploy
+# fails to come up at all.
+#
+# 301, because these are permanent and that is what lets X and anything
+# else cache the canonical address.
+def _shortcut(path: str, target: str) -> None:
+    async def go() -> RedirectResponse:
+        return RedirectResponse(url=target, status_code=301)
+    app.get(path, include_in_schema=False)(go)
+
+
+for _path, _target in (("/elon", "/demo/elon.html"),
+                       ("/musk", "/demo/elon.html"),
+                       ("/mcg", "/demo/mcg.html"),
+                       ("/method", "/demo/how-it-works.html")):
+    _shortcut(_path, _target)
+
+
 @app.get("/", include_in_schema=False)
 async def root(request: Request) -> RedirectResponse:
     # Bare domain -> the page that hostname is for; Market Bubble search is
