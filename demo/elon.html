@@ -75,6 +75,10 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
 </filter><rect width='120' height='120' filter='url(%23n)' opacity='.35'/></svg>")}
 
   .wrap{width:100%;max-width:1000px;position:relative;z-index:1}
+  /* The planet is absolutely placed against this, and clipped by it,
+     so it never adds a horizontal scrollbar on a narrow screen. */
+  .hero{position:relative;overflow:hidden;padding-bottom:8px}
+  .hero h1,.hero .sub,.hero form,.hero .seeds{position:relative;z-index:1}
 
   /* ── instrument header ───────────────────────────────────────────── */
   header{display:flex;align-items:baseline;justify-content:space-between;
@@ -101,42 +105,51 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
     color:var(--ink)}
   .cell dd em{font-style:normal;font-size:12px;color:var(--dim);margin-left:5px}
 
-  /* ── the limb ────────────────────────────────────────────────────── */
-  /* A planet's night-side edge seen from orbit: a very large circle whose
-     top arc is lit, sitting mostly below the fold so only the curve shows.
-     Stars are a handful of fixed radial-gradients rather than an image --
-     nothing to download, nothing to 404, and it scales to any screen. */
-  .limb{position:relative;height:190px;margin:34px 0 -46px;overflow:hidden;
-    -webkit-mask-image:linear-gradient(#000 55%,transparent);
-    mask-image:linear-gradient(#000 55%,transparent)}
-  .limb::before{content:"";position:absolute;inset:0;
+  /* ── the planet ─────────────────────────────────────────────────── */
+  /* A sphere lit hard from the left, so most of it is the night side and
+     the eye reads a terminator rather than a circle. Everything is a
+     gradient: the mottling is four soft blobs of rust at low opacity, the
+     atmosphere is a single inset ring on the lit edge, and the stars are
+     points behind it. Nothing to download, nothing that 404s, and it
+     survives any screen because it is all percentages.
+
+     It sits behind the text and is pushed off the right edge, which is
+     what makes it read as a body in space rather than a circle on a page:
+     you never see the whole thing. */
+  .orb{position:absolute;right:-16%;top:-40px;width:min(760px,86vw);
+    aspect-ratio:1;pointer-events:none;z-index:0}
+  .orb::before{content:"";position:absolute;inset:-18% -12% -6% -30%;
     background-image:
-      radial-gradient(1.4px 1.4px at 12% 32%, #fff, transparent),
-      radial-gradient(1px 1px at 28% 66%, #cfe6f5, transparent),
-      radial-gradient(1.6px 1.6px at 41% 18%, #fff, transparent),
-      radial-gradient(1px 1px at 57% 52%, #b9d8ee, transparent),
-      radial-gradient(1.3px 1.3px at 69% 26%, #fff, transparent),
-      radial-gradient(1px 1px at 83% 61%, #d6ebfa, transparent),
-      radial-gradient(1.5px 1.5px at 92% 36%, #fff, transparent),
-      radial-gradient(1px 1px at 20% 12%, #9fc6e4, transparent),
-      radial-gradient(1.2px 1.2px at 75% 8%, #fff, transparent);
-    opacity:.62}
-  /* The planet itself: wider than the page and pushed down, so the only
-     thing on screen is the curve and the thin lit atmosphere above it. */
-  .limb i{position:absolute;left:50%;top:112px;transform:translateX(-50%);
-    width:180%;padding-top:180%;border-radius:50%;
-    background:radial-gradient(circle at 50% 0%,
-      rgba(217,58,79,.34) 0 1px,
-      rgba(160,40,56,.15) 2px 6px,
-      rgba(44,12,18,.88) 7px 22px,
-      #000 23px);
-    box-shadow:0 -1px 46px -6px rgba(217,58,79,.40)}
-  @media (max-width:640px){ .limb{height:140px;margin:26px 0 -36px} }
-  @media (prefers-reduced-motion:no-preference){
-    .limb{animation:limb-in 1.1s ease both}
-    @keyframes limb-in{from{opacity:0;transform:translateY(10px)}
-                       to{opacity:1;transform:none}}
+      radial-gradient(1.5px 1.5px at 14% 26%, #fff, transparent),
+      radial-gradient(1px 1px at 31% 62%, #d8c9c4, transparent),
+      radial-gradient(1.7px 1.7px at 46% 12%, #fff, transparent),
+      radial-gradient(1px 1px at 8% 74%, #cbb9b3, transparent),
+      radial-gradient(1.3px 1.3px at 63% 82%, #fff, transparent),
+      radial-gradient(1px 1px at 22% 46%, #e0d2cd, transparent),
+      radial-gradient(1.4px 1.4px at 52% 40%, #fff, transparent),
+      radial-gradient(1px 1px at 71% 20%, #bfa9a2, transparent);
+    opacity:.55}
+  .orb .body{position:absolute;inset:0;border-radius:50%;
+    /* Layered front to back: mottling, then the terminator, then the
+       unlit body. The light comes from upper-left, so the lit crescent
+       is on that edge and the sphere falls away to true black. */
+    background-image:
+      radial-gradient(38% 30% at 30% 34%, rgba(226,142,74,.30), transparent 70%),
+      radial-gradient(26% 22% at 22% 62%, rgba(150,72,38,.34), transparent 70%),
+      radial-gradient(30% 26% at 44% 74%, rgba(198,110,60,.22), transparent 72%),
+      radial-gradient(20% 18% at 40% 20%, rgba(120,58,34,.30), transparent 70%),
+      radial-gradient(circle at 20% 32%,
+        #d97a3a 0%, #b8542a 18%, #8a3b1c 34%,
+        #4a1f10 52%, #24100a 66%, #0a0506 78%, #000 88%);
+    box-shadow:
+      /* the atmosphere, only where the sun actually reaches */
+      inset 10px 10px 60px -30px rgba(255,190,140,.75),
+      /* and a breath of it outside the disc, on the same side */
+      -12px -10px 70px -40px rgba(217,122,58,.55)}
+  @media (max-width:900px){
+    .orb{right:-34%;top:10px;width:min(560px,96vw);opacity:.62}
   }
+  @media (max-width:640px){ .orb{opacity:.42} }
 
   /* ── the ask ─────────────────────────────────────────────────────── */
   h1{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:700;
@@ -266,13 +279,14 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
     <div class="cell"><dt>Span</dt><dd id="r-span">2019<em>–2024</em></dd></div>
   </dl>
 
-  <!-- The limb of a planet under a star field, drawn rather than
-       photographed. SpaceX's own imagery is public domain, so the reason
-       for not using it is not the licence: a full-bleed launch photo on a
-       page about Elon Musk is what an official page looks like, and the
-       footer two screens below says independent project, not affiliated.
-       This gets the same night-side horizon with nothing to contradict. -->
-  <div class="limb" aria-hidden="true"><i></i></div>
+  <!-- Mars, off to the right, half in shadow — the shape SpaceX opens on.
+       Drawn rather than photographed: their pictures are public domain so
+       the licence was never the problem, but a real launch photograph
+       across a page about Elon Musk is what an official page looks like,
+       and the footer says independent project, not affiliated. Two dozen
+       gradients get the same silhouette and contradict nothing. -->
+  <div class="hero">
+  <div class="orb" aria-hidden="true"><i class="body"></i></div>
 
   <h1>Every answer he has given, <i>to the second.</i></h1>
   <p class="sub">Five long-form conversations, transcribed and indexed by meaning
@@ -290,6 +304,7 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
     <button class="seed">what did he say about the risk of AI</button>
     <button class="seed">the hardest thing about running two companies</button>
   </div>
+  </div><!-- /hero -->
 
   <div class="working" id="working"><i></i>searching the archive</div>
 
