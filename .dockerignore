@@ -18,5 +18,6 @@ data/
 # Gzipped because the raw file is 7.6MB and every ingest rewrites it.
 !data/episodes.json.gz
 !data/elon_episodes.json.gz
+!data/mcg_index.json
 redteam_report.md
 PITCH_PREP.md

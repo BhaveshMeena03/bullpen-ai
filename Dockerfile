@@ -62,6 +62,13 @@ COPY data/episodes.json.gz ./data/episodes.json.gz
 # The Musk archive, same treatment. Without this line the /v1/elon
 # routes deploy complete and answer from nothing.
 COPY data/elon_episodes.json.gz ./data/elon_episodes.json.gz
+# The MCG listing. 97KB, not the 31MB of transcripts: the passages
+# come back from Pinecone with their text, and only the shelf is
+# served from disk. Forgetting this line is what made /v1/mcg/archive
+# deploy complete and answer "unavailable" -- twice now, once per
+# archive, because .dockerignore excludes data/ and lets a named few
+# back in.
+COPY data/mcg_index.json ./data/mcg_index.json
 # The exact-token index. Without it every lookup returns nothing and
 # search silently loses the names and numbers it was built for.
 COPY data/term_index.json ./data/term_index.json
