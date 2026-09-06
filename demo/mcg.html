@@ -242,6 +242,9 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
   .eg .meta{font-family:"IBM Plex Mono",monospace;font-size:11.5px;
     color:var(--dim)}
   .eg .meta a{color:var(--blue);text-decoration:none}
+  .eg .player{margin:14px 0 0}
+  .eg .player iframe{width:100%;aspect-ratio:16/9;
+    border:1px solid var(--rule-dark);display:block;background:#000}
 
   /* Episode summaries, folded away. 404 of them: a TL;DR and the seconds
      each topic starts at. Open one and it is a two-minute read of a
@@ -263,7 +266,12 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
   details.rec > summary::-webkit-details-marker{display:none}
   details.rec > summary:hover .title{color:var(--blue)}
   details.rec[open] > summary .title{color:var(--blue)}
-  .sum{padding:2px 0 18px 26px;max-width:80ch}
+  /* Lines up under the TITLE, not under the row's left edge. The grid is
+     14px caret + 12 gap + 88 date + 12 gap = 126px, so the summary, its
+     topics and the player all start where the episode name starts. At 26px
+     the text sat left of everything above it and the video looked dropped
+     in rather than placed. */
+  .sum{padding:2px 0 20px 126px;max-width:none}
   .sum .tldr{margin:0 0 12px;color:var(--ink);font-size:14.5px}
   .sum .topic{display:flex;gap:12px;align-items:baseline;margin:0 0 7px}
   .sum .topic button{background:transparent;border:0;padding:0;
@@ -277,7 +285,8 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
   .sum .player iframe{width:100%;aspect-ratio:16/9;
     border:1px solid var(--rule-dark);display:block;background:#000}
   @media (max-width:720px){
-    .sum{padding-left:0}
+    /* The date column is gone on a phone, so the indent goes with it. */
+    .sum{padding-left:26px}
     details.rec > summary,.rec.plain{grid-template-columns:14px 1fr auto}
     details.rec > summary .date,.rec.plain .date{display:none}
   }
@@ -337,7 +346,11 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
       <a href="https://www.youtube.com/watch?v=1FoAqkI8UKc&amp;t=1294s"
          target="_blank" rel="noopener">Claude Memory ($CMEM)</a>
       &middot; the word &ldquo;accident&rdquo; is nowhere in that passage
+      <button class="play"
+        data-url="https://www.youtube.com/watch?v=1FoAqkI8UKc&amp;t=1294s"
+        >&#9654; play here</button>
     </div>
+    <div class="player"></div>
   </div>
 
   <div class="working" id="working"><i></i>searching the archive</div>
@@ -606,7 +619,11 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
     document.querySelectorAll(".player").forEach(function(o){ o.innerHTML = ""; });
     document.querySelectorAll("button.play").forEach(function(o){
       o.textContent = "\u25B6 play here"; });
-    var slot = b.closest(".moment").querySelector(".player");
+    // Whichever card the button sits in. This looked only inside
+    // ".moment", so the button on the worked example -- the first thing
+    // anybody presses -- did nothing at all.
+    var card = b.closest(".moment, .eg, .sum");
+    var slot = card && card.querySelector(".player");
     if (!slot) return;
     var f = document.createElement("iframe");
     f.src = src; f.loading = "lazy"; f.title = "this moment in the episode";
