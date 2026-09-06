@@ -1905,13 +1905,61 @@ def cited_hit(answer: str, hits: list):
     if not checkable:
         return hits[0], stamps[0]
 
+    # When several passages contain the same moment, the one the answer
+    # NAMES wins. Two recordings seven years apart can both have a line at
+    # 35:08, and they did: "[2019 Lex Fridman #49 · 35:08] lived there"
+    # and "[2021 Joe Rogan #1609 · 35:08] we need to figure out what
+    # questions to ask". The answer said 2021 Joe Rogan and was right; the
+    # link went to the 2019 Lex episode, because timestamp alone cannot
+    # tell them apart. A reader clicking that hears Carl Sagan and
+    # concludes the quote was invented.
+    named = _named_source(answer)
     for stamp in stamps:
-        for hit in checkable:
-            if _covers(hit, stamp):
-                return hit, stamp
+        covering = [h for h in checkable if _covers(h, stamp)]
+        if not covering:
+            continue
+        if named:
+            preferred = [h for h in covering if _matches_source(h, named)]
+            if preferred:
+                return preferred[0], stamp
+        return covering[0], stamp
     # Every passage that could be checked was checked, and none of them
     # contain any moment this answer names.
     return hits[0], None
+
+
+# Which recording an answer says it is quoting, when it says at all.
+_SAYS_SHOW = re.compile(r"(?i)\b(joe\s+rogan|rogan|lex\s+fridman|lex)\b")
+_SAYS_YEAR = re.compile(r"\b(20[0-2]\d)\b")
+
+
+def _named_source(answer: str) -> tuple[str | None, str | None]:
+    """(show, year) the answer claims, either of which may be missing."""
+    show = _SAYS_SHOW.search(answer or "")
+    year = _SAYS_YEAR.search(answer or "")
+    key = None
+    if show:
+        key = "rogan" if "rogan" in show.group(1).lower() else "lex"
+    return key, (year.group(1) if year else None)
+
+
+def _matches_source(hit, named: tuple[str | None, str | None]) -> bool:
+    """Is this passage from the recording the answer named?
+
+    Both halves have to agree where both are stated. A year alone is not
+    enough -- there are two 2021 recordings and two from 2019 -- and a
+    show alone is not either, since Rogan appears six times.
+    """
+    show, year = named
+    title = (getattr(hit, "title", "") or "").lower()
+    aired = (getattr(hit, "published_at", "") or "")[:4]
+    if show:
+        is_rogan = "joe rogan" in title
+        if (show == "rogan") != is_rogan:
+            return False
+    if year and aired and year != aired:
+        return False
+    return bool(show or year)
 
 
 # The openings that announce a failure. Written from replies that

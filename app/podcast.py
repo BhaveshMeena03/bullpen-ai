@@ -164,7 +164,17 @@ different one.
 excerpts disagree, give the order and the dates rather than blending them \
 into one position he never held.
 
-4a. A quote belongs to the year of the recording it is in, and to no \
+4a. Every excerpt carries a `source` — "2019 Lex Fridman #49", "2025 Joe \
+Rogan #2281". Take the show and the year for a citation from the `source` \
+on the SAME excerpt as the line you are quoting, word for word, rather \
+than working the show out from the title or the year out of the date. \
+Naming it matters more than it looks: two recordings seven years apart \
+can both have a line at the same minute, and the show and year are what \
+tell the reader — and the link — which one you mean. Do not print the \
+`source` or the bracketed timestamps as they appear; say it in a \
+sentence, the way a person would.
+
+4b. A quote belongs to the year of the recording it is in, and to no \
 other. Every excerpt carries its date; read it off that excerpt and never \
 from the one beside it, from the question, or from where the quote feels \
 like it belongs. Asked when he first warned about AI, this archive \
@@ -175,7 +185,7 @@ the worse half: a reader can check a quote and will not think to check a \
 date. If you are not certain which recording a line came from, describe \
 it without a year rather than guessing one.
 
-4b. Do not build an arc out of thin air. "By 2021 he had shifted, by 2023 \
+4c. Do not build an arc out of thin air. "By 2021 he had shifted, by 2023 \
 he had shifted again" is a story, and a story is easy to write when only \
 some of its steps are in front of you. Give a year only where an excerpt \
 carries it, and say plainly that the middle is missing rather than \
@@ -322,6 +332,52 @@ appear in this archive.
 buy/sell recommendations or price predictions of your own.
 7. Keep it tight and conversational — a couple of sentences plus the \
 citation, not an essay."""
+
+
+# A short, unambiguous name for the recording an excerpt came from.
+#
+# The model was deriving this itself -- pulling the year out of an
+# `aired` date and the show out of a title like "Elon Musk: Neuralink,
+# AI, Autopilot, and the Pale Blue Dot | Lex Fridman Podcast #49" -- and
+# with six excerpts in front of it, it crossed the wires: a passage from
+# that 2019 Lex episode was cited as "the 2021 Joe Rogan conversation".
+# Wrong show and wrong year on a real quote, which is the pair a reader
+# has no way to catch.
+#
+# So the label is computed once, here, and the prompt is told to use it
+# verbatim. Deriving is what went wrong; there is nothing left to derive.
+def source_label(title: str, aired: str | None) -> str:
+    year = (aired or "")[:4]
+    name = title or ""
+    if "Joe Rogan Experience" in name:
+        show = "Joe Rogan"
+        number = re.search(r"#(\d+)", name)
+        show = f"Joe Rogan #{number.group(1)}" if number else show
+    elif "Lex Fridman" in name:
+        number = re.search(r"#(\d+)", name)
+        show = f"Lex Fridman #{number.group(1)}" if number else "Lex Fridman"
+    else:
+        show = name[:40]
+    return f"{year} {show}".strip()
+
+
+def _body(hit: PodcastHit, with_source: bool) -> str:
+    """The passage text, optionally with the recording on every line.
+
+    The broadcast does not need this -- one show, and the model has never
+    confused an episode with a different episode of the same programme.
+    The Musk archive is two shows across seven years, and there the tag
+    above the text was not enough to stop "2019 Lex Fridman #49" being
+    reported as "the 2021 Joe Rogan conversation".
+    """
+    text = hit.text_ts or hit.text or ""
+    if not with_source or not hit.text_ts:
+        return text
+    label = source_label(hit.title, hit.published_at)
+    return "\n".join(
+        (f"[{label} \u00b7 {line[1:]}" if line.startswith("[") else line)
+        for line in text.splitlines())
+
 
 
 def _timestamp(seconds: float) -> str:
@@ -895,7 +951,8 @@ class PodcastIndex:
         return _prefer_seekable(hits)[:keep]
 
     @staticmethod
-    def _format(hits: list[PodcastHit]) -> str:
+    def _format(hits: list[PodcastHit], *,
+                stamp_lines_with_source: bool = False) -> str:
         if not hits:
             return "<excerpts>\n(nothing indexed matched this query)\n</excerpts>"
         # Chronological, so a topic reads in the order it was discussed.
@@ -910,6 +967,9 @@ class PodcastIndex:
         blocks = [
             f"<excerpt episode={quoteattr(h.title)} at={quoteattr(h.timestamp)}"
             + (f" aired={quoteattr(h.published_at)}" if h.published_at else "")
+            # The one string to cite this recording by, so nothing has to
+            # be inferred from the title or the date.
+            + f" source={quoteattr(source_label(h.title, h.published_at))}"
             # Which hosts were detected speaking in this passage. Held in
             # the index since the labelling run, returned to the browser,
             # and until now never shown to the model -- which was being
@@ -923,7 +983,7 @@ class PodcastIndex:
             # Prefer the per-line timestamped copy so the model can cite the
             # line it used. Falls back to the plain text for anything
             # indexed before that field existed.
-            + f">\n{escape(h.text_ts or h.text)}\n</excerpt>"
+            + f">\n{escape(_body(h, stamp_lines_with_source))}\n</excerpt>"
             for h in hits
         ]
         return "<excerpts>\n" + "\n\n".join(blocks) + "\n</excerpts>"
@@ -950,6 +1010,15 @@ class PodcastIndex:
                 {
                     "role": "user",
                     "content": [
+                        # Not stamped per line. That was tried, on a
+                        # misreading: the model was NOT confusing the
+                        # recordings -- it named the right one and the
+                        # LINK went to the wrong one, because two episodes
+                        # seven years apart both have a line at 35:08 and
+                        # cited_hit matched on the timestamp alone. Fixed
+                        # there. Stamping every line only taught the model
+                        # to echo "[2021 Lex Fridman #252 · 28:08]" into
+                        # the reply itself.
                         {"type": "text", "text": self._format(hits)},
                         {"type": "text", "text": query,
                          "cache_control": {"type": "ephemeral"}},

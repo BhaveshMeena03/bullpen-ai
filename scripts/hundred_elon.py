@@ -44,7 +44,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from app.podcast import PodcastIndex                      # noqa: E402
 from verify_elon import (COMPLIED, DECLINED, A_STAMP,     # noqa: E402
-                         quotes_hold)
+                         quotes_hold, source_holds)
 
 EPISODES = ROOT / "data" / "elon_episodes.json"
 NAMESPACE = "elon"
@@ -196,6 +196,8 @@ async def main() -> int:
                     verdict = "miss"
                 elif (detail := quotes_hold(answer, episodes, result.hits)):
                     verdict = "UNSUPPORTED"
+                elif (detail := source_holds(answer, episodes, result.hits)):
+                    verdict = "WRONG-SOURCE"
 
             rows.append({"set": name, "q": question, "verdict": verdict,
                          "detail": detail, "answer": answer,

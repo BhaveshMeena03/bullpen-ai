@@ -41,7 +41,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from app.podcast import PodcastIndex                    # noqa: E402
+from app.podcast import PodcastIndex, source_label     # noqa: E402
 
 EPISODES = ROOT / "data" / "elon_episodes.json"
 NAMESPACE = "elon"
@@ -113,6 +113,42 @@ def seconds(stamp: str) -> int:
 def window(episode: dict, at: int, reach: int = 150) -> str:
     return " ".join(s.get("text", "") for s in episode["segments"]
                     if abs(s.get("t", 0) - at) <= reach).lower()
+
+
+# Shows and years the answer claims to be quoting.
+_CLAIMS_SHOW = re.compile(r"(?i)\b(joe\s+rogan|rogan|lex\s+fridman|lex)\b")
+_CLAIMS_YEAR = re.compile(r"\b(20[0-2]\d)\b")
+
+
+def source_holds(answer: str, episodes: dict, hits) -> str | None:
+    """Does the recording the answer names match one it was actually given?
+
+    The set that was missing. `quotes_hold` proves the words were said and
+    says nothing about WHERE, so an answer could quote a real line from
+    2019 Lex Fridman #49 and call it "the 2021 Joe Rogan conversation" and
+    score clean. It did exactly that, on a question about Mars, after
+    eighty-three questions had reported zero misattributions.
+
+    Checked loosely on purpose: only that a show and a year the answer
+    names both belong to SOME recording that came back for this question.
+    A tighter rule would need to know which claim goes with which
+    citation, and a check that guesses is a check that cries wolf.
+    """
+    labels = [source_label(episodes[e]["title"], episodes[e].get("published_at"))
+              for e in {getattr(h, "episode_id", None) for h in (hits or [])[:6]}
+              if e in episodes]
+    if not labels:
+        return None
+    blob = " ".join(labels).lower()
+
+    for year in set(_CLAIMS_YEAR.findall(answer)):
+        if year not in blob:
+            return f"names {year}, and no returned recording is from it"
+    for show in {m.lower() for m in _CLAIMS_SHOW.findall(answer)}:
+        key = "rogan" if "rogan" in show else "lex"
+        if key not in blob:
+            return f"names {show!r}, and no returned recording is that show"
+    return None
 
 
 def quotes_hold(answer: str, episodes: dict, hits) -> str | None:
@@ -204,6 +240,8 @@ async def main() -> int:
                     verdict = "miss"
                 elif (detail := quotes_hold(answer, episodes, result.hits)):
                     verdict = "UNSUPPORTED"
+                elif (detail := source_holds(answer, episodes, result.hits)):
+                    verdict = "WRONG-SOURCE"
 
             rows.append({"set": name, "q": question, "verdict": verdict,
                          "detail": detail, "answer": answer,
