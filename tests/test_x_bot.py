@@ -3772,3 +3772,58 @@ class TestWhichArchiveAnswers:
         assert corpus_for("@mbubbleSearch what did @elonmusk say about mars") == "elon"
         assert corpus_for("@MBubbleSearch what did @elonmusk say") == "elon"
         assert corpus_for("hey @mbubblesearch, @elonmusk on neuralink?") == "elon"
+
+
+@pytest.mark.anyio
+async def test_routing_reads_the_mention_not_the_parsed_question(tmp_path):
+    """The bug that shipped, and could not be seen from corpus_for alone.
+
+    question_from() strips every @handle, on purpose, so the bot answers
+    the question rather than the greeting around it. That also deletes
+    the only thing naming who is being asked about: "when did @elonmusk
+    first warn about ai" reaches the router as "when did first warn about
+    ai", which names nobody and goes to the broadcast.
+
+    corpus_for() was tested directly and passed every case. The bot was
+    handing it different text. So this asserts on which index is actually
+    searched, which is the only thing that was ever wrong.
+    """
+    from app.x_api import Mention
+    from app.x_bot import MentionBot
+
+    class Recorder:
+        def __init__(self, name): self.name, self.asked = name, []
+        async def search(self, q, **kw):
+            self.asked.append(q)
+            class R:
+                answer = "Around 20:56 in the 2018 conversation, he said it."
+                hits = []
+            return R()
+
+    show, musk = Recorder("podcast"), Recorder("elon")
+
+    class Client:
+        bot_user_id = "1"
+        async def post(self, *a, **k): raise AssertionError("no posting")
+
+    bot = MentionBot(Client(), show, elon_index=musk, post_limit=1500,
+                     state_path=tmp_path / "state.json")
+
+    await bot.compose(Mention(
+        id="1", text="yoo @mbubbleSearch when did @elonmusk first warn about ai?",
+        author_id="a", conversation_id="1",
+        author_verified=True, author_verified_type="blue"))
+    assert musk.asked, "a question naming @elonmusk must reach the Musk archive"
+    assert not show.asked
+
+    # And the leading handle run is still X's, not the asker's: a reply in
+    # a thread carries everyone tagged in it, and a Market Bubble question
+    # asked under the Musk announcement must stay on the broadcast.
+    show.asked.clear(); musk.asked.clear()
+    await bot.compose(Mention(
+        id="2",
+        text="@Lexx_eth @elonmusk @lexfridman what did ansem say about zcash",
+        author_id="b", conversation_id="2",
+        author_verified=True, author_verified_type="blue"))
+    assert show.asked, "a question about the show must stay on the broadcast"
+    assert not musk.asked

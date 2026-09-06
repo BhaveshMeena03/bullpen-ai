@@ -3208,10 +3208,21 @@ class MentionBot:
 
         priority = mention.author_id in self._priority
 
-        # Which archive answers. The broadcast wins every tie; see
-        # corpus_for. Falls back to the broadcast whenever the Musk index
-        # is not wired, so this can be deployed before that index exists.
-        corpus = corpus_for(asked) if self._elon_index else "podcast"
+        # Which archive answers. Routed on the mention text, NOT on the
+        # parsed question -- question_from strips every @handle so the bot
+        # answers the question instead of the greeting, and that deletes
+        # the only thing naming who is being asked about. "when did
+        # @elonmusk first warn about ai" arrives here as "when did first
+        # warn about ai", which names nobody, routes to the broadcast, and
+        # comes back a miss. Caught in a dry run; it had already shipped.
+        #
+        # The LEADING handle run still goes, because that part is X's, not
+        # the asker's: a reply in a thread carries everyone in it, so a
+        # Market Bubble question asked under the Musk announcement would
+        # otherwise be routed by whoever else was tagged. What the person
+        # typed mid-sentence stays.
+        routed_on = _LEADING_HANDLES.sub(" ", mention.text or "")
+        corpus = corpus_for(routed_on) if self._elon_index else "podcast"
         index = self._elon_index if corpus == "elon" else self._index
         if corpus != "podcast":
             logger.info("%s: answering from the %s archive", mention.id, corpus)
