@@ -3848,7 +3848,14 @@ class TestTheThirdArchive:
     def test_a_project_name_reaches_mcg(self):
         assert self._route("@mbubbleSearch what is clawpump?") == "mcg"
         assert self._route("@mbubbleSearch what did ratspeak build") == "mcg"
-        assert self._route("@mbubbleSearch tell me about metadao") == "mcg"
+        assert self._route("@mbubbleSearch what is dominion market") == "mcg"
+
+    def test_a_project_the_broadcast_also_names_goes_to_the_broadcast(self):
+        # MetaDAO has its own MCG episode and is also said on the show, so
+        # it is not routable. Losing an MCG question to the broadcast is
+        # the safe direction; the reverse would answer a question about
+        # the show from an archive the hosts are not in.
+        assert self._route("@mbubbleSearch tell me about metadao") == "podcast"
 
     def test_the_broadcast_still_wins_every_tie(self):
         # The asker wants Ansem's opinion. Ansem is not in the MCG archive,
