@@ -95,6 +95,17 @@ class Settings(BaseSettings):
     # --- Pinecone -----------------------------------------------------------
     pinecone_api_key: str
     pinecone_index: str = "bullpen-concierge"
+    # The MCG archive lives in its own Pinecone index, not a namespace
+    # inside this one. That was how it was built -- its ingest refuses to
+    # run against the Market Bubble index at all -- and it is the strongest
+    # separation of the three corpora: Market Bubble and the Musk
+    # interviews share an index and are kept apart by namespace, while MCG
+    # cannot reach either of them even by a namespace typo.
+    #
+    # 11,001 vectors, already embedded. Pointing at them beats re-embedding
+    # 444 hours to move them somewhere tidier.
+    mcg_pinecone_index: str = "mcg-search"
+    mcg_namespace: str = "mcg"
     # Hard ceiling on a single Pinecone write. The SDK's HTTP client has no
     # read timeout, so a half-open socket (seen once: a write hung 2.5h with
     # the connection ESTABLISHED but dead) blocks forever. Bounding the write

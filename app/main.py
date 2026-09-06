@@ -229,6 +229,11 @@ async def _run_x_bot(app: FastAPI, settings) -> None:
         # show cannot answer. It never changes what a Market Bubble
         # question returns.
         elon_index=getattr(app.state, "elon", None),
+        # And the MCG archive, from its own Pinecone index. Routed by
+        # project name -- corpus_for reads the 341 names off the shipped
+        # episode index -- and the broadcast still wins every tie, so
+        # "what did ansem say about clawpump" stays on the show.
+        mcg_index=getattr(app.state, "mcg", None),
         daily_reply_cap=settings.x_bot_daily_reply_cap,
         per_thread_cap=settings.x_bot_per_thread_cap,
         include_links=settings.x_bot_include_links,
@@ -331,6 +336,19 @@ async def lifespan(app: FastAPI):
     except Exception as exc:                                    # noqa: BLE001
         logger.warning("the Musk archive did not start: %s", exc)
         app.state.elon = None
+
+    # The third corpus, in a Pinecone index of its own. Same reasoning as
+    # the Musk archive: built only when there is something to answer from,
+    # because an empty index that answers confidently is worse than a page
+    # saying it is not loaded.
+    try:
+        app.state.mcg = (PodcastIndex(ledger=app.state.usage,
+                                      namespace=_s.mcg_namespace,
+                                      index_name=_s.mcg_pinecone_index)
+                         if _mcg_episodes() else None)
+    except Exception as exc:                                    # noqa: BLE001
+        logger.warning("the MCG archive did not start: %s", exc)
+        app.state.mcg = None
 
     app.state.agent = ConciergeAgent(ledger=app.state.usage)
     app.state.clawpump_agent = ClawPumpAgent(ledger=app.state.usage)
@@ -1291,6 +1309,29 @@ async def podcast_episodes(
 # two-person interview split 48/44 with the clusters matching by content.
 
 ELON_NAMESPACE = "elon"
+MCG_INDEX = _ROOT / "data" / "mcg_index.json"
+_MCG_CACHE: list[dict] | None = None
+
+
+def _mcg_episodes() -> list[dict]:
+    """The MCG episode list: titles, dates, runtimes. Not the transcripts.
+
+    458 episodes of transcript is 31MB, and nothing here needs it — the
+    passages come back from Pinecone with their text attached, and the
+    only thing the API serves from disk is the listing. So the listing is
+    what ships: 97KB rather than ten megabytes of gzip in the image.
+    """
+    global _MCG_CACHE
+    if _MCG_CACHE is not None:
+        return _MCG_CACHE
+    try:
+        rows = json.loads(MCG_INDEX.read_text())
+        _MCG_CACHE = rows if isinstance(rows, list) else list(rows.values())
+        logger.info("loaded %d MCG episodes", len(_MCG_CACHE))
+    except Exception as exc:                                    # noqa: BLE001
+        logger.warning("could not load the MCG index: %s", exc)
+        _MCG_CACHE = []
+    return _MCG_CACHE
 _ELON_FILE = _ROOT / "data" / "elon_episodes.json"
 _ELON_CACHE: list[dict] | None = None
 

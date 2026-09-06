@@ -198,6 +198,56 @@ his endorsement of anything.
 7. Keep it tight and conversational — a couple of sentences plus the \
 citation, not an essay."""
 
+# MCG answers from its own prompt too, for the same reason the Musk
+# archive does: the first sentence tells the model what it is reading.
+#
+# The shape of this corpus is different from both the others and the
+# prompt says so. Market Bubble is one show talking about everything;
+# the Musk archive is one man across seven years. MCG is 458 interviews
+# where each episode is one project, so the useful answer to "what is
+# X" is concentrated in a single episode rather than scattered -- and
+# the failure to guard is the opposite of Market Bubble's: not confusing
+# two hosts, but confusing two projects that were on in different weeks.
+MCG_SYSTEM_PROMPT = """\
+You answer questions about the MCG podcast using ONLY the transcript \
+excerpts provided in <excerpts> tags. Each excerpt is tagged with its \
+episode, timestamp, and the date it was published. Excerpts are given \
+oldest first.
+
+Almost every episode is one interview with one project or person. So an \
+excerpt belongs to whatever that episode was about, and two excerpts from \
+different episodes are usually about different projects.
+
+Rules:
+1. Answer strictly from the excerpts. If they do not contain the answer, \
+say "I couldn't find that in the episodes I've indexed" — do not use \
+outside knowledge about any project, however well known, and do not \
+guess. Say it plainly, without explaining what the excerpts are instead.
+2. Cite the moment. Every line inside an excerpt begins with its own \
+timestamp in square brackets, like [16:16]. Cite the timestamp of the \
+line you actually used, NOT the `at` attribute on the excerpt — that is \
+only where the passage begins, and a passage runs minutes. Name the \
+episode too. NEVER write a URL or a Markdown link: you are not given the \
+addresses, so writing one means inventing it.
+3. Keep the projects apart. This is the failure that matters here. A \
+claim from one project's episode must never be attached to another's, \
+and a number — a raise, a valuation, a user count, a launch date — \
+belongs to the project whose episode it was said in. If two excerpts are \
+from different episodes, treat them as being about different things \
+unless the words themselves say otherwise.
+4. Say who is speaking only when the excerpt makes it plain. These are \
+interviews with a host and a guest and the transcripts carry no speaker \
+labels, so "the founder said" is safe where the episode establishes it \
+and a specific name is not, unless the excerpt says the name.
+5. Do not put words in anyone's mouth or invent quotes — paraphrase what \
+the excerpt actually says.
+6. This is an informational search tool, not investment advice. Never \
+relay a buy, sell or price call as a recommendation, even when a guest \
+made one on air, and never add one of your own.
+7. Keep it tight and conversational — a couple of sentences plus the \
+citation, not an essay."""
+
+
 SYSTEM_PROMPT = """\
 You answer questions about the "Market Bubble" podcast (hosted by Ansem and \
 FaZe Banks) using ONLY the transcript excerpts provided in <excerpts> tags. \
@@ -387,6 +437,41 @@ def _timestamp(seconds: float) -> str:
     return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
 
 
+def _stamped(md: dict) -> str:
+    """The passage with a timestamp on every line, however it was stored.
+
+    Two archives store this two ways. Market Bubble and the Musk
+    interviews keep a second copy of the text with "[12:34] " already in
+    front of each line. MCG keeps only the line start times -- about a
+    hundred bytes against a duplicate of the whole passage -- and rebuilds
+    the stamped copy when a model needs it. Fifty rerank candidates travel
+    on every query, so that duplicate was ~234KB a question.
+
+    Retrieval and reranking never read the stamped copy; only the answer
+    does. So rebuild it here rather than storing it twice.
+
+    Falls back to the plain text whenever the times are missing or do not
+    line up with the lines, which is what keeps vectors written before any
+    of this working.
+    """
+    if md.get("text_ts"):
+        return md["text_ts"]
+    text = md.get("text", "") or ""
+    times = md.get("line_times")
+    if not times:
+        return text
+    if isinstance(times, str):
+        try:
+            times = [float(x) for x in times.split(",") if x]
+        except ValueError:
+            return text
+    lines = text.split("\n")
+    if len(lines) != len(times):
+        return text
+    return "\n".join(f"[{_timestamp(t)}] {line}"
+                      for t, line in zip(times, lines, strict=True))
+
+
 def _deep_link(url: str, platform: str, seconds: float) -> str:
     sec = int(seconds)
     if platform == "youtube":
@@ -542,7 +627,8 @@ class PodcastIndex:
     # quietly stop contributing and nothing would say so.
     _namespace = NAMESPACE
 
-    def __init__(self, ledger=None, namespace: str | None = None) -> None:
+    def __init__(self, ledger=None, namespace: str | None = None,
+                 index_name: str | None = None) -> None:
         # Which corpus this instance answers from. The default is the Market
         # Bubble broadcast; a second archive passes its own namespace and
         # gets the same retrieval without sharing a single vector.
@@ -552,12 +638,22 @@ class PodcastIndex:
         # about Market Bubble sourced from a Tesla interview would prove it
         # does not know the difference.
         self._namespace = namespace or NAMESPACE
+        # Which Pinecone index, not just which namespace inside one. The
+        # MCG archive was built as its own service against its own index,
+        # 11,001 vectors already embedded and paid for, and its ingest
+        # refuses to run against the Market Bubble index at all. Pointing
+        # at it beats re-embedding 275 hours, and it means the strongest
+        # separation of the three corpora: Market Bubble and Musk share an
+        # index and are kept apart by namespace; MCG cannot reach them
+        # even by a namespace typo.
+        self._index_name = index_name
         # The prompt follows the corpus, because the first sentence of a
         # prompt tells the model what it is reading, and being told the
         # wrong thing is how Musk transcripts came back as "you're asking
         # about the Market Bubble podcast".
-        self._system_prompt = (ELON_SYSTEM_PROMPT
-                               if self._namespace == "elon" else SYSTEM_PROMPT)
+        self._system_prompt = {"elon": ELON_SYSTEM_PROMPT,
+                               "mcg": MCG_SYSTEM_PROMPT}.get(
+                                   self._namespace, SYSTEM_PROMPT)
         self._ledger = ledger
         settings = get_settings()
         self._settings = settings
@@ -625,7 +721,8 @@ class PodcastIndex:
         if self._index is None:
             self._index = Pinecone(
                 api_key=self._settings.pinecone_api_key
-            ).Index(self._settings.pinecone_index)
+            ).Index(getattr(self, "_index_name", None)
+                    or self._settings.pinecone_index)
         return self._index
 
     # -- ingestion ----------------------------------------------------------
@@ -780,7 +877,7 @@ class PodcastIndex:
                         md.get("url", ""), md.get("platform", "youtube"), start
                     ),
                     text=md.get("text", ""),
-                    text_ts=md.get("text_ts") or md.get("text", ""),
+                    text_ts=_stamped(md),
                     # Pinecone gives back whatever was stored; a list is
                     # what this writes, but a malformed row must not take
                     # a search down, so anything else becomes empty.
@@ -877,7 +974,7 @@ class PodcastIndex:
                     # Only the model reads this. It falls back to the plain
                     # text so vectors written before this existed still
                     # answer correctly, just with the old coarse citation.
-                    text_ts=md.get("text_ts") or md.get("text", ""),
+                    text_ts=_stamped(md),
                     # Pinecone gives back whatever was stored; a list is
                     # what this writes, but a malformed row must not take
                     # a search down, so anything else becomes empty.

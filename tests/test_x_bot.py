@@ -3827,3 +3827,78 @@ async def test_routing_reads_the_mention_not_the_parsed_question(tmp_path):
         author_verified=True, author_verified_type="blue"))
     assert show.asked, "a question about the show must stay on the broadcast"
     assert not musk.asked
+
+
+class TestTheThirdArchive:
+    """MCG routes by project name, and the broadcast still wins every tie.
+
+    There is no single word for this corpus the way "elon" works for the
+    Musk one: MCG is 458 interviews and almost every one is a different
+    project. The names are the signal and they are already written down --
+    each interview episode is titled "Ratspeak: An offline-capable,
+    encrypted mesh network" -- so they are read off the shipped index
+    rather than hardcoded, and a project that goes on the show next week
+    is routable as soon as its episode lands.
+    """
+
+    def _route(self, q):
+        from app.x_bot import corpus_for, _LEADING_HANDLES
+        return corpus_for(_LEADING_HANDLES.sub(" ", q))
+
+    def test_a_project_name_reaches_mcg(self):
+        assert self._route("@mbubbleSearch what is clawpump?") == "mcg"
+        assert self._route("@mbubbleSearch what did ratspeak build") == "mcg"
+        assert self._route("@mbubbleSearch tell me about metadao") == "mcg"
+
+    def test_the_broadcast_still_wins_every_tie(self):
+        # The asker wants Ansem's opinion. Ansem is not in the MCG archive,
+        # so answering from it would answer a different question.
+        assert self._route("@mbubbleSearch what did ansem say about clawpump") == "podcast"
+        assert self._route("@mbubbleSearch did banks mention metadao") == "podcast"
+
+    def test_musk_still_outranks_a_project_name(self):
+        assert self._route("@mbubbleSearch what did @elonmusk say about mars") == "elon"
+
+    def test_ordinary_words_that_happen_to_be_projects_do_not_route(self):
+        # "Earn", "Programmable" and "Yield" are real MCG projects and also
+        # ordinary English. Routing a broadcast question away on one of
+        # those is the failure the whole split exists to avoid.
+        assert self._route("@mbubbleSearch how do they earn on this") == "podcast"
+        assert self._route("@mbubbleSearch what about yield") == "podcast"
+
+    def test_names_come_from_the_shipped_index(self):
+        from app.x_bot import _MCG_NAMES
+        assert len(_MCG_NAMES) > 100, "project names should load from data/"
+        assert "clawpump" in _MCG_NAMES
+
+
+@pytest.mark.anyio
+async def test_an_unwired_archive_falls_back_to_the_broadcast(tmp_path):
+    """A deploy without the second or third index must behave as before.
+
+    Not raise inside the reply loop, and not search an index that is None.
+    """
+    from app.x_api import Mention
+    from app.x_bot import MentionBot
+
+    class Recorder:
+        def __init__(self): self.asked = []
+        async def search(self, q, **kw):
+            self.asked.append(q)
+            class R:
+                answer = "Around 20:56 in the 2018 conversation, he said it."
+                hits = []
+            return R()
+
+    class Client:
+        bot_user_id = "1"
+        async def post(self, *a, **k): raise AssertionError("no posting")
+
+    show = Recorder()
+    bot = MentionBot(Client(), show, post_limit=1500,
+                     state_path=tmp_path / "s.json")   # no elon, no mcg
+    await bot.compose(Mention(
+        id="1", text="@mbubbleSearch what is clawpump?", author_id="a",
+        conversation_id="1", author_verified=True,
+        author_verified_type="blue"))
+    assert show.asked, "with no MCG index the question must reach the show"

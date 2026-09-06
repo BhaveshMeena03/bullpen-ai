@@ -2605,6 +2605,58 @@ _OF_THE_MUSK_ARCHIVE = re.compile(
     r"|lex\s*fridman|lexfridman|joe\s*rogan|joerogan|jre)\b")
 
 
+# Things that are only in the MCG archive.
+#
+# MCG is 458 interviews and almost every one is a different project, so
+# there is no single name to match on the way "elon" works for the Musk
+# archive. The project names ARE the signal, and they are already written
+# down: every interview episode is titled "Ratspeak: An offline-capable,
+# encrypted mesh network", so the name is whatever precedes the colon.
+# The live-stream episodes are titled "LIVE: ..." and carry no project.
+#
+# Read from the shipped index rather than hardcoded, so a project that
+# goes on the show next week is routable the moment its episode lands.
+def _mcg_projects() -> set[str]:
+    path = Path(__file__).resolve().parent.parent / "data" / "mcg_index.json"
+    try:
+        rows = json.loads(path.read_text())
+    except Exception:                                   # noqa: BLE001
+        return set()
+    rows = rows if isinstance(rows, list) else list(rows.values())
+    names = set()
+    for row in rows:
+        title = (row.get("title") or "").strip()
+        if ":" not in title or "LIVE" in title[:12].upper():
+            continue
+        name = title.split(":", 1)[0].strip().strip("🔴 ").strip()
+        # Long enough to be a name rather than a word, and not a word the
+        # broadcast would use in passing. "Earn" and "Programmable" are
+        # real MCG projects and also ordinary English; routing a Market
+        # Bubble question away on one of those is the failure this whole
+        # split exists to avoid.
+        if len(name) < 4 or name.lower() in _TOO_ORDINARY:
+            continue
+        names.add(name.lower())
+    return names
+
+
+# Project names that are also just words. Matching these would send
+# ordinary broadcast questions to the wrong archive.
+_TOO_ORDINARY = {
+    "earn", "yield", "swap", "vault", "bridge", "stake", "trade", "flow",
+    "index", "market", "pump", "chain", "layer", "node", "block", "coin",
+    "token", "wallet", "agent", "agents", "protocol", "finance", "capital",
+    "programmable", "live", "update", "interviews", "crypto", "solana",
+}
+
+_MCG_NAMES = _mcg_projects()
+_OF_THE_MCG_ARCHIVE = re.compile(
+    r"(?i)\bmcg\b" + ("|" + "|".join(
+        r"\b" + re.escape(n) + r"\b" for n in sorted(_MCG_NAMES, key=len,
+                                                     reverse=True))
+        if _MCG_NAMES else ""))
+
+
 def corpus_for(question: str) -> str:
     """"podcast" or "elon" — which archive should answer this.
 
@@ -2626,6 +2678,8 @@ def corpus_for(question: str) -> str:
         return "podcast"
     if _OF_THE_MUSK_ARCHIVE.search(text):
         return "elon"
+    if _OF_THE_MCG_ARCHIVE.search(text):
+        return "mcg"
     return "podcast"
 
 
@@ -2647,6 +2701,7 @@ class MentionBot:
                  site: str | None = None,
                  token_label: str | None = None,
                  elon_index=None,
+                 mcg_index=None,
                  state_path: Path = STATE_PATH) -> None:
         self._client = client
         self._index = index
@@ -2655,6 +2710,10 @@ class MentionBot:
         # and a missing second archive must mean "answer from the show"
         # rather than an exception in the reply loop.
         self._elon_index = elon_index
+        # The MCG archive, in its own Pinecone index. Optional for the
+        # same reason: a deploy without it must answer from the broadcast
+        # rather than raise inside the reply loop.
+        self._mcg_index = mcg_index
         self.cap = daily_reply_cap
         self.include_links = include_links
         self._min_question = min_question_chars
@@ -3270,8 +3329,13 @@ class MentionBot:
         # otherwise be routed by whoever else was tagged. What the person
         # typed mid-sentence stays.
         routed_on = _LEADING_HANDLES.sub(" ", mention.text or "")
-        corpus = corpus_for(routed_on) if self._elon_index else "podcast"
-        index = self._elon_index if corpus == "elon" else self._index
+        corpus = corpus_for(routed_on)
+        # An archive that is not wired answers nothing; the question falls
+        # back to the broadcast rather than to an index that is None.
+        available = {"elon": self._elon_index, "mcg": self._mcg_index}
+        if corpus != "podcast" and not available.get(corpus):
+            corpus = "podcast"
+        index = available.get(corpus) or self._index
         if corpus != "podcast":
             logger.info("%s: answering from the %s archive", mention.id, corpus)
 
