@@ -12,6 +12,7 @@ import contextlib
 import gzip
 import json
 import logging
+import mimetypes
 import os
 import random
 import re
@@ -500,6 +501,16 @@ async def podcast_page(request: Request):
                   page, count=1)
     return HTMLResponse(page)
 
+
+# Python's mimetypes table does not know these on a slim Debian image, so
+# StaticFiles falls back to application/octet-stream. A .webp poster served
+# as a byte stream does not paint in every browser -- the Musk page's hero
+# poster shipped that way -- and a .webm served as one is at the mercy of
+# the client sniffing it. Registered before the mounts, which is when
+# StaticFiles reads the table.
+for _suffix, _type in ((".webp", "image/webp"), (".webm", "video/webm"),
+                       (".avif", "image/avif"), (".woff2", "font/woff2")):
+    mimetypes.add_type(_type, _suffix)
 
 app.mount("/widget", StaticFiles(directory=_ROOT / "widget"), name="widget")
 app.mount("/demo", StaticFiles(directory=_ROOT / "demo", html=True), name="demo")
