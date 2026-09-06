@@ -1449,6 +1449,85 @@ def _elon_payload(question: str, result) -> dict:
     return {"question": question, "answer": result.answer, "hits": hits}
 
 
+@app.get("/v1/mcg/archive", dependencies=[Depends(public_rate_limit)])
+async def mcg_archive() -> dict:
+    """What the MCG archive holds, for the readout the page opens with."""
+    episodes = _mcg_episodes()
+    if not episodes:
+        raise HTTPException(status_code=503, detail="unavailable")
+    dates = sorted(e.get("published_at", "") for e in episodes
+                   if e.get("published_at"))
+    return {
+        "episodes": len(episodes),
+        "hours": round(sum(float(e.get("seconds") or 0)
+                           for e in episodes) / 3600, 1),
+        "first": dates[0] if dates else "",
+        "last": dates[-1] if dates else "",
+    }
+
+
+@app.get("/v1/mcg/episodes", dependencies=[Depends(public_rate_limit)])
+async def mcg_episodes() -> list[dict]:
+    """The shelf. Newest first here -- 458 episodes is a list nobody reads
+    to the end of, so the useful end is the top."""
+    return sorted(
+        ({"episode_id": e.get("id", ""), "title": e.get("title", ""),
+          "url": e.get("url", ""),
+          "published_at": e.get("published_at", ""),
+          "seconds": int(float(e.get("seconds") or 0))}
+         for e in _mcg_episodes()),
+        key=lambda e: e["published_at"], reverse=True)
+
+
+@app.post("/v1/mcg/search",
+          dependencies=[Depends(public_rate_limit), Depends(global_rate_limit),
+                        Depends(daily_budget), Depends(per_client_daily)])
+async def mcg_search(
+    body: PodcastSearchRequest,
+    request: Request,
+    answers: AnswerCache = Depends(get_answers),
+) -> dict:
+    """Ask the MCG archive. Same engine, a third corpus, its own index."""
+    _track("mcg_searches", q=body.query[:120])
+    index = getattr(request.app.state, "mcg", None)
+    if index is None:
+        raise HTTPException(status_code=503, detail="The archive is not loaded.")
+
+    # Keyed by surface, like the others. Three archives sharing one cache
+    # would be the namespace failure arriving by a different road.
+    key = make_key(body.query, surface="mcg", top_k=body.top_k)
+    cached = answers.get(key)
+    if cached is not None:
+        per_client_daily.refund(request)
+        return _mcg_payload(body.query, cached)
+
+    try:
+        result = await index.search(body.query, top_k=body.top_k)
+    except anthropic.RateLimitError as exc:
+        raise HTTPException(status_code=429,
+                            detail="Rate limited; retry shortly.") from exc
+    except anthropic.APIError as exc:
+        logger.error("Anthropic error on the MCG archive: %s",
+                     type(exc).__name__)
+        raise HTTPException(status_code=502,
+                            detail="Model provider error.") from exc
+    answers.put(key, result)
+    return _mcg_payload(body.query, result)
+
+
+def _mcg_payload(question: str, result) -> dict:
+    """The shape the page renders. Same position bar as the Musk page --
+    these run to four hours, so a timestamp on its own says little."""
+    lengths = {e.get("id"): int(float(e.get("seconds") or 0))
+               for e in _mcg_episodes()}
+    hits = []
+    for hit in (result.hits or [])[:6]:
+        data = hit.model_dump() if hasattr(hit, "model_dump") else dict(hit)
+        data["episode_seconds"] = lengths.get(data.get("episode_id"), 0)
+        hits.append(data)
+    return {"question": question, "answer": result.answer, "hits": hits}
+
+
 # ─── clips ────────────────────────────────────────────────────────────────
 #
 # Half the archive is X broadcasts, and X cannot link to a timestamp. For
