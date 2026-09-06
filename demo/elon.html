@@ -116,7 +116,7 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
      It sits behind the text and is pushed off the right edge, which is
      what makes it read as a body in space rather than a circle on a page:
      you never see the whole thing. */
-  .orb{position:absolute;right:-16%;top:-40px;width:min(760px,86vw);
+  .orb{position:absolute;right:-26%;top:-72px;width:min(720px,80vw);
     aspect-ratio:1;pointer-events:none;z-index:0}
   .orb::before{content:"";position:absolute;inset:-18% -12% -6% -30%;
     background-image:
@@ -134,18 +134,21 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
        unlit body. The light comes from upper-left, so the lit crescent
        is on that edge and the sphere falls away to true black. */
     background-image:
-      radial-gradient(38% 30% at 30% 34%, rgba(226,142,74,.30), transparent 70%),
-      radial-gradient(26% 22% at 22% 62%, rgba(150,72,38,.34), transparent 70%),
-      radial-gradient(30% 26% at 44% 74%, rgba(198,110,60,.22), transparent 72%),
-      radial-gradient(20% 18% at 40% 20%, rgba(120,58,34,.30), transparent 70%),
-      radial-gradient(circle at 20% 32%,
-        #d97a3a 0%, #b8542a 18%, #8a3b1c 34%,
-        #4a1f10 52%, #24100a 66%, #0a0506 78%, #000 88%);
+      /* surface, only visible where the light already falls */
+      radial-gradient(22% 16% at 14% 40%, rgba(232,150,86,.22), transparent 72%),
+      radial-gradient(16% 13% at 9% 62%, rgba(150,72,38,.26), transparent 74%),
+      radial-gradient(14% 12% at 20% 26%, rgba(120,58,34,.24), transparent 74%),
+      /* The sun sits just OFF the disc, so what it lights is the limb and
+         nothing else. Centre the light inside the circle and you get a
+         glowing ball; put it outside and you get a crescent, which is the
+         thing that reads as a planet. */
+      radial-gradient(circle at -6% 44%,
+        #e08a48 0%, #c0602e 9%, #8e3f1e 17%,
+        #4d2111 26%, #23100a 36%, #0a0506 46%, #000 58%);
     box-shadow:
-      /* the atmosphere, only where the sun actually reaches */
-      inset 10px 10px 60px -30px rgba(255,190,140,.75),
-      /* and a breath of it outside the disc, on the same side */
-      -12px -10px 70px -40px rgba(217,122,58,.55)}
+      /* atmosphere, on the lit limb only */
+      inset 16px 0 44px -34px rgba(255,196,150,.85),
+      -16px 0 90px -56px rgba(217,122,58,.45)}
   @media (max-width:900px){
     .orb{right:-34%;top:10px;width:min(560px,96vw);opacity:.62}
   }
