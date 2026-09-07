@@ -55,6 +55,7 @@ from .clipper import (
 from .config import get_settings
 from .ingest import IngestionPipeline
 from .podcast import REFUSAL_ANSWER as PODCAST_REFUSAL
+from .podcast import inference_routes
 from .podcast import PodcastIndex
 from .questions import QuestionLog
 from .retriever import Retriever
@@ -1042,7 +1043,10 @@ async def stats() -> dict:
     """
     return {**STATS, "daily_budget": daily_budget.state(),
             "per_client": per_client_daily.state(),
-            "answer_cache": app.state.answers.state()}
+            "answer_cache": app.state.answers.state(),
+            # Which endpoint served the answers, so "this runs on usepod"
+            # is checkable rather than asserted.
+            "inference": inference_routes()}
 
 
 @app.get("/v1/gaps", dependencies=[Depends(require_admin)])

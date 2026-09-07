@@ -86,6 +86,32 @@ _SENTENCE_BREAK = re.compile(r"[.!?]\s")
 # does.
 _EXACT_MATCH_CAP = 8
 
+# Which endpoint actually served each answer.
+#
+# The proxy is configured by an environment variable and falls back
+# silently when it fails, which is the right behaviour for a visitor and a
+# terrible property for a claim: "we run on usepod" is unfalsifiable from
+# the outside, and unknowable from the inside too. A dead token or an empty
+# balance would route every answer back to Anthropic and nothing would look
+# wrong.
+#
+# Counted per process, exposed on /v1/stats, and reset by a restart like
+# every other counter there. The ANALYTICS lines remain the durable record.
+INFERENCE_ROUTES: dict[str, int] = {"proxy": 0, "direct": 0, "fallback": 0}
+
+
+def _served(route: str) -> None:
+    INFERENCE_ROUTES[route] = INFERENCE_ROUTES.get(route, 0) + 1
+
+
+def inference_routes() -> dict:
+    """Answers served by each endpoint, and the proxy's share of them."""
+    total = sum(INFERENCE_ROUTES.values())
+    return {**INFERENCE_ROUTES, "total": total,
+            "proxy_share": round(INFERENCE_ROUTES["proxy"] / total, 3)
+            if total else None}
+
+
 REFUSAL_ANSWER = ("I can't help with that one — try asking about "
                   "something discussed on the show.")
 
@@ -712,9 +738,11 @@ class PodcastIndex:
         settings = get_settings()
         self._settings = settings
         self._voyage = voyageai.AsyncClient(api_key=settings.voyage_api_key)
-        # Direct unless ANTHROPIC_BASE_URL names somewhere else. Only this
-        # surface reads it: the concierge answers Bullpen support questions
-        # and is not routed through a third party's account.
+        # Direct unless ANTHROPIC_BASE_URL names somewhere else. This used
+        # to be the only surface that read it, which meant a service
+        # configured to use a proxy still sent the concierge, the summaries
+        # and the twice-daily sync to Anthropic. They all share the factory
+        # now.
         self._anthropic = AsyncAnthropic(**anthropic_client_kwargs(settings))
         # Anthropic direct, held ready, and only when the line above is NOT
         # already that. A proxy can run out of balance, get its token
@@ -1233,6 +1261,7 @@ class PodcastIndex:
             response = await primary.with_options(
                 timeout=self._settings.search_timeout_seconds
             ).beta.messages.create(**request)
+            _served("proxy" if self._fallback is not None else "direct")
         except Exception as exc:                              # noqa: BLE001
             if not can_fall_back:
                 raise
@@ -1240,6 +1269,7 @@ class PodcastIndex:
             response = await self._fallback.with_options(
                 timeout=self._settings.search_timeout_seconds
             ).beta.messages.create(**request)
+            _served("fallback")
         self._record(response.model, response.usage)
         if response.stop_reason == "refusal":
             return PodcastSearchResponse(
@@ -1306,6 +1336,7 @@ class PodcastIndex:
                 timeout=self._settings.search_timeout_seconds
             ).beta.messages.stream(**request)
             entered = await opener.__aenter__()
+            _served("proxy" if self._fallback is not None else "direct")
         except Exception as exc:                              # noqa: BLE001
             if not can_fall_back:
                 raise
@@ -1314,6 +1345,7 @@ class PodcastIndex:
                 timeout=self._settings.search_timeout_seconds
             ).beta.messages.stream(**request)
             entered = await opener.__aenter__()
+            _served("fallback")
 
         opening = ""
         decided = False        # have we judged the opening yet?
