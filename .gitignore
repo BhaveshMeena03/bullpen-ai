@@ -43,3 +43,5 @@ audio/
 data/speakers/
 .claude/
 data/sweeps/
+.pytest_cache/
+audio
