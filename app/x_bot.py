@@ -2751,6 +2751,26 @@ def corpus_for(question: str) -> str:
     return "podcast"
 
 
+def routed_on_evidence(question: str) -> bool:
+    """Did anything in the question actually choose an archive?
+
+    corpus_for returns "podcast" twice over: once because the question
+    names the show, and once because nothing named anything and the
+    broadcast is the default. Those are not the same answer, and only the
+    second one is a guess.
+
+    Told apart because a miss should be rescued in one case and not the
+    other. Someone who says "elon" and gets nothing has been answered:
+    it is not in the Musk archive, and going to look in MCG would be
+    answering a question nobody asked. Someone who named no archive at
+    all has been answered from a shelf picked for them.
+    """
+    text = _OWN_HANDLE.sub(" ", question or "")
+    return bool(_OF_THE_SHOW.search(text)
+                or _OF_THE_MUSK_ARCHIVE.search(text)
+                or _OF_THE_MCG_ARCHIVE.search(text))
+
+
 class MentionBot:
     """One poll cycle, with the caps that keep a bug from becoming a bill."""
 
@@ -3424,6 +3444,41 @@ class MentionBot:
                 asked, instruction=reply_style(self._post_limit))
             if not is_a_miss(retry.answer):
                 result = retry
+
+        # Still nothing, and nothing in the question chose this archive.
+        #
+        # Three archives are three shelves, and the router picks one from
+        # words in the mention. With no such word it picks the broadcast,
+        # which is the right default and the wrong answer whenever the
+        # thing asked about lives elsewhere: "how much mass does mars need
+        # to be self sustaining" went to Market Bubble and came back
+        # empty, while the Musk archive holds a million tons and the
+        # figure he gave for it.
+        #
+        # A person watching that does not conclude the router mis-picked.
+        # They conclude the thing does not work.
+        #
+        # So a miss on a question that named no archive is asked of the
+        # others before it is reported as a miss. A question that DID name
+        # one is left alone -- "what did elon say about X" with no answer
+        # in the Musk archive has been answered, and going to look in MCG
+        # would be answering something nobody asked.
+        #
+        # Costs one retrieval per rescued question, on misses only.
+        if (is_a_miss(result.answer) and not salvage(result.answer)
+                and not routed_on_evidence(routed_on)):
+            for name, other in available.items():
+                if other is None or other is index:
+                    continue
+                logger.info("%s: nothing in the broadcast — trying %s",
+                            mention.id, name)
+                elsewhere = await other.search(
+                    asked, instruction=reply_style(self._post_limit))
+                if not is_a_miss(elsewhere.answer):
+                    logger.info("%s: answered from the %s archive instead",
+                                mention.id, name)
+                    result, corpus, index = elsewhere, name, other
+                    break
 
         # Never name the wrong host. Seven prompt rules aim at this and
         # two replies in a hundred still credit a quote to whoever the
