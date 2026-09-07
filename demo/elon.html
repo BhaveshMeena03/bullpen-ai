@@ -481,14 +481,13 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
       .replace(/\n/g, "<br>");
   }
 
-  function render(data){
-    $("answer-body").innerHTML = (data.answer || "")
+  function answerText(text){
+    $("answer-body").innerHTML = (text || "")
       .split(/\n{2,}/).map(function(p){ return "<p>" + rich(p) + "</p>"; }).join("");
-    $("answer-head").textContent = data.question ? '"' + data.question + '"' : "answer";
+  }
 
-    var hits = data.hits || [];
-    citeTimestamps(hits);
-    $("moments").innerHTML = hits.slice(0, 4).map(function(h){
+  function renderMoments(hits){
+    $("moments").innerHTML = (hits || []).slice(0, 4).map(function(h){
       var at = h.start_seconds || 0;
       var total = h.episode_seconds || 0;
       // Where this sits in the whole recording. A timestamp on its own says
@@ -508,32 +507,102 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
         + (h.text ? '<p class="said">' + esc(h.text.slice(0, 320)) + "</p>" : "")
         + bar + '<div class="player"></div></div>';
     }).join("");
+  }
 
+  function render(data){
+    answerText(data.answer);
+    $("answer-head").textContent = data.question ? '"' + data.question + '"' : "answer";
+    var hits = data.hits || [];
+    citeTimestamps(hits);
+    renderMoments(hits);
     $("answer").classList.add("on");
   }
 
+  // Stream, with the blocking endpoint kept as the fallback.
+  //
+  // Retrieval finishes in well under a second; the answer takes another
+  // four to eight. Waiting for both meant the page sat on a spinner with
+  // nothing to look at, which reads as broken rather than busy. The
+  // passages arrive first now and the answer types in underneath them.
+  //
+  // Timestamps in the answer are only linked once the text is final.
+  // citeTimestamps rewrites the body's innerHTML, and running it against a
+  // half-written sentence would linkify "2:1" the moment it appears and
+  // then have to unpick it when the rest of "2:19:42" lands.
+  //
+  // The fallback fires only when nothing was drawn. Once passages or text
+  // are on screen, re-running the blocking search would either repeat what
+  // the reader already has or splice two different answers together, and a
+  // visible failure beats a quiet lie.
   function ask(question){
     if (!question) return;
     $("working").classList.add("on");
     $("answer").classList.remove("on");
     $("go").disabled = true;
-    fetch(API + "/v1/elon/search", {
+
+    var acc = "", hits = [], drew = false;
+    var done = function(){
+      $("working").classList.remove("on");
+      $("go").disabled = false;
+    };
+    var blocking = function(){
+      return fetch(API + "/v1/elon/search", {
+        method: "POST",
+        headers: {"content-type": "application/json"},
+        body: JSON.stringify({query: question})
+      }).then(function(r){ return r.json(); }).then(function(data){
+        render(data);
+      });
+    };
+
+    fetch(API + "/v1/elon/search/stream", {
       method: "POST",
       headers: {"content-type": "application/json"},
       body: JSON.stringify({query: question})
-    })
-      .then(function(r){ return r.json(); })
-      .then(function(data){ render(data); })
-      .catch(function(){
+    }).then(function(res){
+      if (!res.ok || !res.body) throw new Error("stream " + res.status);
+      var reader = res.body.getReader(), dec = new TextDecoder(), buf = "";
+      function frame(chunk){
+        var ev = "message", data = "";
+        chunk.split("\n").forEach(function(ln){
+          if (ln.indexOf("event:") === 0) ev = ln.slice(6).trim();
+          else if (ln.indexOf("data:") === 0) data += ln.slice(5).trim();
+        });
+        if (!data) return;
+        var p; try { p = JSON.parse(data); } catch (e) { return; }
+        if (ev === "hits") {
+          hits = p || [];
+          $("answer-head").textContent = '"' + question + '"';
+          answerText("");
+          renderMoments(hits);
+          $("working").classList.remove("on");
+          $("answer").classList.add("on");
+          drew = true;
+        } else if (ev === "error") {
+          if (!drew) throw new Error("stream failed");
+        } else if (p.text) {
+          acc += p.text; answerText(acc); drew = true;
+        }
+      }
+      function pump(){
+        return reader.read().then(function(step){
+          if (step.done) { citeTimestamps(hits); return; }
+          buf += dec.decode(step.value, {stream: true});
+          var frames = buf.split("\n\n"); buf = frames.pop();
+          frames.forEach(frame);
+          return pump();
+        });
+      }
+      return pump();
+    }).catch(function(){
+      if (drew) return;
+      return blocking().catch(function(){
         $("answer-body").innerHTML =
           "<p>The archive did not answer that time. Try again in a moment.</p>";
         $("moments").innerHTML = "";
         $("answer").classList.add("on");
-      })
-      .then(function(){
-        $("working").classList.remove("on");
-        $("go").disabled = false;
       });
+    }).then(done, done);
   }
 
   // Load the planet only where it is worth its bytes: a wide screen, and

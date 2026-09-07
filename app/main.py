@@ -1593,6 +1593,88 @@ def _mcg_payload(question: str, result) -> dict:
     return {"question": question, "answer": result.answer, "hits": hits}
 
 
+# ─── streaming, for the two younger archives ──────────────────────────────
+#
+# The podcast page has streamed since the SSE endpoint above was written;
+# these two shipped later and never got it, so a first-time visitor to
+# /elon or /mcg watched a spinner for four to eight seconds with nothing
+# on screen. The passages are ready long before the answer is, and showing
+# them is the difference between a page that looks slow and one that looks
+# like it is working.
+#
+# One generator rather than two: the archives differ only in which index
+# answers and how long its recordings run. The hits they emit carry
+# episode_seconds like the blocking payloads do, because both pages draw a
+# position bar from it -- a timestamp says little about a conversation that
+# runs eight and a half hours.
+#
+# Nothing here reads or writes the answer cache, matching the podcast
+# stream. A cached answer has no deltas to replay, and half-streaming a
+# stored string to fake it would be theatre. The cost is that a repeated
+# question on these two pages pays again; the blocking endpoints still
+# serve the cache, and the fallback path below still reaches them.
+def _archive_stream(index, query: str, top_k, lengths: dict):
+    async def event_source():
+        hits = await index.retrieve(query, top_k)
+        enriched = []
+        for hit in (hits or [])[:6]:
+            data = hit.model_dump() if hasattr(hit, "model_dump") else dict(hit)
+            data["episode_seconds"] = lengths.get(data.get("episode_id"), 0)
+            enriched.append(data)
+        yield f"event: hits\ndata: {json.dumps(enriched)}\n\n"
+        try:
+            async for delta in index.answer_stream(query, hits):
+                if delta == "\x00REFUSAL\x00":
+                    refusal = json.dumps({"text": PODCAST_REFUSAL})
+                    yield f"event: refusal\ndata: {refusal}\n\n"
+                    return
+                yield f"data: {json.dumps({'text': delta})}\n\n"
+            yield "event: done\ndata: {}\n\n"
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:                              # noqa: BLE001
+            logger.exception("Archive stream failure: %s", exc)
+            yield ("event: error\ndata: "
+                   + json.dumps({"detail": "stream failed"}) + "\n\n")
+
+    return StreamingResponse(
+        event_source(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.post("/v1/elon/search/stream",
+          dependencies=[Depends(public_rate_limit), Depends(global_rate_limit),
+                        Depends(daily_budget), Depends(per_client_daily)])
+async def elon_search_stream(
+    body: PodcastSearchRequest, request: Request,
+) -> StreamingResponse:
+    """SSE variant of the Musk search: passages first, answer after."""
+    _track("elon_searches", q=body.query[:120], stream=True)
+    index = getattr(request.app.state, "elon", None)
+    if index is None:
+        raise HTTPException(status_code=503, detail="The archive is not loaded.")
+    lengths = {e["episode_id"]: int(_runtime(e)) for e in _elon_episodes()}
+    return _archive_stream(index, body.query, body.top_k, lengths)
+
+
+@app.post("/v1/mcg/search/stream",
+          dependencies=[Depends(public_rate_limit), Depends(global_rate_limit),
+                        Depends(daily_budget), Depends(per_client_daily)])
+async def mcg_search_stream(
+    body: PodcastSearchRequest, request: Request,
+) -> StreamingResponse:
+    """SSE variant of the MCG search."""
+    _track("mcg_searches", q=body.query[:120], stream=True)
+    index = getattr(request.app.state, "mcg", None)
+    if index is None:
+        raise HTTPException(status_code=503, detail="The archive is not loaded.")
+    lengths = {e.get("id"): int(float(e.get("seconds") or 0))
+               for e in _mcg_episodes()}
+    return _archive_stream(index, body.query, body.top_k, lengths)
+
+
 # ─── clips ────────────────────────────────────────────────────────────────
 #
 # Half the archive is X broadcasts, and X cannot link to a timestamp. For

@@ -515,15 +515,20 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
       .replace(/\n/g, "<br>");
   }
 
-  function render(data){
-    $("answer-body").innerHTML = (data.answer || "")
+  function answerText(text){
+    $("answer-body").innerHTML = (text || "")
       .split(/\n{2,}/).map(function(p){ return "<p>" + rich(p) + "</p>"; }).join("");
-    $("answer-head").textContent = data.question ? '"' + data.question + '"' : "answer";
+  }
 
-    var hits = data.hits || [];
-    citeTimestamps(hits);
+  // Shown once a real answer is on screen: the worked example was standing
+  // in for one, and stops earning its space the moment there is one below.
+  function hideExample(){
+    var eg = $("eg");
+    if (eg) eg.style.display = "none";
+  }
 
-    $("moments").innerHTML = hits.slice(0, 4).map(function(h){
+  function renderMoments(hits){
+    $("moments").innerHTML = (hits || []).slice(0, 4).map(function(h){
       var at = h.start_seconds || 0;
       var total = h.episode_seconds || 0;
       var pct = total ? Math.min(100, Math.max(0, at / total * 100)) : null;
@@ -538,38 +543,93 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
         + (h.text ? '<p class="said">' + esc(h.text.slice(0, 300)) + "</p>" : "")
         + bar + '<div class="player"></div></div>';
     }).join("");
-
-    $("answer").classList.add("on");
-    // The example was there to show what an answer looks like. There is
-    // now a real one directly below it, so it stops earning its space.
-    var eg = $("eg");
-    if (eg) eg.style.display = "none";
   }
 
+  function render(data){
+    answerText(data.answer);
+    $("answer-head").textContent = data.question ? '"' + data.question + '"' : "answer";
+    var hits = data.hits || [];
+    citeTimestamps(hits);
+    renderMoments(hits);
+    $("answer").classList.add("on");
+    hideExample();
+  }
+
+  // Stream, with the blocking endpoint kept as the fallback. Same shape as
+  // the Musk page: passages land in under a second, the answer takes four
+  // to eight more, and holding both back left the reader watching a
+  // spinner. Timestamps are linked only once the text is final, because
+  // citeTimestamps rewrites the body and a half-written "2:1" would be
+  // linkified and then have to be unpicked. The fallback fires only if
+  // nothing was drawn -- re-running the search after text is on screen
+  // would splice two answers together.
   function ask(question){
     if (!question) return;
     $("working").classList.add("on");
     $("answer").classList.remove("on");
     $("go").disabled = true;
-    fetch(API + "/v1/mcg/search", {
+
+    var acc = "", hits = [], drew = false;
+    var done = function(){
+      $("working").classList.remove("on");
+      $("go").disabled = false;
+    };
+
+    fetch(API + "/v1/mcg/search/stream", {
       method: "POST",
       headers: {"content-type": "application/json"},
       body: JSON.stringify({query: question})
-    })
-      .then(function(r){
+    }).then(function(res){
+      if (!res.ok || !res.body) throw new Error("stream " + res.status);
+      var reader = res.body.getReader(), dec = new TextDecoder(), buf = "";
+      function frame(chunk){
+        var ev = "message", data = "";
+        chunk.split("\n").forEach(function(ln){
+          if (ln.indexOf("event:") === 0) ev = ln.slice(6).trim();
+          else if (ln.indexOf("data:") === 0) data += ln.slice(5).trim();
+        });
+        if (!data) return;
+        var p; try { p = JSON.parse(data); } catch (e) { return; }
+        if (ev === "hits") {
+          hits = p || [];
+          $("answer-head").textContent = '"' + question + '"';
+          answerText("");
+          renderMoments(hits);
+          $("working").classList.remove("on");
+          $("answer").classList.add("on");
+          hideExample();
+          drew = true;
+        } else if (ev === "error") {
+          if (!drew) throw new Error("stream failed");
+        } else if (p.text) {
+          acc += p.text; answerText(acc); drew = true;
+        }
+      }
+      function pump(){
+        return reader.read().then(function(step){
+          if (step.done) { citeTimestamps(hits); return; }
+          buf += dec.decode(step.value, {stream: true});
+          var frames = buf.split("\n\n"); buf = frames.pop();
+          frames.forEach(frame);
+          return pump();
+        });
+      }
+      return pump();
+    }).catch(function(){
+      if (drew) return;
+      return fetch(API + "/v1/mcg/search", {
+        method: "POST",
+        headers: {"content-type": "application/json"},
+        body: JSON.stringify({query: question})
+      }).then(function(r){
         if (!r.ok) throw new Error("search " + r.status);
         return r.json();
-      })
-      .then(function(data){ render(data); })
-      .catch(function(){
+      }).then(function(data){ render(data); }).catch(function(){
         $("answer-body").innerHTML = "<p>Search hiccuped — try again.</p>";
         $("answer-head").textContent = "error";
         $("answer").classList.add("on");
-      })
-      .finally(function(){
-        $("working").classList.remove("on");
-        $("go").disabled = false;
       });
+    }).then(done, done);
   }
 
   // A citation you have to leave the page to check is a citation most
