@@ -27,7 +27,7 @@ from collections.abc import AsyncIterator
 
 from anthropic import AsyncAnthropic
 
-from .config import get_settings
+from .config import anthropic_client_kwargs, get_settings
 from .schemas import ChatResponse, ChatTurn, RetrievedChunk
 
 logger = logging.getLogger(__name__)
@@ -215,7 +215,12 @@ class ConciergeAgent:
     def __init__(self, ledger=None) -> None:
         settings = get_settings()
         self._settings = settings
-        self._client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+        # Through the proxy when one is configured, like the podcast
+        # index. Built its own direct client for a long time, which
+        # meant every concierge answer went to Anthropic however
+        # ANTHROPIC_BASE_URL was set -- and made "we run on usepod"
+        # true of one surface rather than of the service.
+        self._client = AsyncAnthropic(**anthropic_client_kwargs(settings))
         # Optional so tests and scripts can build an agent without one.
         self._ledger = ledger
 

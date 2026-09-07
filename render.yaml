@@ -25,6 +25,15 @@ services:
     envVars:
       - key: ANTHROPIC_API_KEY
         sync: false
+      # The usepod proxy URL carries its auth token in the path, so the
+      # value belongs in the dashboard and never in this file.
+      #
+      # Declared here anyway, as a stub. It was set in the dashboard and
+      # absent from the blueprint, and a blueprint sync can prune what the
+      # file does not know about -- which would route every answer back to
+      # Anthropic without anything failing or anyone noticing.
+      - key: ANTHROPIC_BASE_URL
+        sync: false
       - key: VOYAGE_API_KEY
         sync: false
       - key: PINECONE_API_KEY

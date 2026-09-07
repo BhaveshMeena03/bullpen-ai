@@ -29,7 +29,8 @@ from anthropic import AsyncAnthropic  # noqa: E402
 
 from app.announce import announce  # noqa: E402
 from app.assets_store import AssetStore  # noqa: E402
-from app.config import get_settings  # noqa: E402
+from app.config import (anthropic_client_kwargs,  # noqa: E402
+                        get_settings)
 from app.episode_store import merge as merge_episodes  # noqa: E402
 from app.podcast import PodcastIndex  # noqa: E402
 from app.schemas import Episode  # noqa: E402
@@ -199,7 +200,12 @@ async def main(argv: list[str]) -> int:
     podcast = PodcastIndex()
     summaries = SummaryStore()
     asset_store = AssetStore()
-    anthropic_client = AsyncAnthropic(api_key=get_settings().anthropic_api_key)
+    # Twice a day, every day, so this is the largest recurring model
+    # spend in the project. It goes through the proxy when one is
+    # configured; with no ANTHROPIC_BASE_URL set the factory returns
+    # a plain direct client, so CI without the secret still works.
+    anthropic_client = AsyncAnthropic(
+        **anthropic_client_kwargs(get_settings()))
 
     # data/episodes.json is the fast path, but it is gitignored and so absent
     # on a fresh checkout: a scheduled run would see zero indexed episodes and

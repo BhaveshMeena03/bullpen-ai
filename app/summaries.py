@@ -15,7 +15,7 @@ import logging
 from anthropic import AsyncAnthropic
 from pinecone import Pinecone
 
-from .config import get_settings
+from .config import anthropic_client_kwargs, get_settings
 from .schemas import Episode
 
 logger = logging.getLogger(__name__)
@@ -109,7 +109,9 @@ class SummaryStore:
     def __init__(self) -> None:
         settings = get_settings()
         self._settings = settings
-        self._anthropic = AsyncAnthropic(api_key=settings.anthropic_api_key)
+        # Proxied when ANTHROPIC_BASE_URL is set, same as everything
+        # else that spends money on a model.
+        self._anthropic = AsyncAnthropic(**anthropic_client_kwargs(settings))
         self._index = None
 
     @property
