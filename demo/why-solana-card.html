@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<!-- Source for the "why solana" post image (1600x720).
+     Re-render after edits: node scripts/make_card.mjs why-solana 1600 600
+
+     One quote, not three. The first draft of this card carried three
+     "why solana" answers, until checking the sources showed all three came
+     from the same founder across two Pumpcade episodes. Three quotes from
+     one person arranged to look like a consensus is the kind of thing this
+     archive exists to catch, so the card says what is actually true: one
+     builder, one answer, one timestamp.
+
+     Solana's own purple and green sit under the quote rather than over it.
+     The card is evidence about Solana, not a Solana advertisement, and it
+     should not cosplay as one. -->
+<html><head><meta charset="utf-8"><style>
+  @font-face{font-family:Inter;src:url("fonts/Inter-Variable.ttf");
+    font-weight:100 900}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{width:1600px;height:600px;background:#0b0e11;color:#e6e8ea;
+    font-family:Inter,-apple-system,sans-serif;position:relative;
+    overflow:hidden;padding:58px 74px 48px;display:flex;flex-direction:column}
+
+  /* Solana's gradient, kept to a wash in the corner. */
+  .glow{position:absolute;right:-240px;top:-260px;width:900px;height:760px;
+    border-radius:50%;
+    background:radial-gradient(circle,#9945ff2e,transparent 68%)}
+  .glow.b{left:-260px;right:auto;top:auto;bottom:-320px;width:820px;
+    height:700px;background:radial-gradient(circle,#14f19533,transparent 68%)}
+
+  .top{position:relative;display:flex;align-items:baseline;
+    justify-content:space-between;gap:30px;
+    font-size:15px;font-weight:600;letter-spacing:.26em;
+    text-transform:uppercase;color:#8a939e;margin-bottom:auto}
+  .top .ask{color:#14f195}
+
+  .quote{position:relative;font-size:44px;font-weight:700;line-height:1.24;
+    letter-spacing:-.02em;margin:30px 0 26px;max-width:26ch}
+  .quote em{font-style:normal;color:#14f195}
+
+  .src{position:relative;display:flex;align-items:flex-end;
+    justify-content:space-between;gap:40px;
+    border-top:1px solid #232a33;padding-top:24px;margin-top:auto}
+  .who{font-size:20px;color:#8a939e;line-height:1.5}
+  .who b{display:block;color:#e6e8ea;font-size:23px;font-weight:600;
+    margin-bottom:4px}
+  .at{text-align:right;font-size:17px;color:#5d6771;line-height:1.6}
+  .at b{display:block;color:#14f195;font-size:30px;font-weight:700;
+    font-variant-numeric:tabular-nums}
+</style></head><body>
+  <div class="glow"></div>
+  <div class="glow b"></div>
+
+  <div class="top">
+    <div>458 mcg interviews &middot; 444 hours</div>
+    <div class="ask">asked: why solana?</div>
+  </div>
+
+  <div class="quote">&ldquo;i built on ETH for eight years and <em>never
+    once</em> did anyone talk to me from the Ethereum Foundation. meanwhile,
+    we could have back-to-back interviews with Solana.&rdquo;</div>
+
+  <div class="src">
+    <div class="who"><b>the Pumpcade founder</b>
+      &ldquo;A Look into the Cade Cup by Pumpcade&rdquo;
+      &middot; 6 july 2026</div>
+    <div class="at">found at<b>21:17</b>search.lexthedev.com/mcg</div>
+  </div>
+</body></html>

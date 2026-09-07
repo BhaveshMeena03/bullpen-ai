@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<!-- Source for the "one question, three archives" post image (1600x900).
+     Re-render after edits: node scripts/make_three_card.mjs
+
+     Each column wears the colour of the page it came from -- the broadcast
+     green, the Musk crimson, the MCG mint -- so the card reads as three
+     separate things answering at once rather than one thing in three
+     columns. That is the whole claim of the post.
+
+     Every quote here was pulled from the live index and checked against the
+     passage it came from, including the episode name and the timestamp. A
+     card circulates on its own, without the thread that explains it, so a
+     wrong minute on one of these is worse than a wrong minute in a reply. -->
+<html><head><meta charset="utf-8"><style>
+  @font-face{font-family:Inter;src:url("fonts/Inter-Variable.ttf");
+    font-weight:100 900}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{width:1600px;height:760px;background:#0b0e11;color:#e6e8ea;
+    font-family:Inter,-apple-system,sans-serif;position:relative;
+    overflow:hidden;padding:64px 70px 54px;display:flex;flex-direction:column}
+
+  .glow{position:absolute;left:50%;top:-300px;width:1300px;height:700px;
+    transform:translateX(-50%);border-radius:50%;
+    background:radial-gradient(circle,#16c78420,transparent 70%)}
+
+  .eyebrow{position:relative;font-size:15px;font-weight:600;
+    letter-spacing:.3em;text-transform:uppercase;color:#8a939e;
+    margin-bottom:22px}
+
+  /* The site's search field, so the card looks like the thing it is about. */
+  .box{position:relative;display:flex;align-items:center;gap:18px;
+    background:#12161c;border:2px solid #16c784;border-radius:16px;
+    padding:30px 34px;margin-bottom:54px}
+  .box .caret{color:#16c784;font-size:30px;font-weight:700}
+  .box .q{font-size:38px;font-weight:600;letter-spacing:-.01em}
+
+  .cols{position:relative;display:grid;grid-template-columns:repeat(3,1fr);
+    gap:42px;align-items:start}
+  .c{display:flex;flex-direction:column;padding-top:26px;
+    border-top:3px solid var(--k)}
+  .who{font-size:16px;font-weight:700;letter-spacing:.2em;
+    text-transform:uppercase;color:var(--k);margin-bottom:20px}
+  .quote{font-size:30px;line-height:1.44}
+  .src{margin-top:26px;font-size:17px;color:#8a939e;line-height:1.5}
+  .src b{display:block;color:#e6e8ea;font-weight:600;
+    font-variant-numeric:tabular-nums;font-size:21px;margin-top:5px}
+
+  .foot{position:relative;margin-top:auto;display:flex;
+    justify-content:space-between;align-items:baseline;
+    border-top:1px solid #232a33;padding-top:22px;
+    font-size:18px;color:#5d6771}
+  .foot b{color:#16c784;font-weight:600}
+</style></head><body>
+  <div class="glow"></div>
+  <div class="eyebrow">one question &middot; three archives</div>
+
+  <div class="box">
+    <div class="caret">&rsaquo;</div>
+    <div class="q">what does it take to make it when you&rsquo;re starting
+      with nothing</div>
+  </div>
+
+  <div class="cols">
+    <div class="c" style="--k:#16c784">
+      <div class="who">Market Bubble</div>
+      <div class="quote">&ldquo;it&rsquo;s unfortunate seeing the cope
+        sometimes &hellip; people overcomplicate this shit or just find any
+        excuse to accept the fact that they are not giving it their all.&rdquo;</div>
+      <div class="src">faze banks &middot; episode 18<b>1:03:55</b></div>
+    </div>
+    <div class="c" style="--k:#d93a4f">
+      <div class="who">Elon Musk</div>
+      <div class="quote">&ldquo;quitting is not even like&hellip; it&rsquo;s not in my
+        nature. i don&rsquo;t care about optimism or pessimism. we&rsquo;re
+        going to get it done.&rdquo;</div>
+      <div class="src">lex fridman #252 &middot; 2021<b>17:38</b></div>
+    </div>
+    <div class="c" style="--k:#6ecf9e">
+      <div class="who">MCG Live</div>
+      <div class="quote">&ldquo;i can spend like 12 months without any money.
+        and in those 12 months, i&rsquo;m talented. i&rsquo;ll find a way to
+        get everything to work.&rdquo;</div>
+      <div class="src">the $KARMA founder<b>38:12</b></div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <div>18 broadcast episodes &middot; 11 elon interviews &middot; 458 mcg
+      episodes</div>
+    <div><b>search.lexthedev.com</b></div>
+  </div>
+</body></html>

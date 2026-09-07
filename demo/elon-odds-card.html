@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<!-- Source for the "he revised the odds" post image (1600x760).
+     Re-render after edits: node scripts/make_card.mjs elon-odds 1600 600
+
+     Crimson from demo/elon.html, so the card belongs to the Musk page
+     rather than to the broadcast.
+
+     This is an arc, not a gotcha, and the layout has to carry that: the
+     2024 cell is not evidence against the 2025 cell, it is the earlier
+     reading of the same instrument. The third cell is him saying so
+     himself, which is the only reason the first two are worth printing.
+
+     Every line checked against the raw transcript in
+     data/elon_episodes.json.gz -- not against a model's summary of it.
+     The 10-20% figure is Hinton's, quoted by him, and the card says so;
+     attributing it to him would be the easy error here. -->
+<html><head><meta charset="utf-8"><style>
+  @font-face{font-family:Inter;src:url("fonts/Inter-Variable.ttf");
+    font-weight:100 900}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{width:1600px;height:600px;background:#08090b;color:#e9e6e7;
+    font-family:Inter,-apple-system,sans-serif;position:relative;
+    overflow:hidden;padding:60px 70px 50px;display:flex;flex-direction:column}
+
+  .glow{position:absolute;left:50%;top:-320px;width:1300px;height:720px;
+    transform:translateX(-50%);border-radius:50%;
+    background:radial-gradient(circle,#d93a4f26,transparent 70%)}
+
+  .eyebrow{position:relative;font-size:15px;font-weight:600;
+    letter-spacing:.3em;text-transform:uppercase;color:#7d7378;
+    margin-bottom:12px}
+  h1{position:relative;font-size:50px;font-weight:800;letter-spacing:-.02em;
+    line-height:1.08;margin-bottom:40px}
+  h1 em{font-style:normal;color:#d93a4f}
+
+  .cols{position:relative;display:grid;grid-template-columns:repeat(3,1fr);
+    gap:40px;align-items:start}
+  .c{padding-top:24px;border-top:3px solid #2a1f23}
+  .c.now{border-top-color:#d93a4f}
+  .when{font-size:14px;font-weight:700;letter-spacing:.18em;
+    text-transform:uppercase;color:#d93a4f;margin-bottom:16px}
+  .big{font-size:46px;font-weight:800;letter-spacing:-.02em;line-height:1;
+    font-variant-numeric:tabular-nums;margin-bottom:16px}
+  .q{font-size:21px;line-height:1.45;color:#cfc8cb}
+  .src{margin-top:20px;font-size:15px;color:#7d7378;line-height:1.5}
+  .src b{color:#e9e6e7;font-weight:600;font-variant-numeric:tabular-nums}
+
+  .foot{position:relative;margin-top:auto;display:flex;
+    justify-content:space-between;align-items:baseline;
+    border-top:1px solid #221a1d;padding-top:22px;
+    font-size:17px;color:#5d5459}
+  .foot b{color:#d93a4f;font-weight:600}
+</style></head><body>
+  <div class="glow"></div>
+  <div class="eyebrow">11 long-form interviews &middot; 2018&ndash;2025 &middot; 31.8 hours</div>
+  <h1>elon revised the odds on ai. <em>he says so himself.</em></h1>
+
+  <div class="cols">
+    <div class="c">
+      <div class="when">august 2024</div>
+      <div class="big">10&ndash;20<span style="font-size:24px">%</span></div>
+      <div class="q">&ldquo;digital super intelligence is possibly a great
+        filter. i hope it isn&rsquo;t, but it might be.&rdquo; &mdash; citing
+        hinton&rsquo;s odds of annihilation, not his own.</div>
+      <div class="src">lex fridman #438<br><b>1:24:36</b></div>
+    </div>
+    <div class="c now">
+      <div class="when">february 2025</div>
+      <div class="big">80<span style="font-size:24px">% good</span></div>
+      <div class="q">&ldquo;i think the probability of a good outcome is like
+        80% likely. that&rsquo;s my rough estimate. in a way, the cup is 80%
+        full.&rdquo;</div>
+      <div class="src">joe rogan #2281<br><b>2:19:25</b></div>
+    </div>
+    <div class="c now">
+      <div class="when">seventeen seconds later</div>
+      <div class="big">60&ndash;40</div>
+      <div class="q">&ldquo;only 20% chance of annihilation. that&rsquo;s a
+        lot better than i thought. i like 80. <em style="color:#d93a4f">i was
+        thinking 60-40 the other way.</em>&rdquo;</div>
+      <div class="src">joe rogan #2281<br><b>2:19:42</b></div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <div>ask it anything he has said on record, in plain english</div>
+    <div><b>search.lexthedev.com/elon</b></div>
+  </div>
+</body></html>

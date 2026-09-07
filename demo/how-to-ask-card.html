@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<!-- Source for the "how to ask" post image (1600x720).
+     Re-render after edits: node scripts/make_card.mjs how-to-ask 1600 600
+
+     Three example mentions, each with the archive it actually reaches. The
+     archive labels are not decoration -- they were checked against
+     corpus_for() in app/x_bot.py, one call per row, because a card that
+     teaches people the wrong syntax is worse than no card.
+
+     The third row carries "mcg live" inside the question for that reason.
+     Without an archive word the router falls through to the broadcast, so
+     "which projects are building on robinhood chain" on its own reaches
+     the wrong index. The footnote at the bottom is that rule, stated. -->
+<html><head><meta charset="utf-8"><style>
+  @font-face{font-family:Inter;src:url("fonts/Inter-Variable.ttf");
+    font-weight:100 900}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{width:1600px;height:600px;background:#0b0e11;color:#e6e8ea;
+    font-family:Inter,-apple-system,sans-serif;position:relative;
+    overflow:hidden;padding:60px 70px 50px;display:flex;flex-direction:column}
+
+  .glow{position:absolute;left:50%;top:-300px;width:1300px;height:700px;
+    transform:translateX(-50%);border-radius:50%;
+    background:radial-gradient(circle,#16c78420,transparent 70%)}
+
+  .eyebrow{position:relative;font-size:15px;font-weight:600;
+    letter-spacing:.3em;text-transform:uppercase;color:#8a939e;
+    margin-bottom:10px}
+  h1{position:relative;font-size:44px;font-weight:800;letter-spacing:-.02em;
+    margin-bottom:38px}
+  h1 em{color:#16c784;font-style:normal}
+
+  .rows{position:relative;display:flex;flex-direction:column;gap:18px}
+
+  /* A reply field, not a search field: this card is about tagging the
+     account, and the site's own box would say the wrong thing. */
+  .row{display:flex;align-items:center;gap:26px;background:#12161c;
+    border:1px solid #232a33;border-left:4px solid var(--k);
+    border-radius:14px;padding:24px 28px}
+  .ask{flex:1;font-size:25px;line-height:1.3}
+  .ask b{color:#16c784;font-weight:600}
+  .to{display:flex;align-items:center;gap:16px;white-space:nowrap}
+  .to .arrow{color:#3d4650;font-size:24px}
+  .to .chip{font-size:14px;font-weight:700;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--k);
+    border:1px solid var(--k);border-radius:999px;padding:9px 18px}
+
+  .foot{position:relative;margin-top:auto;display:flex;
+    justify-content:space-between;align-items:baseline;gap:40px;
+    border-top:1px solid #232a33;padding-top:22px;
+    font-size:18px;color:#8a939e}
+  .foot b{color:#16c784;font-weight:600}
+</style></head><body>
+  <div class="glow"></div>
+  <div class="eyebrow">how to ask</div>
+  <h1>reply to me with a question. i answer with the <em>timestamp.</em></h1>
+
+  <div class="rows">
+    <div class="row" style="--k:#16c784">
+      <div class="ask"><b>@mbubbleSearch</b> what did ansem say about
+        zcash</div>
+      <div class="to"><span class="arrow">&rarr;</span>
+        <span class="chip">Market Bubble</span></div>
+    </div>
+    <div class="row" style="--k:#d93a4f">
+      <div class="ask"><b>@mbubbleSearch</b> when did elon first warn about
+        ai</div>
+      <div class="to"><span class="arrow">&rarr;</span>
+        <span class="chip">Elon Musk</span></div>
+    </div>
+    <div class="row" style="--k:#6ecf9e">
+      <div class="ask"><b>@mbubbleSearch</b> ask mcg live which projects are
+        building on robinhood chain</div>
+      <div class="to"><span class="arrow">&rarr;</span>
+        <span class="chip">MCG Live</span></div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <div>say <b>elon</b> or <b>mcg</b> in the question to pick that archive
+      &mdash; otherwise it answers from the broadcast</div>
+    <div><b>search.lexthedev.com</b></div>
+  </div>
+</body></html>
