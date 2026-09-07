@@ -831,8 +831,9 @@ _ABOUT_PHRASINGS = (
     "that way.\n\n"
     "You get the answer and the exact second it was said. The live "
     "broadcasts are in there alongside the uploads.\n\n"
-    "There is a second archive too: every long-form Elon Musk interview, "
-    "2018 to 2025. Name him and I'll answer from those instead.\n\n"
+    "Two more archives sit alongside it: every long-form Elon Musk "
+    "interview, 2018 to 2025, and all 458 MCG Live episodes. Name Elon "
+    "or say MCG and I'll answer from those instead.\n\n"
     "I only answer from what was actually said. If it isn't in the "
     "archive I'll tell you so rather than guess.",
 
@@ -843,8 +844,8 @@ _ABOUT_PHRASINGS = (
     "Ask me anything from any episode and you get the answer plus the "
     "timestamp it was said at. The live broadcasts are indexed too, not "
     "just the uploads.\n\n"
-    "I also hold every long-form Elon Musk interview, 2018 to 2025 — ask "
-    "about him and you get those.\n\n"
+    "I also hold every long-form Elon Musk interview, 2018 to 2025, and "
+    "458 MCG Live episodes — name Elon or MCG and you get those.\n\n"
     "Everything is grounded in the transcripts. No guessing.",
 
     "I've transcribed and indexed every Market Bubble episode, then made it "
@@ -854,7 +855,8 @@ _ABOUT_PHRASINGS = (
     "said it.\n\n"
     "The live broadcasts are indexed as well as the uploads.\n\n"
     "Elon Musk's long-form interviews are a separate archive I hold too, "
-    "2018 to 2025. The two never mix.\n\n"
+    "2018 to 2025, and MCG Live is a third — 458 episodes. The three "
+    "never mix.\n\n"
     "I answer only from the transcripts, and say so when something isn't "
     "in there.",
 )
@@ -873,8 +875,9 @@ _ABOUT_PHRASINGS = (
 _INTRO_PHRASINGS = (
     "I'm a search engine over the Market Bubble archive: tag me with a "
     "question about anything said on the show and I answer from the "
-    "transcripts, with the timestamp it was said at. I hold a second "
-    "archive of Elon Musk's long-form interviews as well.\n\n"
+    "transcripts, with the timestamp it was said at. I hold two more "
+    "archives as well: every long-form Elon Musk interview, and all 458 "
+    "MCG Live episodes.\n\n"
     "I only answer from what is actually in the episodes. If it is not "
     "in there, I say so.",
 
