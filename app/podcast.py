@@ -484,7 +484,15 @@ _MARKET_CALL = re.compile(
     r"invest|allocate|dca)\b"
     r"|\b(is|are) (it|this|that|they|\w+) (a )?(good|bad) (buy|investment)\b"
     r"|\bworth (buying|selling|investing|a buy)\b"
-    r"|\b(moon|pump|100x|10x|50x)\b",
+    # "pump" on its own is a market call -- "is it going to pump". It is
+    # also the name of a company, a launchpad, a hackathon and several
+    # projects in this archive, and matching those put "I can't tell you
+    # what to buy or sell" in front of every answer about pump.fun,
+    # Pump Fun and the Pump Hackathon. The names are excluded; the verb
+    # is not. clawpump and pumpcade never matched, having no word
+    # boundary before "pump".
+    r"|\bmoon\b|\b(100x|10x|50x)\b"
+    r"|\bpump\b(?!\s*\.?\s*fun\b)(?!\s+hackathon\b)",
     re.IGNORECASE)
 
 MARKET_CALL_PREFIX = (
