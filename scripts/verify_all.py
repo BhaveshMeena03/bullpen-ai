@@ -17,9 +17,12 @@ Checks, in the order they matter:
   index       the live vector count matches what was ingested
   answers     every example question on every page returns something real
   grounding   no quote that is not in a transcript
-  links       YouTube citations carry ?t=, X citations do not, because X
-              ignores it and a link that lands at 0:00 while looking correct
-              is worse than one that visibly cannot jump
+  links       every citation carries a ?t=, because every platform in the
+              archive seeks on one — YouTube wants "t=<n>s", X wants a bare
+              "t=<n>". This used to assert the opposite for X on an
+              assumption nobody had tested; ?t= was then checked against
+              three broadcasts and does seek, so the check is which SHAPE
+              of parameter each platform got, not whether it has one
   isolation   the ClawPump bot cannot answer from Bullpen's docs
   coverage    the guests that prompted this work are actually findable
 
@@ -29,6 +32,7 @@ Exits non-zero if anything fails, so it can gate a deploy.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import time
@@ -140,11 +144,14 @@ def main() -> None:
                   "why does ansem think ethereum is done"):
         for hit in post(f"{SEARCH}/v1/podcast/search", {"query": query}).get("hits", []):
             is_x = hit["episode_id"].startswith("x-")
-            has_t = "t=" in hit["deep_link"]
-            if is_x and has_t:
-                wrong.append(f"{hit['episode_id']} has a ?t= X cannot use")
-            if not is_x and not has_t:
+            link = hit["deep_link"]
+            has_t = "t=" in link
+            if not has_t:
                 wrong.append(f"{hit['episode_id']} lost its timestamp")
+            elif is_x and re.search(r"[?&]t=\d+s\b", link):
+                wrong.append(f"{hit['episode_id']} has a t=<n>s X rejects")
+            elif not is_x and not re.search(r"[?&]t=\d+s\b", link):
+                wrong.append(f"{hit['episode_id']} lost the 's' YouTube needs")
     check("deep links correct for their platform", not wrong,
           "; ".join(wrong[:2]))
 

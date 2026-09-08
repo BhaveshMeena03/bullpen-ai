@@ -243,13 +243,14 @@
   .play svg{width:9px;height:9px;fill:currentColor;flex:none}
   .hit-wrap:hover .play{background:rgba(22,199,132,.19);
     border-color:rgba(22,199,132,.5)}
-  /* A result on X cannot jump to its moment — X has no ?t= for video. Styling
-     it identically to a YouTube hit puts a green play button in front of
-     something that will not play from there, which reads as broken rather
-     than as a limitation. Same information, visibly different affordance:
-     no play triangle, muted rather than actionable, and a button that copies
-     the timestamp so scrubbing to it by hand is one paste instead of
-     remembering four digits. */
+  /* The affordance for a result that cannot jump: no play triangle, muted
+     rather than actionable, and a button that copies the timestamp so
+     reaching it by hand is one paste instead of remembering four digits.
+
+     This used to be what every X result got, on the belief that X had no
+     ?t= for video. It does — see canSeek below — so broadcasts now render
+     as playable like anything else, and this style is left for a link that
+     genuinely arrives without a timestamp. */
   .play.noseek{color:var(--muted);font-weight:600;
     background:transparent;border-color:transparent;padding:0;
     display:inline-flex;align-items:center;gap:6px}
@@ -828,14 +829,10 @@
 // only the label lied, which is the kind of small wrongness that makes
 // someone decide the whole thing is broken.
 //
-// X results also say so explicitly, because they cannot jump to the
-// timestamp: X has no ?t= for video. Better to set that expectation on the
-// card than to let someone click and land at 0:00 wondering what happened.
 // The timestamp, presented according to whether it can actually be jumped
-// to. On YouTube it is a play button because clicking the card lands you on
-// the moment. On X it is not, because X ignores ?t= for video — so it drops
-// the triangle, goes muted, and offers to copy the time instead, which is
-// the only useful thing left to do with it.
+// to. Both platforms here can, so in practice this is a play button: X
+// seeks on ?t=<seconds> exactly as YouTube seeks on t=<n>s. The muted
+// branch below is what an X result used to get, before that was tested.
 function timestampChip(h){
   if (!canSeek(h.deep_link)) {
     return '<span class="play noseek">at <span class="ts">'
@@ -855,8 +852,8 @@ function timestampChip(h){
 // The moment, playable in place. A card that links away makes the claim
 // "we find the exact second" and then asks you to go somewhere else to
 // check it; an embed proves it before you have finished reading the
-// sentence. Only for YouTube — X has no timestamped embed, which is the
-// same reason its cards cannot jump.
+// sentence. Only for YouTube — X has no timestamped embed. That is a
+// separate limit from seeking, which X does support; see canSeek.
 function embedFor(url){
   var u = String(url || "");
   var id = (/[?&]v=([A-Za-z0-9_-]{6,})/.exec(u) || /youtu\.be\/([A-Za-z0-9_-]{6,})/.exec(u) || [])[1];
@@ -913,11 +910,12 @@ function airedLabel(iso){
     if(window.hideExample) window.hideExample();
     lastHits=list||[];  // for the shareable card's top-timestamp line
     if(list && list.length){
-      // The heading has to match what the results can actually do. When
-      // every hit is on X it cannot be "jump to the moment", because X has
-      // no timestamp parameter for video and nothing here will jump. A
+      // The heading has to match what the results can actually do. A
       // heading that promises something the cards below cannot deliver is
       // the same small dishonesty as the old "watch on YouTube" label.
+      // This once fell back for any set of X hits, on the belief that X
+      // could not jump; it can, so the fallback now only fires for a hit
+      // whose link genuinely carries no timestamp.
       var seekable = list.filter(function(h){ return canSeek(h.deep_link); }).length;
       var head = seekable === list.length ? 'Jump to the moment'
                                           : 'Where it was said';

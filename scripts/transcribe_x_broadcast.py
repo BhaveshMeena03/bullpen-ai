@@ -424,9 +424,9 @@ def main() -> None:
             "episode_id": episode_id,
             "title": title_from(meta),
             "url": f"https://x.com/{handle}/status/{status_id}",
-            # X has no timestamp parameter for video, so the deep-link
-            # builder must not append one. Citations name the moment; the
-            # viewer scrubs to it.
+            # X seeks on ?t=<seconds> but rejects the trailing "s" that
+            # YouTube requires, and the deep-link builder keys the suffix
+            # off this field. Citations land on the moment either way.
             "platform": "other",
             "published_at": args.date or (
                 datetime.fromtimestamp(ts, UTC).strftime("%Y-%m-%d")

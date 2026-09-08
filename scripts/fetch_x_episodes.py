@@ -18,12 +18,13 @@ Two things turned out better than expected:
              the quotes citable verbatim.
   auth       No login or cookies needed for public posts.
 
-One thing is worse, and it is the important one. X has no timestamp
-parameter for video, so a citation cannot deep-link to the moment the way a
-YouTube one does. The answer still names the timestamp; the viewer has to
-scrub to it. That is a real downgrade of the best feature here, and the
-reason these are marked platform="other" rather than quietly presented as
-equivalent.
+One thing is worse, though less than it looks. A citation into a broadcast
+does land on the moment — ?t=<seconds> seeks on the status URL, checked on
+three broadcasts — so these are marked platform="other" only to keep the
+"s" suffix off the parameter, which X does not accept. What X lacks is an
+embed: the moment opens on X rather than inside the page, which is why
+_prefer_seekable in app/podcast.py still favours a YouTube copy of the
+same words.
 
 There is no way to enumerate an account's videos — yt-dlp rejects a bare
 profile URL — so the URLs are supplied by hand, one per line in a file.
@@ -155,8 +156,9 @@ def build(url: str, recorded: str | None = None) -> dict | None:
         "episode_id": f"x-{status_id}",
         "title": title_from(meta),
         "url": f"https://x.com/{handle}/status/{status_id}",
-        # Not "youtube": the deep-link builder must not append ?t=, which X
-        # ignores, producing a link that silently lands at 0:00.
+        # Not "youtube": X seeks on ?t=<seconds> but rejects the trailing
+        # "s" that YouTube requires, and the deep-link builder keys the
+        # suffix off this field.
         "platform": "other",
         "published_at": published,
         "segments": segments,

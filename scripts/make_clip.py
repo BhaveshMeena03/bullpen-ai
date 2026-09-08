@@ -12,17 +12,20 @@ clip button that might is the wrong trade. This gets the actual value — a
 shareable clip of something nobody else has — at no hosting risk, and it
 proves whether clips are worth hosting before anything is paid for.
 
-Works for both sources. YouTube clips are a convenience, since a viewer
-could scrub there themselves. A clip from an X broadcast is the only way
-anyone gets that moment: about half of every live show never reaches the
-upload, and X cannot deep-link to a timestamp at all.
+Works for both sources. Clips are a convenience on either one, since a
+viewer can reach the moment themselves: ?t=<seconds> seeks on YouTube and
+on an X broadcast alike. What a clip from an X broadcast still gets you is
+the material itself — about half of every live show never reaches the
+upload, so for those minutes there is no YouTube copy to link to.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -43,8 +46,75 @@ from app.clipper import (CLIP_HEIGHT,   # noqa: E402
     stamp,
 )
 
-EPISODES = ROOT / "data" / "episodes.json"
+# Both archives that carry transcripts. The Musk recordings were left out
+# when this was written and stayed out, so every Musk post went up without
+# a clip while the broadcast got one -- for no reason beyond a filename.
+#
+# MCG is deliberately absent: data/mcg_index.json is a shelf, not
+# transcripts, and captions come from segments this machine does not hold.
+EPISODES = [ROOT / "data" / "episodes.json",
+            ROOT / "data" / "elon_episodes.json"]
 SEARCH = "https://search.lexthedev.com"
+
+
+# ─── MCG, and anything else with no transcript on this machine ────────────
+#
+# data/mcg_index.json is a shelf: titles, urls, durations. The transcripts
+# live in Pinecone, and captions need per-line timings that a vector store
+# does not hand back. So for those the captions come from YouTube's own
+# auto-generated track, which is timed to the video and free to fetch.
+#
+# Not as good as the archive's Whisper text -- auto-subs punctuate badly
+# and mishear names -- but a clip with slightly rough captions beats the
+# 458 episodes that currently cannot be clipped at all.
+def youtube_segments(url: str) -> list[dict]:
+    """[{t, text}] from YouTube's auto-caption track."""
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "sub"
+        run = ["yt-dlp", "--skip-download", "--write-auto-sub",
+               "--sub-lang", "en", "--sub-format", "vtt",
+               "-o", str(out) + ".%(ext)s", url]
+        subprocess.run(run, capture_output=True, text=True, timeout=180)
+        found = list(Path(tmp).glob("*.vtt"))
+        if not found:
+            raise SystemExit("  youtube has no caption track for that video")
+        return _parse_vtt(found[0].read_text())
+
+
+_CUE = re.compile(r"(\d+):(\d\d):(\d\d)\.(\d+)\s+-->")
+
+
+def _parse_vtt(body: str) -> list[dict]:
+    """VTT to segments, with the rolling duplication taken out.
+
+    Auto-captions repeat: each cue re-prints the tail of the previous one
+    so the words scroll. Kept verbatim that turns a 60-second clip into
+    three minutes of stuttering subtitles, so only words not already
+    carried forward are kept.
+    """
+    segments: list[dict] = []
+    seen_tail: list[str] = []
+    start = None
+    for line in body.splitlines():
+        cue = _CUE.search(line)
+        if cue:
+            h, m, sec, _ = cue.groups()
+            start = int(h) * 3600 + int(m) * 60 + int(sec)
+            continue
+        text = re.sub(r"<[^>]+>", "", line).strip()
+        if start is None or not text or text.startswith(("WEBVTT", "Kind:", "Language:")):
+            continue
+        words = text.split()
+        # Drop the longest prefix this cue shares with what came before.
+        keep = words
+        for cut in range(min(len(words), len(seen_tail)), 0, -1):
+            if seen_tail[-cut:] == words[:cut]:
+                keep = words[cut:]
+                break
+        if keep:
+            segments.append({"t": float(start), "text": " ".join(keep)})
+            seen_tail = (seen_tail + keep)[-40:]
+    return segments
 
 
 def parse_timestamp(value: str) -> float:
@@ -77,6 +147,9 @@ def main() -> None:
     ap.add_argument("query", nargs="?",
                     help="a question; the top result becomes the clip")
     ap.add_argument("--episode", help="episode id, instead of a query")
+    ap.add_argument("--youtube", metavar="URL",
+                    help="any youtube video, captions taken from youtube "
+                         "(for MCG and anything else not transcribed here)")
     ap.add_argument("--at", help="timestamp, e.g. 4:01:47 (with --episode)")
     ap.add_argument("--seconds", type=float, default=45.0,
                     help="clip length (default 45)")
@@ -106,6 +179,7 @@ def main() -> None:
     # sides is the first thing anyone notices.
     ap.add_argument("--square", action="store_true",
                     help="square canvas with the title in a band above")
+    ap.add_argument("--title", help="overlay title, for --youtube")
     ap.add_argument("--out", help="output file (default: ~/Desktop)")
     args = ap.parse_args()
     args.best, args.wide = not args.fast, not args.square
@@ -117,7 +191,25 @@ def main() -> None:
     if not ffmpeg_available():
         sys.exit("ffmpeg is not on PATH — brew install ffmpeg")
 
-    episodes = {e["episode_id"]: e for e in json.loads(EPISODES.read_text())}
+    episodes = {}
+    for source in EPISODES:
+        if source.exists():
+            episodes.update({e["episode_id"]: e
+                             for e in json.loads(source.read_text())})
+
+    if args.youtube:
+        if not args.at:
+            sys.exit("  --youtube needs --at")
+        vid = re.search(r"(?:v=|youtu\.be/)([A-Za-z0-9_-]{6,})", args.youtube)
+        episode_id = vid.group(1) if vid else args.youtube
+        episodes[episode_id] = {
+            "episode_id": episode_id,
+            "title": args.title or "MCG Live",
+            "url": f"https://www.youtube.com/watch?v={episode_id}",
+            "platform": "youtube",
+            "segments": youtube_segments(args.youtube),
+        }
+        args.episode = episode_id
 
     if args.query:
         hit = top_hit(args.query)
@@ -131,7 +223,9 @@ def main() -> None:
 
     episode = episodes.get(episode_id)
     if episode is None:
-        sys.exit(f"{episode_id} is not in {EPISODES.name} — re-fetch it first")
+        sys.exit(f"{episode_id} is in neither "
+                 f"{' nor '.join(e.name for e in EPISODES)} "
+                 "— re-fetch it first")
 
     # A clip that opens mid-syllable reads as broken, so back up a little.
     start = max(0.0, start - args.lead)

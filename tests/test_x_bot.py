@@ -1231,20 +1231,27 @@ def test_the_link_lands_where_the_answer_says_it_does():
     assert "Jump to 1:07:24:" in reply
 
 
-def test_an_x_link_is_never_given_a_timestamp_parameter():
-    """X has no timestamp parameter for video and ignores one, so a link
-    that carries it looks jumpable and is not."""
+def test_an_x_link_is_retimed_to_the_moment_the_answer_cited():
+    """A broadcast seeks on a bare t=<seconds>, so it is retimed like any
+    other link — to the second the answer names, not the passage's start.
+
+    This asserted the opposite for months: that X ignored the parameter and
+    the reply had to tell people to scrub. That was never tested and is
+    false; ?t= was checked against three broadcasts and lands on the second.
+    """
     class Hit:
         title = "Market Bubble Ep 10"
         timestamp = "1:39:15"
-        deep_link = "https://x.com/MarketBubble/status/2075316750439338088"
+        deep_link = ("https://x.com/MarketBubble/status/"
+                     "2075316750439338088?t=5955")
 
     reply = format_reply("Around 1:07:24 he explains the airdrop.", [Hit()],
                          include_links=True, limit=1500)
-    assert "t=" not in reply
-    assert "scrub to" in reply
-    assert "1:07:24" in reply
-    assert Hit.deep_link in reply
+    assert "t=4044" in reply, "1:07:24 is 4044 seconds"
+    assert "t=4044s" not in reply, "X rejects the YouTube 's' suffix"
+    assert "t=5955" not in reply, "retimed away from the passage start"
+    assert "Jump to 1:07:24:" in reply
+    assert "scrub" not in reply.lower()
 
 
 def test_the_moment_is_on_its_own_line():
@@ -1278,23 +1285,26 @@ def test_an_x_link_does_not_repeat_a_moment_the_answer_gave():
     class Hit:
         title = "Market Bubble Ep 10"
         timestamp = "1:39:15"
-        deep_link = "https://x.com/MarketBubble/status/2075316750439338088"
+        deep_link = ("https://x.com/MarketBubble/status/"
+                     "2075316750439338088?t=5955")
 
     reply = format_reply("He bought it for 750 ETH. Around 1:41:22.", [Hit()],
                          include_links=True, limit=1500)
     assert not reply.rstrip().endswith("—")
-    assert "scrub to" in reply, "an X link cannot jump, and must say so"
+    assert "Jump to 1:41:22:" in reply
+    assert reply.count("1:41:22") == 2, "once in the answer, once in the lead"
 
 
 def test_an_x_link_supplies_the_moment_when_the_answer_did_not():
     class Hit:
         title = "Market Bubble Ep 10"
         timestamp = "1:39:15"
-        deep_link = "https://x.com/MarketBubble/status/2075316750439338088"
+        deep_link = ("https://x.com/MarketBubble/status/"
+                     "2075316750439338088?t=5955")
 
     reply = format_reply("He bought it for 750 ETH.", [Hit()],
                          include_links=True, limit=1500)
-    assert "scrub to 1:39:15" in reply
+    assert "Jump to 1:39:15:" in reply
 
 
 # --- opting out -------------------------------------------------------------
@@ -2460,20 +2470,24 @@ def test_the_state_path_falls_back_when_data_is_not_writable(monkeypatch,
     assert xb._state_path().parent == _Path(tempfile.gettempdir())
 
 
-def test_an_x_link_admits_it_cannot_jump():
-    """The website has said this for months and the replies did not: X has
-    no timestamp parameter for video, so the link opens at 0:00 whatever the
-    text above it says. A link that looks jumpable and is not reads as
-    broken."""
+def test_a_link_without_a_timestamp_promises_nothing():
+    """The reply may only promise a jump when the link actually carries one.
+
+    This was the X case, on the belief that X ignored ?t= — it does not, so
+    a broadcast now takes the "Jump to" path like anything else. What is
+    left here is the real rule: a link with no timestamp at all names the
+    moment and claims nothing about landing on it.
+    """
     class Hit:
         title = "Market Bubble Ep 10"
         timestamp = "1:41:22"
-        deep_link = "https://x.com/MarketBubble/status/2075316750439338088"
+        deep_link = "https://example.com/somewhere"
 
     reply = format_reply("He bought it for 750 ETH, around 1:41:22.", [Hit()],
                          include_links=True, limit=1500)
-    assert "scrub" in reply.lower()
     assert "1:41:22" in reply
+    assert "Jump to" not in reply, "nothing here lands on the moment"
+    assert "scrub" not in reply.lower(), "and nothing apologises for it"
 
 
 def test_a_youtube_link_does_not_tell_you_to_scrub():
@@ -2716,9 +2730,12 @@ def test_a_highlight_carries_its_link():
     out = format_highlight(seekable, "seed", "always", 1500)
     assert "Jump to 1:58:06:" in out and seekable["url"] in out
 
-    broadcast = dict(seekable, url="https://x.com/MarketBubble/status/1")
+    # A broadcast seeks too, on a bare t=<seconds>, so it gets the same
+    # promise. This asserted "scrub to ... can't jump" while X was believed
+    # unseekable; it is not.
+    broadcast = dict(seekable, url="https://x.com/MarketBubble/status/1?t=7086")
     out = format_highlight(broadcast, "seed", "always", 1500)
-    assert "scrub to 1:58:06" in out and "can't jump" in out
+    assert "Jump to 1:58:06:" in out and broadcast["url"] in out
 
     # An entry from before the pool carried links still works.
     old = {k: v for k, v in seekable.items() if k != "url"}

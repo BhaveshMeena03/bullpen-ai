@@ -1656,8 +1656,9 @@ def format_highlight(highlight: dict, seed: str,
         if "t=" in url:
             tail = f"\n\nJump to {stamp}:\n{url}"
         else:
-            tail = (f"\n\nFull episode — scrub to {stamp} "
-                    f"(X can't jump to a timestamp):\n{url}")
+            # Only for a link with no timestamp at all; X is not that case,
+            # whatever this branch used to say about it.
+            tail = f"\n\nFull episode, {stamp} in:\n{url}"
         budget = limit - len(tail) + len(url) - URL_WEIGHT
         return f"{lead}\n\n{_fit(fact, max(80, budget))}{tail}".strip()
 
@@ -1826,16 +1827,15 @@ def wants_link(mode: str, deep_link: str) -> bool:
     the time.
 
     Not for the reason first written here: a reply carrying a URL costs the
-    same as one without, because X's surcharge is on standalone posts. What
-    is true is that the two kinds of link are not worth the same to a
-    reader — a YouTube link carries ?t= and lands on the exact second,
-    while an X broadcast link opens a four-hour video at 0:00 and leaves
-    them to scrub. "seekable" exists for anyone who wants only the first
-    kind; production ships both.
+    same as one without, because X's surcharge is on standalone posts.
 
-    So "seekable" pays only when the link actually jumps. On this corpus
-    that is about three answers in eight, which is roughly 60% off the link
-    bill for no loss anyone would notice.
+    Nor for the reason written here second, which was that an X broadcast
+    link "opens a four-hour video at 0:00 and leaves them to scrub". That
+    was never tested and is false — ?t=<seconds> seeks on a broadcast too.
+    Every citation in this archive now carries a timestamp, so "seekable"
+    keeps a link in every case a link exists, and the mode is kept only
+    because it is the honest name for the test it performs: does this URL
+    actually land on the moment.
     """
     if mode == "always":
         return True
@@ -2065,9 +2065,10 @@ def format_reply(answer: str, hits: list, include_links: bool | str = False,
     With a link, X shows a card carrying the episode title and thumbnail, so
     repeating the title in the text spends fifty characters on something the
     reader can already see. What the card does not show is the moment, which
-    is the entire point of this tool — so the text names it, and says
-    honestly what the link will do: YouTube lands on the second, X ignores
-    timestamps and leaves the viewer to scrub.
+    is the entire point of this tool — so the text names it and says the
+    link lands there. Both platforms do: YouTube on t=<n>s, X on a bare
+    t=<n>. The reply used to promise this of YouTube and apologise for X,
+    on an assumption about X that turned out to be wrong.
 
     Without a link there is no card, so the title has to be in the text.
     Then the timestamp goes in the tail only when the answer has not already
@@ -2148,13 +2149,11 @@ def format_reply(answer: str, hits: list, include_links: bool | str = False,
         elif seekable:
             lead = f"Jump to {moment}:"
         else:
-            # X has no timestamp parameter for video, so this link opens at
-            # 0:00 whatever the text says. Telling the reader to scrub is
-            # the difference between a link that looks broken and one that
-            # is honest about what it does — the website has said this for
-            # months and the replies did not.
-            lead = (f"Full episode — scrub to {moment} "
-                    f"(X can't jump to a timestamp):")
+            # Reached only if a link somehow arrives without a timestamp,
+            # which nothing in this archive now produces: every platform
+            # here seeks. It used to be the X branch, on the false belief
+            # that X ignored ?t=. Name the moment, promise nothing.
+            lead = f"Full episode, {moment} in:"
         tail = f"\n\n{lead}\n{link}"
         # Spaced after fitting, so the breaks cannot eat the budget the
         # trim already allowed for; the guard below puts it back if they do.
