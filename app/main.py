@@ -38,7 +38,7 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 from voyageai import error as voyage_error
 
-from . import market, og_card
+from . import market, og_card, quotes
 from .agent import REFUSAL_MESSAGE, ConciergeAgent
 from .answer_cache import AnswerCache, make_key
 from .assets import aggregate as aggregate_assets
@@ -67,6 +67,7 @@ from .schemas import (
     IngestDocument,
     PodcastSearchRequest,
     PodcastSearchResponse,
+    QuoteCheckRequest,
     RetrievedChunk,
 )
 from .security import (
@@ -1730,6 +1731,43 @@ def _episodes_by_id() -> dict[str, dict]:
         logger.warning("could not load episodes for clipping: %s", exc)
         _EPISODES_CACHE = {}
     return _EPISODES_CACHE
+
+
+_SPEAKERS_CACHE: dict | None = None
+
+
+def _speaker_labels() -> dict:
+    """data/speaker_map.json, parsed once. Absent is fine — no names then."""
+    global _SPEAKERS_CACHE
+    if _SPEAKERS_CACHE is not None:
+        return _SPEAKERS_CACHE
+    path = _ROOT / "data" / "speaker_map.json"
+    try:
+        _SPEAKERS_CACHE = json.loads(path.read_text()) if path.exists() else {}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("could not load speaker labels: %s", exc)
+        _SPEAKERS_CACHE = {}
+    return _SPEAKERS_CACHE
+
+
+@app.post("/v1/quote/check", dependencies=[Depends(public_rate_limit),
+                                           Depends(global_rate_limit)])
+async def quote_check(body: QuoteCheckRequest) -> dict:
+    """Was this actually said, and where.
+
+    No model runs here, which is the point twice over. It costs nothing,
+    so it needs no budget dependency and cannot be a way to drain the
+    daily allowance. And a verifier that asked a model whether a quote is
+    real would be answering from the same kind of thing that invents
+    quotes — this reads the transcript and reports what is in it.
+    """
+    _track("quote_checks", q=body.quote[:120])
+    archive = list(_episodes_by_id().values()) + _elon_episodes()
+    if not archive:
+        raise HTTPException(status_code=503,
+                            detail="Transcripts are not loaded on this "
+                                   "instance; cannot verify anything.")
+    return quotes.check(body.quote, archive, _speaker_labels())
 
 
 @app.post("/v1/podcast/clip", dependencies=[Depends(clip_rate_limit)])

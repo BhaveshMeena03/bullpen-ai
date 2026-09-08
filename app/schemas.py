@@ -144,6 +144,16 @@ class PodcastSearchRequest(BaseModel):
     top_k: int | None = None
 
 
+class QuoteCheckRequest(BaseModel):
+    """A quote somebody is attributing to someone in this archive.
+
+    Longer than a search query is allowed to be, because the thing being
+    pasted is usually a whole screenshot's worth of text.
+    """
+
+    quote: str = Field(..., min_length=1, max_length=4000)
+
+
 class PodcastSearchResponse(BaseModel):
     answer: str
     hits: list[PodcastHit]
