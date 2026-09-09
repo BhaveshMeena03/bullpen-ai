@@ -540,6 +540,9 @@ def _within(body: str, tail: str, limit: int) -> str:
     return body.replace("\n\n", " ") + tail
 
 
+_BRACKETED_TIME = re.compile(r"\[(\d{1,2}:\d{2}(?::\d{2})?)\]")
+
+
 def episode_link(record: dict) -> str | None:
     """The url to hand someone for this episode, player-first.
 
@@ -573,6 +576,11 @@ def format_summary(summary: str, title: str, limit: int,
     body = _space_out(
         _TLDR.sub("", plain_text(soften(strip_urls(summary)),
                                  keep_breaks=True)))
+    # Brackets off the timestamps. The summaries are generated as
+    # "[1:22:17] topic" and X only auto-links a BARE timestamp, so the
+    # bracketed form is dead text in a post that has video attached — and
+    # reads worse in one that does not.
+    body = _BRACKETED_TIME.sub(r"\1", body)
     if url:
         tail = f"\n\nFull episode:\n{url}"
         return _fit(body, limit - URL_WEIGHT - 18) + tail
