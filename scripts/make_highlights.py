@@ -197,9 +197,20 @@ async def highlights_for(client, model, episode: dict, n: int,
                          kind: str = "fact") -> list[dict]:
     lines = [f"[{_timestamp(s['t'])}] {s['text'].strip()}"
              for s in episode["segments"] if s.get("text", "").strip()]
-    # Every third line, capped: enough of the shape of the episode to judge
-    # what stands out, without paying to send four hours of speech.
-    sampled = "\n".join(lines[::3][:1400])
+    # A fixed sample of the episode, spread across the WHOLE of it.
+    #
+    # This was lines[::3][:1400], which is every third line and then a hard
+    # cut at 1400 — so on anything longer than about two and a half hours
+    # the tail was simply never sent. Measured across the archive: the
+    # picker read to 62.7% of the Ansem Edition and 66.6% of the Orangie
+    # broadcast, leaving the last hour and a half of each invisible. Every
+    # "best moment" it has ever chosen from a long show was chosen from the
+    # first two thirds, and nobody could have noticed from the output.
+    #
+    # The stride now scales with length instead, so the cost is the same
+    # 1400 lines and they reach the end of the episode.
+    stride = max(3, -(-len(lines) // 1400))
+    sampled = "\n".join(lines[::stride][:1400])
 
     # Thinking off, and a budget with room to spare.
     #
@@ -389,13 +400,15 @@ async def main() -> int:
                          "rather than replacing it")
     ap.add_argument("--seekable-only", action="store_true",
                     help="only use episodes whose link can open at the "
-                         "moment itself. X ignores every timestamp "
-                         "parameter — verified in a browser, currentTime "
-                         "stays 0 on a four and a half hour video — so a "
-                         "citation there can only say 'scrub to 1:47:12'. "
-                         "Fine for a fact somebody asked about. Useless for "
-                         "a joke, where the punchline is the whole payload "
-                         "and nobody scrubs four hours to reach it.")
+                         "moment itself. This once excluded every X "
+                         "broadcast, on a browser check that reported "
+                         "currentTime staying 0. That check was wrong: "
+                         "?t=<seconds> on a status URL puts the player "
+                         "exactly there — asked for 6097 on a 3h10m "
+                         "broadcast and got 6097.32 back. Both archives "
+                         "seek, so this flag now excludes almost nothing "
+                         "and is kept only for a link that carries no "
+                         "timestamp at all.")
     ap.add_argument("--verify", action="store_true",
                     help="check the existing pool against the transcripts "
                          "and drop entries whose timestamp does not match")

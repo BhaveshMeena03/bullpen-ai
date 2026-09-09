@@ -272,6 +272,11 @@ _SENTENCE_STOP = re.compile(r"""[.!?]['")\]]*(?=\s|$)""")
 # about two spoken lines: enough to reach the end of a sentence in normal
 # speech, short enough that a 45-second clip is still a 45-second clip.
 SNAP_SLACK = 6.0
+# How far back the opening may reach for the end of the previous sentence.
+# Wider than SNAP_SLACK because the two edges fail differently: an over-long
+# tail runs past the point, while extra lead-in is just a beat of context
+# before the speaker starts the thought.
+LEAD_SLACK = 10.0
 
 
 def snap_to_speech(segments: list[dict], start: float, end: float,
@@ -324,6 +329,22 @@ def snap_to_speech(segments: list[dict], start: float, end: float,
                 through = (stop.end() / len(text))
                 candidates.append((t + through * span, True))
         candidates.append((t, False))          # the boundary, as a fallback
+
+    # The start gets the same treatment the end already had, and for the
+    # same reason. Snapping it to a segment top makes the first WORD whole;
+    # it does not make the first SENTENCE whole, so clips still opened
+    # mid-thought ("...and that's why I sold it"), which is the one flaw
+    # that makes a clip unpostable and can only be found by watching it.
+    #
+    # A sentence ends here, so the speech just after it begins one. Only
+    # ever moved EARLIER: moving the start forward onto a later boundary
+    # would trim the front off the moment being clipped. The cost of being
+    # wrong is therefore a couple of seconds of lead-in, which is why the
+    # window is wider than the end's.
+    lead_in = [when for when, finished in candidates
+               if finished and start - LEAD_SLACK <= when <= start]
+    if lead_in:
+        start = round(max(lead_in), 2)
 
     best, best_cost = None, None
     for when, finished in candidates:
