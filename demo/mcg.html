@@ -148,6 +148,9 @@ by meaning. 459 episodes, one project each. Ask a question, get the moment.">
     text-decoration:none;border:0;margin-left:12px;white-space:nowrap}
   .out:hover{color:var(--dim)}
 
+  .pending{color:var(--faint);animation:breathe 1.6s ease-in-out infinite}
+  @keyframes breathe{0%,100%{opacity:.45}50%{opacity:.9}}
+
   .seeds{display:flex;flex-wrap:wrap;gap:7px;margin:13px 0 0}
   .seed{background:transparent;border:1px solid var(--rule-dark);
     color:var(--dim);font-family:"IBM Plex Mono",monospace;font-size:12px;
@@ -647,15 +650,26 @@ by meaning. 459 episodes, one project each. Ask a question, get the moment.">
         if (ev === "hits") {
           hits = p || [];
           $("answer-head").textContent = '"' + question + '"';
-          answerText("");
+          // NOT blank, and the working state stays on. Retrieval finishes
+          // in well under a second and the answer takes several, so
+          // clearing both here left an empty panel with a citation under
+          // it for the whole time the model was writing — which reads as
+          // finished-and-broken rather than working. The count is the
+          // reassurance: it found things and is now reading them, which a
+          // spinner cannot say.
+          var found = hits.length;
+          $("answer-body").innerHTML = '<p class="pending">reading ' + found
+            + " passage" + (found === 1 ? "" : "s") + "\u2026</p>";
           renderMoments(hits);
-          $("working").classList.remove("on");
           $("answer").classList.add("on");
           hideExample();
           drew = true;
         } else if (ev === "error") {
           if (!drew) throw new Error("stream failed");
         } else if (p.text) {
+          // First real words: the placeholder goes, and so does the
+          // working state it was standing in for.
+          if (!acc) $("working").classList.remove("on");
           acc += p.text; answerText(acc); drew = true;
         }
       }

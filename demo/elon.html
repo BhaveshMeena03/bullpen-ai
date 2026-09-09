@@ -251,6 +251,8 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
     text-decoration:none;font-variant-numeric:tabular-nums;
     border-bottom:1px solid var(--accent-dim);padding-bottom:1px}
   .at:hover{border-bottom-color:var(--accent)}
+  .pending{color:var(--faint);animation:breathe 1.6s ease-in-out infinite}
+  @keyframes breathe{0%,100%{opacity:.45}50%{opacity:.9}}
   /* The timestamp plays in place, so it gets the pointer and the weight.
      The way out to YouTube stays available and stops competing for the
      click: same row, muted, no rule under it. */
@@ -618,14 +620,21 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
         if (ev === "hits") {
           hits = p || [];
           $("answer-head").textContent = '"' + question + '"';
-          answerText("");
+          // Not blank, and the working state stays on until words arrive.
+          // Retrieval is fast and the answer is not, so clearing both here
+          // left an empty panel with a citation under it for the whole
+          // time the model was writing. The count says it found things and
+          // is now reading them; a spinner cannot.
+          var found = hits.length;
+          $("answer-body").innerHTML = '<p class="pending">reading ' + found
+            + " passage" + (found === 1 ? "" : "s") + "\u2026</p>";
           renderMoments(hits);
-          $("working").classList.remove("on");
           $("answer").classList.add("on");
           drew = true;
         } else if (ev === "error") {
           if (!drew) throw new Error("stream failed");
         } else if (p.text) {
+          if (!acc) $("working").classList.remove("on");
           acc += p.text; answerText(acc); drew = true;
         }
       }
