@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<!-- Source for the track-record card. 1600x900, the 16:9 X renders at full
+     width without cropping.
+
+     The dates are not "first mentioned". app/assets.py separates a passing
+     MENTION from ANALYSIS, and only the analysis moments count here — the
+     first episode where somebody actually made a case about the asset
+     rather than saying its name. That distinction is the whole reason the
+     card can be honest: "first mentioned" would date Bitcoin to whoever
+     said the word first, which is nobody's idea of a call.
+
+     Bitcoin is on the card BECAUSE it is the boring one. A list of only
+     the winners is a screenshot of survivorship; the majors at +3% and
+     +6% are what makes the two at the top mean anything, and leaving them
+     off would be the dishonest version of this exact post.
+
+     Prices from CoinGecko: the close on the date named, and spot at the
+     time of rendering. Re-render before posting — the right-hand column
+     goes stale by the hour. -->
+<html><head><meta charset="utf-8"><style>
+  @font-face{font-family:"Instrument Serif";
+    src:url("fonts/InstrumentSerif-Regular.ttf") format("truetype")}
+  @font-face{font-family:"Inter";
+    src:url("fonts/Inter-Variable.ttf") format("truetype")}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{width:1600px;height:900px;background:#0b0e11;color:#e6e8ea;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,sans-serif;
+    padding:70px 88px;position:relative;overflow:hidden;
+    display:flex;flex-direction:column}
+  .glow{position:absolute;inset:0;pointer-events:none;
+    background:
+      radial-gradient(760px 460px at 50% 0%, #16c78418, transparent 68%),
+      radial-gradient(900px 500px at 50% 0%, #ffffff08, transparent 70%)}
+  header{display:flex;align-items:center;gap:14px;margin-bottom:34px}
+  header img{width:34px;height:34px;border-radius:8px;display:block}
+  .name{font-size:22px;font-weight:600;letter-spacing:-.01em}
+  .name b{color:#16c784;font-weight:600}
+
+  h1{font-family:"Instrument Serif",Georgia,serif;font-weight:400;
+    font-size:62px;line-height:1.06;letter-spacing:-.02em;margin-bottom:10px}
+  h1 em{color:#16c784;font-style:normal}
+  .sub{font-size:22px;color:#8a939e;margin-bottom:34px}
+
+  table{width:100%;border-collapse:collapse}
+  /* Underlined, not overlined. The rule used to sit ON TOP of the header
+     row with nothing beneath it, so it read as a stray line under the
+     subtitle rather than as the top of a table. */
+  th{font-size:14px;font-weight:500;color:#6b7480;text-align:right;
+    padding:0 0 12px;letter-spacing:.04em;text-transform:uppercase;
+    border-bottom:1px solid #232a33}
+  th.l{text-align:left}
+  td{padding:17px 0;border-bottom:1px solid #232a33;font-size:29px;
+    font-variant-numeric:tabular-nums;text-align:right}
+  td.sym{text-align:left;font-weight:600;letter-spacing:-.01em}
+  td.when{text-align:left;font-size:20px;color:#8a939e;
+    font-variant-numeric:normal}
+  td.px{color:#8a939e}
+  td.chg{font-weight:600;color:#16c784}
+  /* The majors are the control, so they read as the control. */
+  tr.flat td.chg{color:#6b7480}
+  tr.flat td.sym{color:#8a939e}
+
+  footer{margin-top:auto;padding-top:26px;display:flex;
+    align-items:baseline;justify-content:space-between}
+  .site{font-size:24px;color:#16c784;font-weight:600}
+  .note{font-size:18px;color:#6b7480}
+</style></head><body>
+  <div class="glow"></div>
+
+  <header>
+    <img src="logo-200.png" alt="">
+    <div class="name">Market Bubble <b>Search</b></div>
+  </header>
+
+  <h1>What the show was analysing in July, <em>and where it is now</em>.</h1>
+  <div class="sub">Priced from 2 July — the Ansem Edition — to today.
+    Bitcoin over the same window is the bottom row.</div>
+
+  <table>
+    <tr>
+      <th class="l">Asset</th><th class="l">2 July 2026</th>
+      <th>Now</th><th>Change</th><th>beat bitcoin by</th>
+    </tr>
+    <tr><td class="sym">$ZEC</td><td class="when">$416.70</td>
+      <td class="px">$1,285.02</td><td>+208%</td><td class="chg">+177 pts</td></tr>
+    <tr><td class="sym">$VVV</td><td class="when">$13.27</td>
+      <td class="px">$24.23</td><td>+83%</td><td class="chg">+51 pts</td></tr>
+    <tr><td class="sym">$HYPE</td><td class="when">$62.35</td>
+      <td class="px">$85.35</td><td>+37%</td><td class="chg">+6 pts</td></tr>
+    <tr><td class="sym">$SOL</td><td class="when">$77.36</td>
+      <td class="px">$103.25</td><td>+34%</td><td class="chg">+2 pts</td></tr>
+    <tr class="flat"><td class="sym">$BTC</td><td class="when">$59,967.69</td>
+      <td class="px">$78,726.00</td><td>+31%</td><td class="chg">—</td></tr>
+  </table>
+
+  <footer>
+    <div class="site">search.lexthedev.com</div>
+    <div class="note">bitcoin did +31% over the same window · not calls, just what was analysed</div>
+  </footer>
+</body></html>

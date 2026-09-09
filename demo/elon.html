@@ -147,8 +147,20 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
      until one of them arrives. */
   .orb{position:absolute;right:-8%;top:-96px;width:min(760px,72%);
     height:calc(100% + 150px);pointer-events:none;z-index:0;
-    -webkit-mask-image:linear-gradient(90deg,transparent,#000 42%,#000);
-    mask-image:linear-gradient(90deg,transparent,#000 42%,#000)}
+    /* Faded on all four sides, not just the left.
+       The mask used to be one 90deg gradient, so the footage dissolved
+       into the headline and then stopped dead at the right edge and along
+       the bottom — a blue-black rectangle sitting on a true-black page,
+       with two visible corners. Two gradients intersected fade the top and
+       bottom too, so the planet ends where the light ends. */
+    -webkit-mask-image:
+      linear-gradient(90deg,transparent,#000 42%,#000 86%,transparent),
+      linear-gradient(180deg,transparent,#000 20%,#000 68%,transparent);
+    -webkit-mask-composite:source-in;
+    mask-image:
+      linear-gradient(90deg,transparent,#000 42%,#000 86%,transparent),
+      linear-gradient(180deg,transparent,#000 20%,#000 68%,transparent);
+    mask-composite:intersect}
   .orb video.body,.orb .still{position:absolute;inset:0;
     width:100%;height:100%;object-fit:cover;object-position:52% 44%}
 

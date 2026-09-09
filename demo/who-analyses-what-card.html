@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<!-- Source for the "who analyses what" card. 1600x900.
+
+     This one cannot be made without the voice work, which is the point of
+     it. Every asset moment in the archive is timestamped; speaker_map.json
+     says who was speaking at that second; the two joined give 811 analysis
+     moments with a name on them.
+
+     ANALYSIS moments only — app/assets.py separates a passing mention from
+     an actual argument, so these are the assets each person made a case
+     about, not the ones they said out loud.
+
+     The Mizkif row is the reason the card exists. He came on a crypto show
+     and spent 88% of his analysis on Nvidia, AMD, CoreWeave, Palantir and
+     index funds. Nobody would have known: his name is on the episode, but
+     until the voices were matched there was no way to say which half of a
+     four-hour conversation was his.
+
+     Percentages are of that person's own analysis moments, so the rows do
+     not sum across — commodities and the unclassified make up the rest. -->
+<html><head><meta charset="utf-8"><style>
+  @font-face{font-family:"Instrument Serif";
+    src:url("fonts/InstrumentSerif-Regular.ttf") format("truetype")}
+  @font-face{font-family:"Inter";
+    src:url("fonts/Inter-Variable.ttf") format("truetype")}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{width:1600px;height:900px;background:#0b0e11;color:#e6e8ea;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,sans-serif;
+    padding:62px 88px;position:relative;overflow:hidden;
+    display:flex;flex-direction:column}
+  .glow{position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(760px 460px at 50% 0%, #16c78418, transparent 68%)}
+  header{display:flex;align-items:center;gap:14px;margin-bottom:26px}
+  header img{width:32px;height:32px;border-radius:8px;display:block}
+  .name{font-size:21px;font-weight:600;letter-spacing:-.01em}
+  .name b{color:#16c784;font-weight:600}
+
+  h1{font-family:"Instrument Serif",Georgia,serif;font-weight:400;
+    font-size:58px;line-height:1.05;letter-spacing:-.02em;margin-bottom:9px}
+  h1 em{color:#16c784;font-style:normal}
+  .sub{font-size:20px;color:#8a939e;margin-bottom:26px}
+
+  table{width:100%;border-collapse:collapse}
+  th{font-size:13px;font-weight:500;color:#6b7480;text-align:right;
+    padding:0 0 12px;letter-spacing:.05em;text-transform:uppercase;
+    border-bottom:1px solid #232a33}
+  th.l{text-align:left}
+  td{padding:19px 0;border-bottom:1px solid #1c222a;font-size:25px;
+    font-variant-numeric:tabular-nums;text-align:right}
+  td.sym{text-align:left;font-weight:600;font-size:27px}
+  td.top{text-align:left;font-size:19px;color:#8a939e;
+    font-variant-numeric:normal}
+  td.pct{font-weight:700}
+  .cry{color:#16c784}
+  .stk{color:#e5a54e}
+
+  footer{margin-top:auto;padding-top:20px;display:flex;
+    align-items:baseline;justify-content:space-between}
+  .site{font-size:22px;color:#16c784;font-weight:600}
+  .note{font-size:17px;color:#6b7480}
+</style></head><body>
+  <div class="glow"></div>
+  <header>
+    <img src="logo-200.png" alt="">
+    <div class="name">Market Bubble <b>Search</b></div>
+  </header>
+
+  <h1>Same show. <em>Completely different portfolios</em>.</h1>
+  <div class="sub">811 asset arguments across 18 episodes, matched to the
+    voice that made them.</div>
+
+  <table>
+    <tr><th class="l">Who</th><th>Arguments</th><th>Assets</th>
+      <th>Crypto</th><th>Stocks &amp; ETFs</th><th class="l">Most argued</th></tr>
+    <tr>
+      <td class="sym">Ansem</td><td>530</td><td>95</td>
+      <td class="pct cry">78%</td><td class="pct">14%</td>
+      <td class="top">SOL · BTC · HYPE</td>
+    </tr>
+    <tr>
+      <td class="sym">FaZe Banks</td><td>194</td><td>45</td>
+      <td class="pct cry">71%</td><td class="pct">14%</td>
+      <td class="top">SOL · HYPE · BTC</td>
+    </tr>
+    <tr>
+      <td class="sym">Mizkif</td><td>48</td><td>17</td>
+      <td class="pct">12%</td><td class="pct stk">88%</td>
+      <td class="top">NVDA · AMD · CoreWeave</td>
+    </tr>
+    <tr>
+      <td class="sym">Easy Eats</td><td>27</td><td>18</td>
+      <td class="pct">26%</td><td class="pct stk">59%</td>
+      <td class="top">HYPE · ZEC · NVDA</td>
+    </tr>
+    <tr>
+      <td class="sym">Will Clemente</td><td>11</td><td>7</td>
+      <td class="pct cry">45%</td><td class="pct">18%</td>
+      <td class="top">BTC · Gold · ZEC</td>
+    </tr>
+  </table>
+
+  <footer>
+    <div class="site">search.lexthedev.com</div>
+    <div class="note">matched by voiceprint, not guessed from the transcript</div>
+  </footer>
+</body></html>

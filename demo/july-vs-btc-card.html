@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<!-- Source for the July track-record card. 1600x900.
+
+     Every asset the show first ANALYSED in July, against Bitcoin over the
+     same window. Three things make this defensible where a plain list of
+     green numbers would not be:
+
+     1. "Analysed", not "mentioned". app/assets.py separates the two, so
+        the date is the first episode somebody made a case about the asset
+        rather than said its name in passing.
+     2. Benchmarked per row, from ITS OWN date. Three of these were first
+        analysed on 31 July and Bitcoin did +21% from there against +31%
+        from 2 July -- scoring them all off one baseline would have handed
+        the late entries a 10-point discount they did not earn.
+     3. The losers are on the card. Bitcoin was up 31% over this window;
+        without the four that lost to it, this is a screenshot of
+        survivorship rather than a record.
+
+     Prices from CoinGecko: close on the date named, spot at render time.
+     Re-render before posting. -->
+<html><head><meta charset="utf-8"><style>
+  @font-face{font-family:"Instrument Serif";
+    src:url("fonts/InstrumentSerif-Regular.ttf") format("truetype")}
+  @font-face{font-family:"Inter";
+    src:url("fonts/Inter-Variable.ttf") format("truetype")}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{width:1600px;height:900px;background:#0b0e11;color:#e6e8ea;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,sans-serif;
+    padding:56px 88px;position:relative;overflow:hidden;
+    display:flex;flex-direction:column}
+  .glow{position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(760px 460px at 50% 0%, #16c78418, transparent 68%)}
+  header{display:flex;align-items:center;gap:14px;margin-bottom:24px}
+  header img{width:32px;height:32px;border-radius:8px;display:block}
+  .name{font-size:21px;font-weight:600;letter-spacing:-.01em}
+  .name b{color:#16c784;font-weight:600}
+
+  h1{font-family:"Instrument Serif",Georgia,serif;font-weight:400;
+    font-size:54px;line-height:1.05;letter-spacing:-.02em;margin-bottom:8px}
+  h1 em{color:#16c784;font-style:normal}
+  .sub{font-size:19px;color:#8a939e;margin-bottom:22px}
+
+  table{width:100%;border-collapse:collapse;border-top:1px solid #232a33}
+  th{font-size:12px;font-weight:500;color:#6b7480;text-align:right;
+    padding:0 0 9px;letter-spacing:.05em;text-transform:uppercase}
+  th.l{text-align:left}
+  td{padding:10px 0;border-bottom:1px solid #1c222a;font-size:22px;
+    font-variant-numeric:tabular-nums;text-align:right}
+  td.sym{text-align:left;font-weight:600}
+  td.when{text-align:left;font-size:16px;color:#6b7480}
+  td.px{color:#8a939e;font-size:20px}
+  td.edge{font-weight:700;font-size:24px;color:#16c784}
+  tr.lost td.edge{color:#e5674e}
+  tr.lost td.sym{color:#8a939e}
+
+  footer{margin-top:auto;padding-top:18px;display:flex;
+    align-items:baseline;justify-content:space-between}
+  .site{font-size:22px;color:#16c784;font-weight:600}
+  .note{font-size:17px;color:#6b7480}
+</style></head><body>
+  <div class="glow"></div>
+  <header>
+    <img src="logo-200.png" alt="">
+    <div class="name">Market Bubble <b>Search</b></div>
+  </header>
+
+  <h1>What the show analysed in July, <em>against bitcoin</em>.</h1>
+  <div class="sub">Each one from the first episode it got real analysis —
+    and Bitcoin measured from that same day.</div>
+
+  <table>
+    <tr><th class="l">Asset</th><th class="l">First analysed</th>
+      <th>Its move</th><th>Bitcoin, same window</th><th>Difference</th></tr>
+    <tr><td class="sym">$UNI</td><td class="when">2 Jul</td><td>+134%</td>
+      <td class="px">+31%</td><td class="edge">+103</td></tr>
+    <tr><td class="sym">$ARB</td><td class="when">31 Jul</td><td>+98%</td>
+      <td class="px">+21%</td><td class="edge">+77</td></tr>
+    <tr><td class="sym">$PEPE</td><td class="when">2 Jul</td><td>+55%</td>
+      <td class="px">+31%</td><td class="edge">+24</td></tr>
+    <tr><td class="sym">$TRUMP</td><td class="when">24 Jul</td><td>+35%</td>
+      <td class="px">+21%</td><td class="edge">+14</td></tr>
+    <tr><td class="sym">$BNB</td><td class="when">9 Jul</td><td>+30%</td>
+      <td class="px">+26%</td><td class="edge">+4</td></tr>
+    <tr><td class="sym">$PENGU</td><td class="when">9 Jul</td><td>+27%</td>
+      <td class="px">+26%</td><td class="edge">+1</td></tr>
+    <tr class="lost"><td class="sym">$GRASS</td><td class="when">31 Jul</td><td>+19%</td>
+      <td class="px">+21%</td><td class="edge">−2</td></tr>
+    <tr class="lost"><td class="sym">$LTC</td><td class="when">31 Jul</td><td>+19%</td>
+      <td class="px">+21%</td><td class="edge">−3</td></tr>
+    <tr class="lost"><td class="sym">$AVAX</td><td class="when">2 Jul</td><td>+19%</td>
+      <td class="px">+31%</td><td class="edge">−12</td></tr>
+    <tr class="lost"><td class="sym">$JUP</td><td class="when">2 Jul</td><td>+6%</td>
+      <td class="px">+31%</td><td class="edge">−25</td></tr>
+  </table>
+
+  <footer>
+    <div class="site">search.lexthedev.com</div>
+    <div class="note">6 of 10 beat bitcoin · not calls, just what was analysed</div>
+  </footer>
+</body></html>
