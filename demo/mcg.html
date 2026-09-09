@@ -104,6 +104,9 @@ by meaning. 459 episodes, one project each. Ask a question, get the moment.">
     border-bottom:1px solid var(--rule-dark);
     font-family:"IBM Plex Mono",monospace}
   .cell{padding:13px 0 15px;border-right:1px solid var(--rule)}
+  /* Same as the Musk page: without left padding the label and figure in
+     every cell after the first are printed hard against the divider. */
+  .cell + .cell{padding-left:22px}
   .cell:last-child{border-right:0}
   .cell dt{font-size:10px;letter-spacing:.15em;text-transform:uppercase;
     color:var(--faint);margin:0 0 5px}

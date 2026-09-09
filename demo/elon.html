@@ -124,6 +124,10 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
   .readout{display:grid;grid-template-columns:repeat(4,1fr);
     border-bottom:1px solid var(--line);font-family:"IBM Plex Mono",monospace}
   .cell{padding:14px 0 16px;border-right:1px solid var(--line)}
+  /* Every cell after the first sits immediately right of a divider, and
+     with no horizontal padding its label and figure touched the rule —
+     "RUNTIME" and "31.8" were printed hard against the line. */
+  .cell + .cell{padding-left:22px}
   .cell:last-child{border-right:0}
   .cell dt{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
     color:var(--faint);margin:0 0 6px}
