@@ -3,7 +3,7 @@
 <title>The MCG Index — ask MCG Live anything</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="description" content="Every MCG interview, transcribed and searchable
-by meaning. 458 episodes, one project each. Ask a question, get the moment.">
+by meaning. 459 episodes, one project each. Ask a question, get the moment.">
 
 <!--
   MCG's own colours, not a third invention.
@@ -337,8 +337,8 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
   </header>
 
   <dl class="readout">
-    <div class="cell"><dt>Episodes</dt><dd id="r-eps">458</dd></div>
-    <div class="cell"><dt>Runtime</dt><dd id="r-hours">444<em>hrs</em></dd></div>
+    <div class="cell"><dt>Episodes</dt><dd id="r-eps">459</dd></div>
+    <div class="cell"><dt>Runtime</dt><dd id="r-hours">448<em>hrs</em></dd></div>
     <div class="cell"><dt>Span</dt><dd id="r-span">2025<em>–2026</em></dd></div>
   </dl>
 
@@ -346,9 +346,15 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
   <div class="gem" aria-hidden="true"><i></i><i></i><i></i></div>
 
   <h1>Ask MCG Live <i>anything.</i></h1>
-  <p class="sub">458 interviews, one project an episode, transcribed and indexed
-  by meaning rather than keywords. Ask what a project does, who built it or what
-  it raised — and get the episode and the second it was said.</p>
+  <!-- The count is in the markup so the sentence is right before any
+       JavaScript runs and still right if the call below fails, and it is
+       refreshed from the same response as the readout above. It was a
+       plain "458" that nothing updated, so the day an episode was indexed
+       the headline figure and this sentence disagreed on the same screen. -->
+  <p class="sub"><span id="sub-eps">459</span> interviews, one project an
+  episode, transcribed and indexed by meaning rather than keywords. Ask what a
+  project does, who built it or what it raised — and get the episode and the
+  second it was said.</p>
 
   <form id="f" autocomplete="off">
     <span class="prompt">&gt;</span>
@@ -423,7 +429,11 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
     .then(function(r){ return r.ok ? r.json() : null; })
     .then(function(a){
       if (!a) return;
-      if (a.episodes) $("r-eps").textContent = a.episodes.toLocaleString();
+      if (a.episodes) {
+        $("r-eps").textContent = a.episodes.toLocaleString();
+        var s = $("sub-eps");
+        if (s) s.textContent = a.episodes.toLocaleString();
+      }
       if (a.hours) $("r-hours").innerHTML = Math.round(a.hours) + "<em>hrs</em>";
       if (a.first && a.last) {
         $("r-span").innerHTML = a.first.slice(0,4) + "<em>–" + a.last.slice(0,4) + "</em>";
