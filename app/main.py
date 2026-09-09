@@ -570,10 +570,18 @@ async def cache_headers(request: Request, call_next):
         response.headers.setdefault("Cache-Control", "no-cache")
     elif path.endswith((".png", ".jpg", ".jpeg", ".svg", ".webp", ".ico")):
         response.headers.setdefault("Cache-Control", "public, max-age=86400")
-    elif path.endswith(".js"):
-        # Unhashed filename, so it must revalidate too or a shipped fix sits
-        # unused in a cache.
+    elif path.endswith((".js", ".css")):
+        # Unhashed filenames, so they must revalidate too or a shipped fix
+        # sits unused in a cache. CSS matched nothing here until ui.css
+        # became shared: with no Cache-Control at all a browser is free to
+        # invent one from Last-Modified, so a restyle could land and a
+        # returning visitor keep the old stylesheet with the new markup —
+        # the same invisible-deploy failure this block was written for,
+        # only harder to spot because the page still renders.
         response.headers.setdefault("Cache-Control", "no-cache")
+    elif path.endswith((".woff2", ".woff", ".ttf")):
+        # Hashed by content in practice and never edited in place.
+        response.headers.setdefault("Cache-Control", "public, max-age=604800")
     return response
 
 

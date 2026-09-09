@@ -225,6 +225,13 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
     text-decoration:none;font-variant-numeric:tabular-nums;
     border-bottom:1px solid var(--accent-dim);padding-bottom:1px}
   .at:hover{border-bottom-color:var(--accent)}
+  /* The timestamp plays in place, so it gets the pointer and the weight.
+     The way out to YouTube stays available and stops competing for the
+     click: same row, muted, no rule under it. */
+  .at.play{cursor:pointer}
+  .out{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--faint);
+    text-decoration:none;border:0;white-space:nowrap}
+  .out:hover{color:var(--dim)}
   /* A cited moment inside the answer. Reads as part of the sentence until
      you want it, which is why it is underlined rather than coloured like
      a link -- the answer should stay readable prose, not a row of buttons. */
@@ -497,11 +504,23 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
         '<div class="bar"><i style="left:' + pct.toFixed(2) + '%"></i></div>'
         + '<div class="bar-note"><span>start</span><span>'
         + Math.round(pct) + "% in</span><span>" + clock(total) + "</span></div>";
+      // The timestamp IS the play control. It used to link straight out to
+      // YouTube with a separate "play here" button beside it — so the
+      // biggest, brightest, first thing on the row did the worse of the
+      // two things, and the embed nobody noticed did the better one.
+      // Reported as "can't play from the timestamp, it takes you to
+      // youtube", which is exactly what it was built to do.
+      //
+      // Still an <a> with a real href, so copy-link, middle-click and
+      // cmd-click behave; the click is intercepted, not the element
+      // replaced. The way out to YouTube stays, muted, beside it.
       return '<div class="moment"><div class="line">'
-        + '<a class="at" href="' + esc(h.deep_link || h.url || "#")
-        + '" target="_blank" rel="noopener">' + clock(at) + "</a>"
-        + (h.deep_link ? '<button class="play" data-url="' + esc(h.deep_link)
-             + '">\u25B6 play here</button>' : "")
+        + '<a class="at play" data-url="' + esc(h.deep_link || "")
+        + '" data-time="' + esc(clock(at))
+        + '" href="' + esc(h.deep_link || h.url || "#")
+        + '" target="_blank" rel="noopener">\u25B6 ' + clock(at) + "</a>"
+        + (h.deep_link ? '<a class="out" href="' + esc(h.deep_link)
+             + '" target="_blank" rel="noopener">youtube \u2197</a>' : "")
         + (h.speaker ? '<span class="who">' + esc(h.speaker) + "</span>" : "")
         + '<span class="from">' + esc(h.title || "") + "</span></div>"
         + (h.text ? '<p class="said">' + esc(h.text.slice(0, 320)) + "</p>" : "")
@@ -651,13 +670,25 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
   // a time: two videos talking over each other is nobody's idea of a
   // citation.
   document.addEventListener("click", function(ev){
-    var b = ev.target.closest ? ev.target.closest("button.play") : null;
+    var b = ev.target.closest ? ev.target.closest(".play") : null;
     if (!b) return;
     var src = embedFor(b.getAttribute("data-url"));
+    // No embed for this one — let the href do what it always did rather
+    // than swallowing the click and leaving the reader with nothing.
     if (!src) return;
+    // Only now, once there is definitely something to play in place.
+    // Modified clicks stay as navigation: cmd-click opening a new tab is
+    // muscle memory and breaking it to show an embed is worse than the
+    // bug this fixes.
+    if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.button === 1) return;
+    ev.preventDefault();
     document.querySelectorAll(".player").forEach(function(o){ o.innerHTML = ""; });
-    document.querySelectorAll("button.play").forEach(function(o){
-      o.textContent = "\u25B6 play here"; });
+    // Put every other one back to its own time. This used to write the
+    // literal string "play here" onto each control, which was right while
+    // they were buttons and would now erase the timestamp \u2014 the one piece
+    // of information on the row.
+    document.querySelectorAll(".play").forEach(function(o){
+      o.textContent = "\u25B6 " + (o.getAttribute("data-time") || ""); });
     var slot = b.closest(".moment").querySelector(".player");
     if (!slot) return;
     var f = document.createElement("iframe");
@@ -665,7 +696,7 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
     f.setAttribute("allow", "autoplay; encrypted-media; picture-in-picture");
     f.setAttribute("allowfullscreen", "");
     slot.appendChild(f);
-    b.textContent = "\u25A0 playing";
+    b.textContent = "\u25A0 " + (b.getAttribute("data-time") || "playing");
   });
 
   $("f").addEventListener("submit", function(e){

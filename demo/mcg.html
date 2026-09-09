@@ -22,7 +22,18 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
 -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<!-- The shared system, which this page and the Musk one were the only two
+     never to adopt. They were each built in one sitting with their own
+     type and their own background, and the result is that following a
+     link between archives changes the typeface — three pages that read as
+     three projects rather than one product with three shelves.
+
+     ui.css reads --green off the page, so the mint below survives: the
+     concept travels, the palette does not. IBM Plex Mono stays, but only
+     for what it is good at — timestamps, counts, labels — instead of
+     setting every sentence on the page. -->
+<link rel="stylesheet" href="/demo/ui.css">
 <link rel="icon" href="/demo/logo-200.png">
 
 <meta property="og:title" content="The MCG Index — ask MCG Live anything">
@@ -40,20 +51,29 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
 <style>
   :root{
     /* Taken off the channel: mint-jade on black, deep jade behind it. */
-    --paper:#000000;      /* their background is true black */
-    --card:#0b0f0c;
+    --paper:#080b09;      /* was #000000 — see below */
+    --card:#0f1411;
     --rule:#1c241f;
     --rule-dark:#2c3a31;
     --ink:#e8f2ea;
-    --dim:#7d8f83;
-    --faint:#556157;
+    --dim:#8b9c91;        /* was #7d8f83, which failed AA on body text */
+    --faint:#5f6c63;
     --blue:#6ecf9e;       /* the mint. the one bright thing on the page */
     --blue-soft:#1e3b2c;  /* deep jade, for a line under a link */
+    /* What ui.css reads for the glow and the buttons. Named --green
+       because that is the token it looks for; the value is this page's. */
+    --green:#6ecf9e;
+    --bg:#080b09;
   }
+  /* True black was taken from the channel art and it is the wrong call for
+     a page of text: it makes the mint glare, gives the noise layer nothing
+     to sit on, and every panel edge becomes a hard line. A near-black lets
+     the cards read as raised rather than outlined, which is most of why
+     the broadcast page looks finished and this one did not. */
   *{box-sizing:border-box}
   html{-webkit-text-size-adjust:100%}
   body{margin:0;background:var(--paper);color:var(--ink);
-    font-family:"IBM Plex Sans","Helvetica Neue",Arial,sans-serif;
+    font-family:var(--sans);
     font-size:15px;line-height:1.6;
     display:flex;flex-direction:column;align-items:center;padding:0 20px 90px}
 
@@ -70,8 +90,8 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
     gap:16px;padding:26px 0 12px;border-bottom:1px solid var(--rule-dark)}
   .mark{display:flex;align-items:baseline;gap:11px;text-decoration:none}
   /* Condensed and heavy, the way the channel sets its own name. */
-  .mark b{font-family:"IBM Plex Sans Condensed","Helvetica Neue",sans-serif;
-    font-weight:700;font-size:23px;letter-spacing:.01em;color:var(--ink);
+  .mark b{font-family:var(--sans);
+    font-weight:800;font-size:22px;letter-spacing:.01em;color:var(--ink);
     text-transform:uppercase}
   .mark span{font-family:"IBM Plex Mono",monospace;font-size:10.5px;
     letter-spacing:.18em;text-transform:uppercase;color:var(--blue)}
@@ -91,10 +111,13 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
     font-variant-numeric:tabular-nums}
   .cell dd em{font-style:normal;font-size:12px;color:var(--dim);margin-left:5px}
 
-  h1{font-family:"IBM Plex Sans Condensed","Helvetica Neue",sans-serif;
-    font-weight:700;font-size:clamp(32px,5.6vw,56px);line-height:1.04;
-    letter-spacing:-.01em;margin:44px 0 12px;max-width:18ch;
-    text-transform:uppercase}
+  /* The display face, not condensed uppercase.
+     Uppercase at 56px is a poster, and this is the first sentence someone
+     reads: it set the whole page shouting, and the condensed weight was
+     doing the shouting in a face the page no longer loads. */
+  h1{font-family:var(--display);
+    font-weight:400;font-size:clamp(34px,5.4vw,58px);line-height:1.06;
+    letter-spacing:-.015em;margin:44px 0 14px;max-width:20ch}
   h1 i{font-style:normal;color:var(--blue)}
   .sub{color:var(--dim);max-width:58ch;margin:0 0 30px;font-size:16px}
 
@@ -113,6 +136,14 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
     letter-spacing:.15em;text-transform:uppercase;padding:0 24px}
   #go:hover:not(:disabled){filter:brightness(1.1)}
   #go:disabled{opacity:.4;cursor:default}
+
+  /* The timestamp plays in place, so it takes the pointer and the weight;
+     the way out to YouTube stays available and stops competing for the
+     click. */
+  .at.play{cursor:pointer}
+  .out{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--faint);
+    text-decoration:none;border:0;margin-left:12px;white-space:nowrap}
+  .out:hover{color:var(--dim)}
 
   .seeds{display:flex;flex-wrap:wrap;gap:7px;margin:13px 0 0}
   .seed{background:transparent;border:1px solid var(--rule-dark);
@@ -149,7 +180,7 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
      archive that is the answer to "where is this from" -- one episode is
      one project, so naming the episode names the subject. */
   .moment{border-top:1px solid var(--rule);padding:16px 18px}
-  .moment .from{font-family:"IBM Plex Sans Condensed","Helvetica Neue",sans-serif;
+  .moment .from{font-family:var(--sans);
     font-size:17px;font-weight:600;display:block;margin-bottom:3px;
     color:var(--ink)}
   .moment .line{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;
@@ -538,8 +569,18 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
         + Math.round(pct) + "% in</span><span>" + clock(total) + "</span></div>";
       return '<div class="moment">'
         + '<span class="from">' + esc(h.title || "") + "</span>"
-        + '<div class="line"><a class="at" href="' + esc(h.deep_link || h.url || "#")
-        + '" target="_blank" rel="noopener">' + clock(at) + "</a></div>"
+        // The timestamp plays in place. It was a link straight out to
+        // YouTube and there was no inline player on a result at all — the
+        // embed existed, but only the worked example could reach it, so
+        // every real answer sent the reader off the page to check it.
+        // Still a real <a>, so copy-link and cmd-click behave.
+        + '<div class="line"><a class="at play" data-url="'
+        + esc(h.deep_link || "") + '" data-time="' + esc(clock(at))
+        + '" href="' + esc(h.deep_link || h.url || "#")
+        + '" target="_blank" rel="noopener">▶ ' + clock(at) + "</a>"
+        + (h.deep_link ? '<a class="out" href="' + esc(h.deep_link)
+             + '" target="_blank" rel="noopener">youtube ↗</a>' : "")
+        + "</div>"
         + (h.text ? '<p class="said">' + esc(h.text.slice(0, 300)) + "</p>" : "")
         + bar + '<div class="player"></div></div>';
     }).join("");
@@ -672,13 +713,24 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
   });
 
   document.addEventListener("click", function(ev){
-    var b = ev.target.closest ? ev.target.closest("button.play") : null;
+    var b = ev.target.closest ? ev.target.closest(".play") : null;
     if (!b) return;
     var src = embedFor(b.getAttribute("data-url"));
+    // Nothing to play in place: let the href do what it always did rather
+    // than swallowing the click and leaving the reader with nothing.
     if (!src) return;
+    // Modified clicks stay as navigation \u2014 cmd-click opening a new tab is
+    // muscle memory, and breaking it to show an embed is worse than the
+    // bug this fixes.
+    if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.button === 1) return;
+    if (b.tagName === "A") ev.preventDefault();
     document.querySelectorAll(".player").forEach(function(o){ o.innerHTML = ""; });
-    document.querySelectorAll("button.play").forEach(function(o){
-      o.textContent = "\u25B6 play here"; });
+    // Each control back to its own label: a timestamp to its time, the
+    // worked example's button to its words. Writing "play here" onto every
+    // one of them would erase the timestamps.
+    document.querySelectorAll(".play").forEach(function(o){
+      var t = o.getAttribute("data-time");
+      o.textContent = t ? "\u25B6 " + t : "\u25B6 play here"; });
     // Whichever card the button sits in. This looked only inside
     // ".moment", so the button on the worked example -- the first thing
     // anybody presses -- did nothing at all.
@@ -690,7 +742,8 @@ by meaning. 458 episodes, one project each. Ask a question, get the moment.">
     f.setAttribute("allow", "autoplay; encrypted-media; picture-in-picture");
     f.setAttribute("allowfullscreen", "");
     slot.appendChild(f);
-    b.textContent = "\u25A0 playing";
+    var t = b.getAttribute("data-time");
+    b.textContent = t ? "\u25A0 " + t : "\u25A0 playing";
   });
 
   $("f").addEventListener("submit", function(e){
