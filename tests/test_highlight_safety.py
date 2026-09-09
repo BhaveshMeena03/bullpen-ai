@@ -117,9 +117,15 @@ def test_every_live_entry_can_open_at_its_moment():
     jump is a claim with a citation you cannot reach — which is the one
     thing this account is supposed not to do.
 
-    X ignores every timestamp parameter it has (verified in a browser:
-    currentTime stays 0 on a four and a half hour video), so this also
-    means the pool holds no X broadcasts.
+    The pool holds no X broadcasts today, but not for the reason this
+    said: "X ignores every timestamp parameter it has (verified in a
+    browser: currentTime stays 0)". That check was wrong. ?t=<seconds> on
+    the broadcast PLAYER url seeks — asked for 7774 on a 3h10m broadcast
+    and got 7774 back — and citations now use that url.
+
+    So broadcasts could join the pool the next time it is regenerated.
+    The rule this asserts is unchanged either way: every entry must carry
+    a timestamp its link can actually reach.
     """
     import json
 

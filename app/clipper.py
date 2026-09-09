@@ -1268,8 +1268,8 @@ class ClipService:
             # Same recipe make_clip.py uses for a clip that goes out in
             # public: full height, 16:9, quality-targeted encode. The old
             # defaults here were 720 square at a fixed bitrate, which is a
-            # preview — and a viewer sharing this has no other way to point
-            # anyone at an X broadcast, since X cannot link to a timestamp.
+            # preview — and what a viewer shares is the clip itself, so it
+            # should be the quality a clip going out in public wants.
             fetch_section(episode["url"], start, end, raw, self._proxy,
                           height=CLIP_HEIGHT, cookies=self._cookies)
             backdrop = work / "backdrop.png"

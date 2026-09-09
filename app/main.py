@@ -1682,10 +1682,13 @@ async def mcg_search_stream(
 
 # ─── clips ────────────────────────────────────────────────────────────────
 #
-# Half the archive is X broadcasts, and X cannot link to a timestamp. For
-# those moments a rendered clip is not a nicety, it is the only way anyone
-# can point at what was said — which is why this renders at the quality of
-# a clip cut by hand rather than at a preview quality.
+# Half the archive is X broadcasts, and about half of each one never
+# reaches the YouTube upload — so for those minutes a rendered clip is the
+# only copy of the moment that exists anywhere. That is why this renders
+# at the quality of a clip cut by hand rather than a preview.
+#
+# It used to say the reason was that X cannot link to a timestamp. It can:
+# the broadcast player seeks on ?t=<seconds>.
 #
 # The cost of that is real: ~2.2 CPU-seconds per second of output, one
 # encode at a time. So the limiter here is deliberately far tighter than

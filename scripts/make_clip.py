@@ -271,11 +271,12 @@ def main() -> None:
     print(f"\n  {out}")
     print(f"  {size_mb:.1f} MB in {time.time() - began:.0f}s")
     if on_x:
-        # Worth saying out loud: this is the half of the show that the
-        # YouTube upload cuts, and X cannot link to a timestamp, so the clip
-        # is the only way to point anyone at this moment.
-        print("  (from the live broadcast — this moment is not on YouTube, "
-              "and X cannot link to a timestamp)")
+        # Worth saying out loud: this is the half of the show the YouTube
+        # upload cuts, so there is no other copy of this moment. It used to
+        # say X could not link to a timestamp either, which is false — the
+        # broadcast player seeks on ?t=<seconds>.
+        print("  (from the live broadcast — this moment is not in the "
+              "YouTube upload)")
     if shutil.which("open"):
         print("  open it:  open " + str(out).replace(" ", "\\ "))
 
