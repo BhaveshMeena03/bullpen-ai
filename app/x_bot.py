@@ -153,12 +153,41 @@ def question_from(text: str, handle: str = "mbubbleSearch") -> str:
     after = re.split(rf"@{re.escape(handle)}\b", text, maxsplit=1,
                      flags=re.I)
     if len(after) == 2:
-        tail = _WHITESPACE.sub(" ", _HANDLE.sub(" ", after[1])).strip()
+        tail = _unhandle(after[1], handle)
         # A trailing handle leaves nothing, and a bare "?" is not a
         # question anybody meant to ask.
         if len(tail) >= 6:
             return tail
-    return _WHITESPACE.sub(" ", _HANDLE.sub(" ", text)).strip()
+    return _unhandle(text, handle)
+
+
+def _unhandle(text: str, handle: str = "mbubbleSearch") -> str:
+    """Drop the handles that are addressing, keep the ones that are asking.
+
+    Every @name used to be deleted, which quietly removed the subject from
+    the most natural question anybody asks this account:
+
+        "@mbubbleSearch what did @blknoiz06 say about zcash"
+            searched for: "what did say about zcash"
+
+    and the reply was "I couldn't find that in the episodes I've indexed",
+    for a question the engine answers fine when the name is typed as a
+    word. X autocompletes handles, so people type them constantly.
+
+    The two cases are told apart by position. X stacks the people being
+    REPLIED TO at the front of the text; those are routing, and they go.
+    A handle in the middle of a sentence is the person being ASKED ABOUT,
+    so the @ comes off and the name stays.
+    """
+    # Its own handle goes entirely, wherever it sits. Keeping it as a word
+    # put "mbubbleSearch" into the query for anyone who tags at the end.
+    body = re.sub(rf"@{re.escape(handle)}\b", " ", text or "", flags=re.I)
+    body = _LEADING_HANDLES.sub(" ", body)
+    # The @ only. Trailing underscores go too: "@PoorGoat_" is written
+    # "poor goat" in a transcript, and the underscore is handle syntax
+    # rather than part of the name.
+    body = re.sub(r"@(\w{1,15})", lambda m: m.group(1).rstrip("_"), body)
+    return _WHITESPACE.sub(" ", body).strip()
 
 
 def _fit(text: str, budget: int) -> str:

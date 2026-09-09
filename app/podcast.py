@@ -13,9 +13,12 @@ plumbing as the rest of the app.
 import asyncio
 import contextlib
 import hashlib
+import json
 import logging
 import re
 import time
+from functools import lru_cache
+from pathlib import Path
 from xml.sax.saxutils import escape, quoteattr
 
 import voyageai
@@ -560,7 +563,32 @@ def _stamped(md: dict) -> str:
                       for t, line in zip(times, lines, strict=True))
 
 
-def _deep_link(url: str, platform: str, seconds: float) -> str:
+@lru_cache(maxsize=1)
+def _broadcast_players() -> dict[str, str]:
+    """episode_id -> the broadcast player url, where one is known.
+
+    A STATUS url posted inside a tweet is rendered by X as an embedded
+    quote card, and a card is not a link with a query string: clicking it
+    opens the quoted post at 0:00. So a citation built on the status url
+    said "Jump to 2:09:34" above something that could not jump, however
+    well ?t= works when the same url is loaded directly in a browser —
+    which is how it was tested, and why this went unnoticed.
+
+    The player url is not a status, so it stays a link and it seeks.
+    Built by scripts/fetch_broadcast_links.py.
+    """
+    path = Path(__file__).resolve().parent.parent / "data" / "broadcast_links.json"
+    try:
+        return json.loads(path.read_text()) if path.exists() else {}
+    except Exception:  # noqa: BLE001
+        # A citation that falls back to the status url is worse than one
+        # that seeks and better than no answer at all.
+        logger.warning("could not read broadcast_links.json")
+        return {}
+
+
+def _deep_link(url: str, platform: str, seconds: float,
+               episode_id: str = "") -> str:
     sec = int(seconds)
     if platform == "youtube":
         joiner = "&" if "?" in url else "?"
@@ -568,6 +596,9 @@ def _deep_link(url: str, platform: str, seconds: float) -> str:
     if platform == "spotify":
         return f"{url}#t={sec}"
     if "x.com/" in url or "twitter.com/" in url:
+        # The player url when this broadcast has one; the status url is
+        # the fallback, and one broadcast in the archive has no player.
+        url = _broadcast_players().get(episode_id, url)
         # Plain seconds, no "s" suffix — that is what the player reads.
         joiner = "&" if "?" in url else "?"
         return f"{url}{joiner}t={sec}"
@@ -964,7 +995,8 @@ class PodcastIndex:
                     start_seconds=start,
                     timestamp=_timestamp(start),
                     deep_link=_deep_link(
-                        md.get("url", ""), md.get("platform", "youtube"), start
+                        md.get("url", ""), md.get("platform", "youtube"),
+                        start, md.get("episode_id", "")
                     ),
                     text=md.get("text", ""),
                     text_ts=_stamped(md),
@@ -1058,7 +1090,8 @@ class PodcastIndex:
                     start_seconds=start,
                     timestamp=_timestamp(start),
                     deep_link=_deep_link(
-                        md.get("url", ""), md.get("platform", "youtube"), start
+                        md.get("url", ""), md.get("platform", "youtube"),
+                        start, md.get("episode_id", "")
                     ),
                     text=md.get("text", ""),
                     # Only the model reads this. It falls back to the plain
