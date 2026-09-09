@@ -65,6 +65,7 @@ from .schemas import (
     ChatResponse,
     Episode,
     IngestDocument,
+    PodcastHit,
     PodcastSearchRequest,
     PodcastSearchResponse,
     QuoteCheckRequest,
@@ -975,21 +976,47 @@ async def podcast_search(
 async def podcast_search_stream(
     body: PodcastSearchRequest,
     podcast: PodcastIndex = Depends(get_podcast),
+    answers: AnswerCache = Depends(get_answers),
 ) -> StreamingResponse:
-    """SSE variant: hits render immediately, the answer streams in."""
+    """SSE variant: hits render immediately, the answer streams in.
+
+    Cached, which the non-streaming endpoint has always been and this
+    never was — so the surface people are actually sent to paid full
+    price and full latency for every repeat, including the example chips
+    on the page and any link someone shares.
+
+    A hit replays the stored answer as one frame instead of many. That is
+    deliberate: the typing effect is a side effect of generation, not the
+    point, and an answer that arrives instantly is better than one that
+    pretends to be thinking.
+    """
     _track("podcast_searches", q=body.query[:120], stream=True)
-    hits = await podcast.retrieve(body.query, body.top_k)
+    key = make_key(body.query, surface="podcast-stream", top_k=body.top_k)
+    cached = answers.get(key) if answers.enabled else None
+    hits = ([PodcastHit(**h) for h in cached["hits"]] if cached
+            else await podcast.retrieve(body.query, body.top_k))
 
     async def event_source():
         payload = json.dumps([h.model_dump() for h in hits])
         yield f"event: hits\ndata: {payload}\n\n"
+        if cached:
+            yield f"data: {json.dumps({'text': cached['answer']})}\n\n"
+            yield "event: done\ndata: {}\n\n"
+            return
+        whole = []
         try:
             async for delta in podcast.answer_stream(body.query, hits):
                 if delta == "\x00REFUSAL\x00":
                     refusal = json.dumps({"text": PODCAST_REFUSAL})
                     yield f"event: refusal\ndata: {refusal}\n\n"
                     return
+                whole.append(delta)
                 yield f"data: {json.dumps({'text': delta})}\n\n"
+            # Only a complete answer is stored. A stream that died halfway
+            # would otherwise be served instantly, forever, to everyone.
+            if whole and answers.enabled:
+                answers.put(key, {"answer": "".join(whole),
+                                  "hits": [h.model_dump() for h in hits]})
             yield "event: done\ndata: {}\n\n"
         except asyncio.CancelledError:
             raise
@@ -1626,8 +1653,25 @@ def _mcg_payload(question: str, result) -> dict:
 # stored string to fake it would be theatre. The cost is that a repeated
 # question on these two pages pays again; the blocking endpoints still
 # serve the cache, and the fallback path below still reaches them.
-def _archive_stream(index, query: str, top_k, lengths: dict):
+def _archive_stream(index, query: str, top_k, lengths: dict,
+                    answers=None, surface: str = "archive"):
+    """Passages first, then the answer — replayed from cache on a repeat.
+
+    The non-streaming endpoints have been cached since the cache existed;
+    these never were, so every repeat of an example chip or a shared link
+    paid the full model call again. `surface` keeps the archives apart:
+    the same words asked of the Musk recordings and of MCG are different
+    questions with different answers.
+    """
+    key = make_key(query, surface=surface, top_k=top_k) if answers else None
+    cached = answers.get(key) if (answers and answers.enabled) else None
+
     async def event_source():
+        if cached:
+            yield f"event: hits\ndata: {json.dumps(cached['hits'])}\n\n"
+            yield f"data: {json.dumps({'text': cached['answer']})}\n\n"
+            yield "event: done\ndata: {}\n\n"
+            return
         hits = await index.retrieve(query, top_k)
         enriched = []
         for hit in (hits or [])[:6]:
@@ -1635,13 +1679,19 @@ def _archive_stream(index, query: str, top_k, lengths: dict):
             data["episode_seconds"] = lengths.get(data.get("episode_id"), 0)
             enriched.append(data)
         yield f"event: hits\ndata: {json.dumps(enriched)}\n\n"
+        whole = []
         try:
             async for delta in index.answer_stream(query, hits):
                 if delta == "\x00REFUSAL\x00":
                     refusal = json.dumps({"text": PODCAST_REFUSAL})
                     yield f"event: refusal\ndata: {refusal}\n\n"
                     return
+                whole.append(delta)
                 yield f"data: {json.dumps({'text': delta})}\n\n"
+            # Complete answers only: a stream that died halfway would
+            # otherwise be replayed instantly, forever, to everyone.
+            if whole and answers and answers.enabled:
+                answers.put(key, {"answer": "".join(whole), "hits": enriched})
             yield "event: done\ndata: {}\n\n"
         except asyncio.CancelledError:
             raise
@@ -1662,6 +1712,7 @@ def _archive_stream(index, query: str, top_k, lengths: dict):
                         Depends(daily_budget), Depends(per_client_daily)])
 async def elon_search_stream(
     body: PodcastSearchRequest, request: Request,
+    answers: AnswerCache = Depends(get_answers),
 ) -> StreamingResponse:
     """SSE variant of the Musk search: passages first, answer after."""
     _track("elon_searches", q=body.query[:120], stream=True)
@@ -1669,7 +1720,8 @@ async def elon_search_stream(
     if index is None:
         raise HTTPException(status_code=503, detail="The archive is not loaded.")
     lengths = {e["episode_id"]: int(_runtime(e)) for e in _elon_episodes()}
-    return _archive_stream(index, body.query, body.top_k, lengths)
+    return _archive_stream(index, body.query, body.top_k, lengths,
+                           answers, surface="elon-stream")
 
 
 @app.post("/v1/mcg/search/stream",
@@ -1677,6 +1729,7 @@ async def elon_search_stream(
                         Depends(daily_budget), Depends(per_client_daily)])
 async def mcg_search_stream(
     body: PodcastSearchRequest, request: Request,
+    answers: AnswerCache = Depends(get_answers),
 ) -> StreamingResponse:
     """SSE variant of the MCG search."""
     _track("mcg_searches", q=body.query[:120], stream=True)
@@ -1685,7 +1738,8 @@ async def mcg_search_stream(
         raise HTTPException(status_code=503, detail="The archive is not loaded.")
     lengths = {e.get("id"): int(float(e.get("seconds") or 0))
                for e in _mcg_episodes()}
-    return _archive_stream(index, body.query, body.top_k, lengths)
+    return _archive_stream(index, body.query, body.top_k, lengths,
+                           answers, surface="mcg-stream")
 
 
 # ─── clips ────────────────────────────────────────────────────────────────
