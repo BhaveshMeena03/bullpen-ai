@@ -38,7 +38,7 @@ from datetime import datetime
 from pathlib import Path
 
 from app import attribution, hedging, names
-from app.podcast import NOT_FOUND_ANSWER
+from app.podcast import NOT_FOUND_ANSWER, _broadcast_players
 from app.x_api import _URL_SHAPED, Mention, XClient, looks_like_a_link, strip_urls
 
 logger = logging.getLogger(__name__)
@@ -538,6 +538,25 @@ def _within(body: str, tail: str, limit: int) -> str:
     if weighted_length(spaced) <= limit:
         return spaced
     return body.replace("\n\n", " ") + tail
+
+
+def episode_link(record: dict) -> str | None:
+    """The url to hand someone for this episode, player-first.
+
+    A summary and a highlight both end with "here is the episode", and
+    both used whatever url the record carried. For an X broadcast that is
+    the STATUS url, which X renders inside a post as an embedded quote
+    card — and a card opens the post at 0:00 no matter what timestamp the
+    text above it names.
+
+    The broadcast player has its own url and stays a link. Same mapping
+    the citations use, so the two cannot disagree about where a broadcast
+    lives.
+    """
+    url = record.get("url")
+    if not url:
+        return None
+    return _broadcast_players().get(record.get("episode_id", ""), url)
 
 
 def format_summary(summary: str, title: str, limit: int,
@@ -1674,7 +1693,10 @@ def format_highlight(highlight: dict, seed: str,
                  else _HIGHLIGHT_LEADS, seed)
     fact = soften(plain_text(strip_urls(highlight.get("text", ""))))
     stamp = highlight.get("timestamp", "")
-    url = highlight.get("url") or ""
+    # Player-first, like the citations and the summaries: the pool stores
+    # the status url, and a status url in a post is a card that opens at
+    # 0:00 above a line promising a specific second.
+    url = episode_link(highlight) or ""
     mode = ("always" if include_links is True
             else "off" if include_links is False else str(include_links))
 
@@ -3322,7 +3344,7 @@ class MentionBot:
                         else str(self.include_links))
                 return format_summary(
                     found["summary"], found["title"], self._summary_limit,
-                    url=found.get("url") if mode != "off" else None)
+                    url=episode_link(found) if mode != "off" else None)
 
         wanted = summary_request(question)
         if wanted is not None:
@@ -3333,7 +3355,7 @@ class MentionBot:
                         else str(self.include_links))
                 return format_summary(
                     found["summary"], found["title"], self._summary_limit,
-                    url=found.get("url") if mode != "off" else None)
+                    url=episode_link(found) if mode != "off" else None)
             logger.info("%s asked for episode %d, which is not indexed",
                         mention.id, wanted)
             return f"I don't have episode {wanted} indexed."
