@@ -251,8 +251,10 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
     text-decoration:none;font-variant-numeric:tabular-nums;
     border-bottom:1px solid var(--accent-dim);padding-bottom:1px}
   .at:hover{border-bottom-color:var(--accent)}
-  .pending{color:var(--faint);animation:breathe 1.6s ease-in-out infinite}
-  @keyframes breathe{0%,100%{opacity:.45}50%{opacity:.9}}
+  /* --dim, not --faint: at the dim end of the pulse the faint token fell
+     under 2:1 on this background and the panel looked empty. */
+  .pending{color:var(--dim);animation:breathe 1.8s ease-in-out infinite}
+  @keyframes breathe{0%,100%{opacity:.6}50%{opacity:1}}
   /* The timestamp plays in place, so it gets the pointer and the weight.
      The way out to YouTube stays available and stops competing for the
      click: same row, muted, no rule under it. */

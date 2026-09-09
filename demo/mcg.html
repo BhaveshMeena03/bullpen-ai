@@ -148,8 +148,13 @@ by meaning. 459 episodes, one project each. Ask a question, get the moment.">
     text-decoration:none;border:0;margin-left:12px;white-space:nowrap}
   .out:hover{color:var(--dim)}
 
-  .pending{color:var(--faint);animation:breathe 1.6s ease-in-out infinite}
-  @keyframes breathe{0%,100%{opacity:.45}50%{opacity:.9}}
+  /* --dim, not --faint, and the pulse bottoms out at .6 rather than .45.
+     The label whose entire job is to be noticed was set in the faintest
+     colour on the page and then faded to under 2:1 against the
+     background — at the dim end of the breath the panel read as empty,
+     which is the exact fault this was added to fix. */
+  .pending{color:var(--dim);animation:breathe 1.8s ease-in-out infinite}
+  @keyframes breathe{0%,100%{opacity:.6}50%{opacity:1}}
 
   .seeds{display:flex;flex-wrap:wrap;gap:7px;margin:13px 0 0}
   .seed{background:transparent;border:1px solid var(--rule-dark);
