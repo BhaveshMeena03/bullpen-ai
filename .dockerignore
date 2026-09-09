@@ -20,5 +20,11 @@ data/
 !data/elon_episodes.json.gz
 !data/mcg_index.json
 !data/mcg_summaries.json.gz
+# Which broadcast player each X episode's citations should point at. Read
+# when a deep link is BUILT, so without it in the image every broadcast
+# citation silently falls back to the status url — which is the link that
+# X renders as an unclickable card. The deploy looks fine; the timestamps
+# just stop working.
+!data/broadcast_links.json
 redteam_report.md
 PITCH_PREP.md

@@ -74,6 +74,10 @@ COPY data/mcg_summaries.json.gz ./data/mcg_summaries.json.gz
 # The exact-token index. Without it every lookup returns nothing and
 # search silently loses the names and numbers it was built for.
 COPY data/term_index.json ./data/term_index.json
+# Which broadcast player each X citation points at. Without it every
+# broadcast falls back to its status url, which X renders as a card that
+# cannot seek — the deploy succeeds and the timestamps quietly stop working.
+COPY data/broadcast_links.json ./data/broadcast_links.json
 COPY widget ./widget
 COPY demo ./demo
 
