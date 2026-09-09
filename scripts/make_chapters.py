@@ -139,6 +139,46 @@ def parse(text: str, stamps: dict[str, float],
     return spaced
 
 
+# Words that say nothing about what a section is about, so their presence
+# or absence in the transcript proves nothing either way.
+_STOP = {
+    "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "with",
+    "his", "her", "its", "their", "this", "that", "these", "those", "is",
+    "are", "was", "were", "be", "been", "as", "at", "by", "from", "about",
+    "into", "over", "versus", "vs", "how", "why", "what", "when", "who",
+    "discussion", "discussed", "discussing", "talks", "talking", "segment",
+    "intro", "introduces", "introduction", "thoughts", "review", "check",
+    "recap", "wrap", "wrapping", "opens", "opening", "closing", "more",
+}
+
+# How much of a title's substance has to actually appear near its
+# timestamp. Below this the title is describing something else -- the
+# failure found by hand on a first run, where "Venice AI and investing in
+# AI platforms" sat on a passage about Spotify and managing a creator.
+TITLE_SUPPORT = 0.34
+
+
+def support(title: str, episode: dict, seconds: float,
+            before: float = 30.0, after: float = 150.0) -> tuple[float, list[str]]:
+    """(share of the title's content words found near it, the missing ones).
+
+    Deliberately crude. It is not judging whether the title is a GOOD
+    description, only whether the words it uses are spoken anywhere near
+    where it points -- which is enough to catch a title attached to the
+    wrong minute, and cheap enough to run on every line.
+    """
+    words = [w for w in re.findall(r"[a-z0-9']+", title.lower())
+             if w not in _STOP and len(w) > 2]
+    if not words:
+        return 1.0, []
+    window = " ".join(
+        s.get("text", "") for s in episode.get("segments") or []
+        if seconds - before <= float(s.get("t", 0)) <= seconds + after
+    ).lower()
+    missing = [w for w in words if w[:5] not in window]
+    return 1 - len(missing) / len(words), missing
+
+
 def parse_offset(value: str | None) -> float:
     if not value:
         return 0.0
@@ -190,13 +230,49 @@ async def main() -> int:
         print("  no usable chapters came back.")
         return 1
 
-    listing = "\n".join(f"{_timestamp(s)} {t}" for s, t in chapters)
-    print(listing)
+    # Every line checked against the transcript at the second it points
+    # at. The timestamps cannot be invented — the model had to copy one it
+    # was shown — but the TITLES are its reading of a sampled region, and
+    # a title on the wrong minute is the failure that makes a list worse
+    # than none. Weak ones are printed with what is missing so they can be
+    # fixed or dropped by reading, not by scrubbing the episode.
+    weak: list[str] = []
+    lines, keep = [], []
+    for seconds, title in chapters:
+        stamp = _timestamp(seconds + offset)
+        score, missing = support(title, episode, seconds + offset)
+        ok = score >= TITLE_SUPPORT
+        if ok:
+            keep.append((seconds, title))
+        else:
+            weak.append(f"{stamp} {title}  (missing: {', '.join(missing[:4])})")
+        lines.append(f"{'  ' if ok else ' ?'}{_timestamp(seconds)} {title}")
+    print("\n".join(lines))
+
+    # The file is the thing that gets sent to somebody, so it holds only
+    # the lines that checked out. The flagged ones stay on screen, where
+    # they can be fixed by hand and pasted back in if they were right.
+    listing = "\n".join(f"{_timestamp(s)} {t}" for s, t in keep)
     print(f"\n  {len(chapters)} chapters. paste into a post with the video "
           f"attached — X links the timestamps to it.")
+    if weak:
+        print(f"\n  {len(weak)} title(s) not supported by the transcript "
+              f"where they point — check or drop these:")
+        for line in weak:
+            print(f"     {line}")
+
+    # A long stretch with no entry is either one genuine segment or the
+    # picker thinning out. Either way it is the thing to look at before
+    # handing the list to anybody.
+    gaps = [(a[0], b[0]) for a, b in zip(chapters, chapters[1:])
+            if b[0] - a[0] > 900]
+    for start, end in gaps:
+        print(f"\n  gap: nothing between {_timestamp(start)} and "
+              f"{_timestamp(end)} ({int((end - start) / 60)} minutes)")
     if args.out:
         Path(args.out).expanduser().write_text(listing + "\n")
-        print(f"  wrote {args.out}")
+        print(f"\n  wrote {len(keep)} verified chapter(s) to {args.out}"
+              + (f" ({len(weak)} flagged one(s) left out)" if weak else ""))
     return 0
 
 
