@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<!-- Source for the "three tickers" card. 1600x900.
+
+     The reason this one is defensible: he named exactly three, said so
+     out loud -- "I gave three tickers. It is Zcash, VVV, and DM" -- and
+     all three are on the card. There is nothing to leave off. A list of
+     picks somebody else assembled after the fact can always be accused
+     of choosing the winners; a list the speaker closed himself cannot.
+
+     Dated 7 May, the LIVE broadcast of ep 2, not the 8 May YouTube cut
+     and not the 12 May clip re-upload -- assets.json points at the clip
+     because that is where the words were transcribed, and the clip is a
+     segment of this show. app/dedupe.py groups all three as one episode.
+
+     DM is Venice's Diem, confirmed as coingecko id "diem": homepage
+     venice.ai, ERC20 on Base, "$1 per day of Venice API capacity" --
+     which is what Ansem describes on air at 38:30.
+
+     Bitcoin is on the card for the same reason the losers were on the
+     July card: +124% means nothing without what the market did. Prices
+     are CoinGecko close on 7 May against spot. RE-RENDER BEFORE
+     POSTING -- spot moves. -->
+<html><head><meta charset="utf-8"><style>
+  @font-face{font-family:"Instrument Serif";
+    src:url("fonts/InstrumentSerif-Regular.ttf") format("truetype")}
+  @font-face{font-family:"Inter";
+    src:url("fonts/Inter-Variable.ttf") format("truetype")}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{width:1600px;height:900px;background:#0b0e11;color:#e6e8ea;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,sans-serif;
+    padding:58px 88px 46px;position:relative;overflow:hidden;
+    display:flex;flex-direction:column}
+  .glow{position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(820px 500px at 50% 0%, #16c78418, transparent 68%)}
+  header{display:flex;align-items:center;gap:14px;margin-bottom:24px}
+  header img{width:32px;height:32px;border-radius:8px;display:block}
+  .name{font-size:21px;font-weight:600;letter-spacing:-.01em}
+  .name b{color:#16c784;font-weight:600}
+
+  h1{font-family:"Instrument Serif",Georgia,serif;font-weight:400;
+    font-size:58px;line-height:1.04;letter-spacing:-.02em;margin-bottom:16px}
+  h1 em{color:#16c784;font-style:normal}
+  .quote{font-size:23px;color:#c7ccd2;line-height:1.45;
+    border-left:3px solid #16c784;padding-left:20px;margin-bottom:8px;
+    max-width:1180px}
+  .who{font-size:18px;color:#6b7480;margin:12px 0 0;padding-left:23px}
+  .who b{color:#e5a54e;font-weight:600}
+
+  .why{margin:30px 0 0;padding-left:23px;font-size:19px;line-height:1.5;
+    color:#8a939e;max-width:1240px}
+  .why i{font-style:normal;color:#c7ccd2}
+
+  table{width:100%;border-collapse:collapse;margin-top:auto}
+  th{font-size:13px;font-weight:500;color:#6b7480;text-align:right;
+    padding:0 0 12px;letter-spacing:.05em;text-transform:uppercase;
+    border-bottom:1px solid #232a33}
+  th.l{text-align:left}
+  td{padding:20px 0;border-bottom:1px solid #1c222a;font-size:27px;
+    font-variant-numeric:tabular-nums;text-align:right}
+  td.sym{text-align:left;font-weight:700;font-size:29px}
+  td.px{color:#8a939e;font-size:24px}
+  td.now{font-weight:600}
+  td.chg{font-weight:700;font-size:30px;color:#16c784}
+  tr.bench td{border-bottom:none}
+  tr.bench td.sym,tr.bench td.px,tr.bench td.now{color:#6b7480;
+    font-weight:400}
+  tr.bench td.sym{font-weight:600}
+  tr.bench td.chg{color:#e5674e}
+
+  footer{margin-top:22px;padding-top:18px;border-top:1px solid #1c222a;
+    display:flex;align-items:baseline;justify-content:space-between}
+  .site{font-size:22px;color:#16c784;font-weight:600}
+  .note{font-size:17px;color:#6b7480}
+</style></head><body>
+  <div class="glow"></div>
+  <header>
+    <img src="logo-200.png" alt="">
+    <div class="name">Market Bubble <b>Search</b></div>
+  </header>
+
+  <h1>He named <em>three tickers</em>. Here are all three.</h1>
+  <div class="quote">“You guys got your tickers? Yeah, I gave three tickers.
+    It is Zcash, VVV, and DM.”</div>
+  <div class="who">Ansem · episode 2 · 7 May · 39:48 ·
+    <b>matched by voiceprint</b></div>
+
+  <!-- The VVV reasoning, an hour before the ticker list, because a
+       ticker with no thesis behind it is just a number. -->
+  <div class="why">On $VVV, at 38:15 — <i>“one of the cool features of
+    Venice that I thought was interesting is they have a second token
+    that’s called DM… the way that you get access to this DM is by staking
+    VVV and then locking VVV. There’s like 30% of the supply staked.”</i>
+  </div>
+
+  <table>
+    <tr><th class="l">Ticker</th><th>7 May</th><th>Today</th>
+      <th>Change</th></tr>
+    <tr><td class="sym">$ZEC</td><td class="px">$554.64</td>
+      <td class="now">$1,114.19</td><td class="chg">+101%</td></tr>
+    <tr><td class="sym">$VVV</td><td class="px">$12.29</td>
+      <td class="now">$24.14</td><td class="chg">+96%</td></tr>
+    <tr><td class="sym">$DIEM</td><td class="px">$1,436.99</td>
+      <td class="now">$1,846.58</td><td class="chg">+29%</td></tr>
+    <tr class="bench"><td class="sym">bitcoin</td><td class="px">$81,437</td>
+      <td class="now">$77,330</td><td class="chg">−5%</td></tr>
+  </table>
+
+  <footer>
+    <div class="site">search.lexthedev.com</div>
+    <div class="note">not calls — just what was said, and when</div>
+  </footer>
+</body></html>

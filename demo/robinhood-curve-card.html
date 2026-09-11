@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<!-- Source for the "Robinhood is a thing now" card. 1600x900.
+
+     One bar per SHOW, not per file: the counts run through
+     app/dedupe.py's grouping, so the clip re-uploads that repeat an
+     episode do not count the same sentence twice. 18 bars, 264 mentions.
+
+     The two flat months are the reason this is worth posting. A curve
+     that only goes up reads as cherry-picked; the gap between the first
+     mention on 7 May and the show actually caring in July is what makes
+     it a narrative being born rather than a chart.
+
+     The quote is FaZe Banks by voiceprint, not by transcript guess --
+     Ansem is speaking on both sides of it, so the words alone would
+     have put it on the wrong person. That is the whole argument for the
+     speaker work and it is why the attribution is on the card.
+
+     Counts are literal occurrences of "robinhood" / "robin hood",
+     case-insensitive, in the deduped transcripts. -->
+<html><head><meta charset="utf-8"><style>
+  @font-face{font-family:"Instrument Serif";
+    src:url("fonts/InstrumentSerif-Regular.ttf") format("truetype")}
+  @font-face{font-family:"Inter";
+    src:url("fonts/Inter-Variable.ttf") format("truetype")}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{width:1600px;height:900px;background:#0b0e11;color:#e6e8ea;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,sans-serif;
+    padding:58px 88px 46px;position:relative;overflow:hidden;
+    display:flex;flex-direction:column}
+  .glow{position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(820px 480px at 62% 6%, #16c78418, transparent 68%)}
+  header{display:flex;align-items:center;gap:14px;margin-bottom:22px}
+  header img{width:32px;height:32px;border-radius:8px;display:block}
+  .name{font-size:21px;font-weight:600;letter-spacing:-.01em}
+  .name b{color:#16c784;font-weight:600}
+
+  .top{display:flex;align-items:flex-start;justify-content:space-between;
+    gap:56px}
+  h1{font-family:"Instrument Serif",Georgia,serif;font-weight:400;
+    font-size:56px;line-height:1.04;letter-spacing:-.02em;margin-bottom:14px}
+  h1 em{color:#16c784;font-style:normal}
+  .said{display:flex;align-items:baseline;gap:14px;margin-bottom:6px}
+  .said .who{font-size:18px;color:#6b7480;white-space:nowrap}
+  .said .who b{color:#e5a54e;font-weight:600}
+  .sub{font-size:19px;color:#8a939e;margin-bottom:8px}
+
+  /* The count belongs where the eye lands after the quote, and the
+     right half of the card was empty without it. */
+  .tally{text-align:right;flex:0 0 auto;padding-top:6px}
+  .tally .big{font-family:"Instrument Serif",Georgia,serif;
+    font-size:104px;line-height:.9;color:#16c784;
+    font-variant-numeric:tabular-nums}
+  .tally .cap{font-size:17px;color:#6b7480;margin-top:12px;
+    letter-spacing:.03em;text-transform:uppercase}
+  .tally .rise{font-size:21px;color:#e6e8ea;margin-top:16px;font-weight:600}
+  .tally .rise s{color:#6b7480;text-decoration:none;font-weight:400}
+
+  .chart{margin-top:auto;display:flex;align-items:flex-end;
+    gap:10px;height:530px}
+  .col{flex:1;display:flex;flex-direction:column;
+    align-items:center;justify-content:flex-end;height:100%}
+  .val{font-size:19px;font-weight:700;margin-bottom:7px;
+    font-variant-numeric:tabular-nums}
+  .zero{color:#3b434d}
+  .bar{width:100%;border-radius:4px 4px 0 0;background:#16c784;
+    min-height:3px}
+  .bar.seed{background:#e5a54e}
+  .bar.flat{background:#2b333d}
+  .day{font-size:15px;color:#6b7480;margin-top:11px;white-space:nowrap}
+  .axis{border-top:1px solid #232a33;margin-top:0}
+
+  footer{margin-top:26px;padding-top:18px;border-top:1px solid #1c222a;
+    display:flex;align-items:baseline;justify-content:space-between}
+  .site{font-size:22px;color:#16c784;font-weight:600}
+  .note{font-size:17px;color:#6b7480}
+</style></head><body>
+  <div class="glow"></div>
+  <header>
+    <img src="logo-200.png" alt="">
+    <div class="name">Market Bubble <b>Search</b></div>
+  </header>
+
+  <div class="top">
+    <div>
+      <h1>“Robinhood is a thing now.”<br>
+        <em>Then nothing for two months.</em></h1>
+      <div class="said"><div class="who">FaZe Banks · episode 2 · 7 May ·
+        14:05 · <b>matched by voiceprint</b></div></div>
+      <div class="sub">Times the word is said, every show since.</div>
+    </div>
+    <div class="tally">
+      <div class="big">264</div>
+      <div class="cap">times, 18 shows</div>
+      <div class="rise">4 <s>on 7 May</s> &nbsp;→&nbsp; 57 <s>on 3 Sep</s></div>
+    </div>
+  </div>
+
+  <div class="chart" id="chart"></div>
+  <div class="axis"></div>
+
+  <footer>
+    <div class="site">search.lexthedev.com</div>
+    <div class="note">every thursday · counted per show, not per upload ·
+      week of 28 may not indexed</div>
+  </footer>
+
+<script>
+// Broadcast dates, not upload dates. The show goes out Thursday: all
+// eleven weeks where the live X broadcast is in the archive land on a
+// Thursday, and the YouTube cut appears the Friday after. Five of these
+// weeks survive only as that Friday upload, so they are dated to the
+// Thursday before -- which is what makes the series come out weekly with
+// exactly one gap, the week of 28 May, the broadcast we never ingested.
+const DATA = [
+  ["apr 30", 0], ["may 7", 4], ["may 14", 0], ["may 21", 0],
+  ["jun 4", 1], ["jun 11", 0], ["jun 18", 2], ["jun 25", 0],
+  ["jul 2", 2], ["jul 9", 35], ["jul 16", 16], ["jul 23", 11],
+  ["jul 30", 31], ["aug 6", 17], ["aug 13", 31], ["aug 20", 23],
+  ["aug 27", 34], ["sep 3", 57],
+];
+const MAX = 57, TALLEST = 452;
+document.getElementById("chart").innerHTML = DATA.map(([day, n], i) => {
+  // The seed mention is amber so the eye lands on the sentence the card
+  // is about; everything before the show cares is grey, not green.
+  const kind = i === 1 ? "seed" : (n < 5 ? "flat" : "");
+  const h = n === 0 ? 3 : Math.round((n / MAX) * TALLEST);
+  return `<div class="col">
+      <div class="val${n === 0 ? " zero" : ""}">${n}</div>
+      <div class="bar ${kind}" style="height:${h}px"></div>
+      <div class="day">${day}</div>
+    </div>`;
+}).join("");
+</script>
+</body></html>

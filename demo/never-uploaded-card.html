@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<!-- Source for the "never uploaded" card. 1600x900.
+
+     Eleven shows, the only ones where the archive holds BOTH the live X
+     broadcast and the YouTube cut, so every row is a like-for-like
+     measurement rather than an estimate. Seven other shows are one
+     source only and are left off; including them would mean guessing at
+     the missing half of the comparison.
+
+     Length is the last transcript segment's timestamp, which is where
+     speech stops rather than where the file ends -- the same number the
+     dedupe grouping uses to decide which recording of a show to keep.
+
+     The 4 June row reads 0.0 and stays on the card. A table where every
+     row supports the argument is a table somebody built backwards, and
+     the weeks where nothing was cut are what make 26% a measurement
+     instead of a complaint.
+
+     Ep 10 is the row to talk about: its upload says "we've got the
+     squire founder coming on in about an hour" and then ends before he
+     appears. He is Chris Gilbert, and the thing he pitches in that
+     missing hour is the inference marketplace this archive now runs on. -->
+<html><head><meta charset="utf-8"><style>
+  @font-face{font-family:"Instrument Serif";
+    src:url("fonts/InstrumentSerif-Regular.ttf") format("truetype")}
+  @font-face{font-family:"Inter";
+    src:url("fonts/Inter-Variable.ttf") format("truetype")}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{width:1600px;height:900px;background:#0b0e11;color:#e6e8ea;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,sans-serif;
+    padding:56px 88px 44px;position:relative;overflow:hidden;
+    display:flex;flex-direction:column}
+  .glow{position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(820px 500px at 68% 4%, #16c78418, transparent 68%)}
+  header{display:flex;align-items:center;gap:14px;margin-bottom:20px}
+  header img{width:32px;height:32px;border-radius:8px;display:block}
+  .name{font-size:21px;font-weight:600;letter-spacing:-.01em}
+  .name b{color:#16c784;font-weight:600}
+
+  .top{display:flex;align-items:flex-start;justify-content:space-between;gap:50px}
+  h1{font-family:"Instrument Serif",Georgia,serif;font-weight:400;
+    font-size:54px;line-height:1.04;letter-spacing:-.02em;margin-bottom:10px}
+  h1 em{color:#16c784;font-style:normal}
+  .sub{font-size:19px;color:#8a939e;max-width:820px;line-height:1.45}
+  .tally{text-align:right;flex:0 0 auto}
+  .tally .big{font-family:"Instrument Serif",Georgia,serif;font-size:96px;
+    line-height:.9;color:#16c784;font-variant-numeric:tabular-nums}
+  .tally .cap{font-size:16px;color:#6b7480;margin-top:10px;
+    letter-spacing:.04em;text-transform:uppercase}
+
+  table{width:100%;border-collapse:collapse;margin-top:26px}
+  th{font-size:12px;font-weight:500;color:#6b7480;text-align:right;
+    padding:0 0 9px;letter-spacing:.05em;text-transform:uppercase;
+    border-bottom:1px solid #232a33}
+  th.l{text-align:left}
+  td{padding:9px 0;border-bottom:1px solid #1c222a;font-size:21px;
+    font-variant-numeric:tabular-nums;text-align:right}
+  td.day{text-align:left;font-weight:600}
+  td.px{color:#8a939e}
+  td.gap{font-weight:700;color:#16c784}
+  tr.none td.gap{color:#3b434d}
+  tr.none td.day{color:#6b7480;font-weight:400}
+  tr.worst td.gap{color:#e5a54e}
+
+  footer{margin-top:auto;padding-top:16px;display:flex;
+    align-items:baseline;justify-content:space-between}
+  .site{font-size:22px;color:#16c784;font-weight:600}
+  .note{font-size:17px;color:#6b7480}
+</style></head><body>
+  <div class="glow"></div>
+  <header>
+    <img src="logo-200.png" alt="">
+    <div class="name">Market Bubble <b>Search</b></div>
+  </header>
+
+  <div class="top">
+    <div>
+      <h1>A quarter of the show <em>only exists on X</em>.</h1>
+      <div class="sub">The 11 of 18 shows where we hold both recordings, so the
+        comparison is like-for-like. Both still up — one is just far
+        easier to find.</div>
+    </div>
+    <div class="tally">
+      <div class="big">11.7h</div>
+      <div class="cap">X only · 26%</div>
+    </div>
+  </div>
+
+  <table>
+    <tr><th class="l">Show</th><th>Live on X</th><th>YouTube</th>
+      <th>Only on X</th></tr>
+    <tr class="none"><td class="day">7 May</td><td class="px">3.8h</td>
+      <td class="px">3.7h</td><td class="gap">—</td></tr>
+    <tr class="none"><td class="day">21 May</td><td class="px">2.9h</td>
+      <td class="px">2.9h</td><td class="gap">0.1h</td></tr>
+    <tr class="none"><td class="day">4 Jun</td><td class="px">4.7h</td>
+      <td class="px">4.7h</td><td class="gap">—</td></tr>
+    <tr><td class="day">25 Jun</td><td class="px">3.7h</td>
+      <td class="px">2.3h</td><td class="gap">1.4h</td></tr>
+    <tr><td class="day">2 Jul</td><td class="px">4.0h</td>
+      <td class="px">2.7h</td><td class="gap">1.3h</td></tr>
+    <tr><td class="day">9 Jul</td><td class="px">4.6h</td>
+      <td class="px">3.4h</td><td class="gap">1.1h</td></tr>
+    <tr><td class="day">16 Jul</td><td class="px">5.1h</td>
+      <td class="px">3.5h</td><td class="gap">1.6h</td></tr>
+    <tr><td class="day">23 Jul</td><td class="px">3.9h</td>
+      <td class="px">2.9h</td><td class="gap">1.1h</td></tr>
+    <tr><td class="day">13 Aug</td><td class="px">3.2h</td>
+      <td class="px">2.4h</td><td class="gap">0.7h</td></tr>
+    <tr class="worst"><td class="day">20 Aug</td><td class="px">5.4h</td>
+      <td class="px">2.5h</td><td class="gap">2.9h</td></tr>
+    <tr><td class="day">27 Aug</td><td class="px">3.9h</td>
+      <td class="px">2.4h</td><td class="gap">1.5h</td></tr>
+  </table>
+
+  <footer>
+    <div class="site">search.lexthedev.com</div>
+    <div class="note">every broadcast @MarketBubble has posted is indexed · the other 7 shows exist on one source only</div>
+  </footer>
+</body></html>
