@@ -181,6 +181,10 @@ def main() -> None:
                     help="square canvas with the title in a band above")
     ap.add_argument("--title", help="overlay title, for --youtube")
     ap.add_argument("--out", help="output file (default: ~/Desktop)")
+    ap.add_argument("--fix", action="append", default=[], metavar="WRONG=RIGHT",
+                    help="correct a caption word for this clip only, e.g. --fix Soul=SOL. "
+                         "Unambiguous misspellings (Salana) are fixed always; words that "
+                         "are also real words (Soul, Bass) are a per-clip call.")
     args = ap.parse_args()
     args.best, args.wide = not args.fast, not args.square
     # There used to be a silent bump to 1920 here whenever --height was not
@@ -243,7 +247,8 @@ def main() -> None:
     print(f"  {stamp(start)} → {stamp(end)}  ({end - start:.0f}s, "
           f"{args.width}p, {'X broadcast' if on_x else 'YouTube'})")
 
-    captions = build_captions(episode["segments"], start, end)
+    captions = build_captions(episode["segments"], start, end,
+                              fixes=dict(f.split("=", 1) for f in args.fix))
     out = Path(args.out) if args.out else (
         Path.home() / "Desktop" /
         f"clip-{episode_id}-{int(start)}s-{args.width}p.mp4")

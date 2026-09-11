@@ -277,10 +277,60 @@ SNAP_SLACK = 6.0
 # tail runs past the point, while extra lead-in is just a beat of context
 # before the speaker starts the thought.
 LEAD_SLACK = 10.0
+# How far back the opening may reach to find where the current speaker
+# STARTED TALKING, when the episode has been matched to voices.
+#
+# A sentence boundary is not a thought boundary. Asked about inference
+# pricing on ep 10, Ansem talks for twenty-four seconds across four
+# finished sentences; snapping the start to the nearest of them opened
+# the clip on "And do you think it's, like, overpriced or underpriced" --
+# grammatically a whole sentence, and audibly the tail of a question
+# whose subject was three sentences earlier.
+#
+# Wider than LEAD_SLACK because a turn is longer than a sentence, and
+# only ever used to move the start EARLIER, to a second where somebody
+# else was last speaking. That is the definition of not cutting anyone
+# off mid-thought, and it is only available because the voices are
+# matched -- the transcript alone cannot tell one speaker from the next.
+TURN_SLACK = 45.0
+
+
+def turn_start(segments: list[dict], speakers: dict[str, str],
+               start: float, slack: float = TURN_SLACK) -> float:
+    """Walk `start` back to the top of the turn it lands inside.
+
+    Returns `start` unchanged when the episode has no labels here, when
+    the speaker changes right before it, or when the turn began further
+    back than `slack` — a very long monologue should not drag the whole
+    clip with it.
+    """
+    if not speakers or not segments:
+        return start
+    index = None
+    for i, segment in enumerate(segments):
+        if float(segment.get("t", 0.0)) <= start:
+            index = i
+        else:
+            break
+    if index is None:
+        return start
+    who = speakers.get(str(index))
+    if not who:
+        return start
+    floor = start - slack
+    i = index
+    while i > 0:
+        previous = float(segments[i - 1].get("t", 0.0))
+        if speakers.get(str(i - 1)) != who or previous < floor:
+            break
+        i -= 1
+    return round(float(segments[i].get("t", start)), 2)
 
 
 def snap_to_speech(segments: list[dict], start: float, end: float,
-                   slack: float = SNAP_SLACK) -> tuple[float, float]:
+                   slack: float = SNAP_SLACK,
+                   speakers: dict[str, str] | None = None,
+                   ) -> tuple[float, float]:
     """Move a clip's edges to where speech starts and stops.
 
     A clip cut at `start + duration` lands wherever the arithmetic puts
@@ -346,6 +396,13 @@ def snap_to_speech(segments: list[dict], start: float, end: float,
     if lead_in:
         start = round(max(lead_in), 2)
 
+    # And where the voices are known, back again to the top of the turn.
+    # Only ever earlier, so this cannot trim the moment; the worst case is
+    # a few extra seconds of the question that prompted it, which is
+    # context rather than damage.
+    if speakers:
+        start = min(start, turn_start(segments, speakers, start))
+
     best, best_cost = None, None
     for when, finished in candidates:
         if abs(when - end) > slack or when <= start:
@@ -362,8 +419,37 @@ def snap_to_speech(segments: list[dict], start: float, end: float,
 
 # ─── captions ─────────────────────────────────────────────────────────────
 
+# Whisper's recurring misspellings, corrected where they are DRAWN and
+# nowhere else. The transcript keeps them: search is by meaning and the
+# exact-token index already matches either spelling, and rewriting the
+# text would put episodes.json out of step with what Pinecone stores.
+#
+# A burned-in caption is different. "Salana" appears 409 times across the
+# archive and ten times in one 93-second clip made for the Solana
+# Foundation's product lead -- a misspelling on screen, in the one place
+# it cannot be fixed after posting.
+#
+# Only words with no innocent reading are here. "Soul" (62) and "Bass"
+# (24) are usually SOL and Base, but "heart and soul" and a bass line are
+# real, so those are per-clip decisions: make_clip.py --fix Soul=SOL.
+CAPTION_FIXES = {
+    "Salana": "Solana",
+    "Salada": "Solana",
+    "Vorhees": "Voorhees",
+    "Vibu": "Vibhu",
+}
+
+
+def fix_caption(text: str, extra: dict[str, str] | None = None) -> str:
+    """Apply CAPTION_FIXES, then any per-clip ones, on whole words only."""
+    for wrong, right in {**CAPTION_FIXES, **(extra or {})}.items():
+        text = re.sub(rf"\b{re.escape(wrong)}\b", right, text)
+    return text
+
+
 def build_captions(segments: list[dict], start: float,
-                   end: float) -> list[tuple[float, float, str]]:
+                   end: float, fixes: dict[str, str] | None = None,
+                   ) -> list[tuple[float, float, str]]:
     """Caption lines for the window, re-timed so 0 is the clip's start.
 
     The transcript arrives in ~8 second blocks, far too much text to read
@@ -390,7 +476,8 @@ def build_captions(segments: list[dict], start: float,
             cursor += share
             if b <= 0 or a >= end - start:
                 continue
-            out.append((max(a, 0.0), min(b, end - start), chunk))
+            out.append((max(a, 0.0), min(b, end - start),
+                        fix_caption(chunk, fixes)))
     return out
 
 
