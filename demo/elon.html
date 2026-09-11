@@ -496,7 +496,12 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
     var body = $("answer-body");
     if (!body || !hits || !hits.length) return;
     body.innerHTML = body.innerHTML.replace(
-      /(^|[\s(>])(\d{1,2}:\d{2}(?::\d{2})?)(?![\d:])/g,
+      // "[" and "-" belong in here: the model cites as
+      // "[25:18-25:26]", so every timestamp in a real answer was
+      // preceded by a bracket and matched nothing. Only the
+      // hand-written example on the page used bare times, which is
+      // why this looked like it worked.
+      /(^|[\s(>\[–-])(\d{1,2}:\d{2}(?::\d{2})?)(?![\d:])/g,
       function(all, before, stamp){
         var sec = stampSeconds(stamp);
         if (sec === null) return all;

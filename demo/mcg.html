@@ -406,6 +406,10 @@ by meaning. 459 episodes, one project each. Ask a question, get the moment.">
   <section class="answer" id="answer">
     <div class="head" id="answer-head">answer</div>
     <div class="body" id="answer-body"></div>
+    <!-- Where a timestamp inside the answer plays. It has to sit ABOVE
+         #moments: the handler takes the first .player inside the card it
+         finds, and every moment card carries one of its own. -->
+    <div class="player"></div>
     <div id="moments"></div>
   </section>
 
@@ -541,8 +545,14 @@ by meaning. 459 episodes, one project each. Ask a question, get the moment.">
   function citeTimestamps(hits){
     var body = $("answer-body");
     if (!body || !hits || !hits.length) return;
+    // The character class has to include "[" and "-", and did not.
+    // The model cites the way a paper does -- "[25:18-25:26]", "[14:44]"
+    // -- so every timestamp in a real answer was preceded by a bracket,
+    // and the range's second half by a dash. Neither was in the set, so
+    // this matched nothing at all on the answers it was written for, and
+    // looked like it worked because the worked example used bare times.
     body.innerHTML = body.innerHTML.replace(
-      /(^|[\s(>])(\d{1,2}:\d{2}(?::\d{2})?)(?![\d:])/g,
+      /(^|[\s(>\[–-])(\d{1,2}:\d{2}(?::\d{2})?)(?![\d:])/g,
       function(all, before, stamp){
         var sec = stampSeconds(stamp);
         if (sec === null) return all;
@@ -550,8 +560,15 @@ by meaning. 459 episodes, one project each. Ask a question, get the moment.">
         if (!hit || !hit.deep_link) return all;
         var base = String(hit.deep_link).split(/[?&]t=/)[0];
         var url = base + (base.indexOf("?") > -1 ? "&" : "?") + "t=" + sec + "s";
-        return before + '<a class="cite" target="_blank" rel="noopener" href="'
-             + esc(url) + '" title="open this moment">' + esc(stamp) + "</a>";
+        // Plays in place, like the timestamps under the answer already do.
+        // It was a plain link out to YouTube, which is the behaviour this
+        // page removed everywhere else: an answer that sends the reader
+        // away to check it has not really cited anything. Still a real
+        // <a> with a real href, so copy-link and cmd-click still work.
+        return before + '<a class="at play cite" data-url="' + esc(url)
+             + '" data-time="' + esc(stamp) + '" href="' + esc(url)
+             + '" target="_blank" rel="noopener" title="play this moment">'
+             + esc(stamp) + "</a>";
       });
   }
 
@@ -766,7 +783,9 @@ by meaning. 459 episodes, one project each. Ask a question, get the moment.">
     // Whichever card the button sits in. This looked only inside
     // ".moment", so the button on the worked example -- the first thing
     // anybody presses -- did nothing at all.
-    var card = b.closest(".moment, .eg, .sum");
+    // ".answer" last, so a timestamp inside a moment card still resolves
+    // to that card -- closest() walks outward and stops at the nearest.
+    var card = b.closest(".moment, .eg, .sum, .answer");
     var slot = card && card.querySelector(".player");
     if (!slot) return;
     var f = document.createElement("iframe");
