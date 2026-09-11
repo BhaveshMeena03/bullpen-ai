@@ -888,7 +888,7 @@ _ABOUT_PHRASINGS = (
     "You get the answer and the exact second it was said. The live "
     "broadcasts are in there alongside the uploads.\n\n"
     "Two more archives sit alongside it: every long-form Elon Musk "
-    "interview, 2018 to 2025, and all 458 MCG Live episodes. Name Elon "
+    "interview, 2018 to 2025, and all 459 MCG Live episodes. Name Elon "
     "or say MCG and I'll answer from those instead.\n\n"
     "I only answer from what was actually said. If it isn't in the "
     "archive I'll tell you so rather than guess.",
@@ -901,7 +901,7 @@ _ABOUT_PHRASINGS = (
     "timestamp it was said at. The live broadcasts are indexed too, not "
     "just the uploads.\n\n"
     "I also hold every long-form Elon Musk interview, 2018 to 2025, and "
-    "458 MCG Live episodes — name Elon or MCG and you get those.\n\n"
+    "459 MCG Live episodes — name Elon or MCG and you get those.\n\n"
     "Everything is grounded in the transcripts. No guessing.",
 
     "I've transcribed and indexed every Market Bubble episode, then made it "
@@ -911,7 +911,7 @@ _ABOUT_PHRASINGS = (
     "said it.\n\n"
     "The live broadcasts are indexed as well as the uploads.\n\n"
     "Elon Musk's long-form interviews are a separate archive I hold too, "
-    "2018 to 2025, and MCG Live is a third — 458 episodes. The three "
+    "2018 to 2025, and MCG Live is a third — 459 episodes. The three "
     "never mix.\n\n"
     "I answer only from the transcripts, and say so when something isn't "
     "in there.",
@@ -932,7 +932,7 @@ _INTRO_PHRASINGS = (
     "I'm a search engine over the Market Bubble archive: tag me with a "
     "question about anything said on the show and I answer from the "
     "transcripts, with the timestamp it was said at. I hold two more "
-    "archives as well: every long-form Elon Musk interview, and all 458 "
+    "archives as well: every long-form Elon Musk interview, and all 459 "
     "MCG Live episodes.\n\n"
     "I only answer from what is actually in the episodes. If it is not "
     "in there, I say so.",
@@ -941,12 +941,17 @@ _INTRO_PHRASINGS = (
     "Ask in plain English — \"who was the guy who sold his entire ETH "
     "position\" finds David Hoffman at 27:09, without you needing to know "
     "his name.\n\n"
+    "Two more archives sit alongside it: every long-form Elon Musk "
+    "interview, and all 459 MCG Live episodes. Name Elon or say MCG to "
+    "get those instead.\n\n"
     "I only answer from what was actually said.",
 
     "Every word of every Market Bubble episode, indexed by meaning.\n\n"
     "Ask \"what did banks say about hyperliquid\" and you get his own "
     "line — \"basically full ported hyperliquid at $30\" — and the second "
     "he said it.\n\n"
+    "Elon Musk's long-form interviews are a second archive I hold, and "
+    "MCG Live is a third — 459 episodes. Name one and you get it.\n\n"
     "If it isn't in the archive I'll say so rather than guess.",
 
     "Tag me with a question about anything said on the show and you get "
@@ -954,6 +959,8 @@ _INTRO_PHRASINGS = (
     "Ask \"who is michael catt\" and it is Banks who answers — \"our head "
     "of production... he does 80 different jobs\" — because the hosts are "
     "told apart by voice rather than guessed at.\n\n"
+    "I hold two more archives as well: every long-form Elon Musk "
+    "interview, and all 459 MCG Live episodes. The three never mix.\n\n"
     "Only what is in the transcripts. Nothing invented.",
 )
 
@@ -2668,7 +2675,7 @@ _OF_THE_MUSK_ARCHIVE = re.compile(
 
 # Things that are only in the MCG archive.
 #
-# MCG is 458 interviews and almost every one is a different project, so
+# MCG is 459 interviews and almost every one is a different project, so
 # there is no single name to match on the way "elon" works for the Musk
 # archive. The project names ARE the signal, and they are already written
 # down: every interview episode is titled "Ratspeak: An offline-capable,
