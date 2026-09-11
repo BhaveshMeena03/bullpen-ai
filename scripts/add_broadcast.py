@@ -101,12 +101,54 @@ async def still_running(url: str) -> tuple[bool, str]:
     if not longest:
         return False, ""
     hours = longest / 3_600_000
-    if hours < 2:
+    # Was 2, on "every full show has run three to four hours". Ep 19 ran
+    # 1.74h with its guest cancelled and got through only because it was
+    # posted as a link, which reports no duration at all.
+    if hours < 1.25:
         return True, (f"X reports this video as {hours * 60:.0f} minutes "
-                      f"long. Every full show has run three to four hours, "
+                      f"long. The shortest full show so far ran 1.7 hours, "
                       f"so this is either still streaming or one of the "
                       f"shorter cut-downs.")
     return False, ""
+
+
+async def register_player(episode_id: str) -> None:
+    """Record the /i/broadcasts/ url for an X episode in broadcast_links.json.
+
+    One read of the post. Never fatal: without the entry the episode is
+    still indexed and searchable, its citations just cannot seek.
+    """
+    if not episode_id.startswith("x-"):
+        return
+    import json
+
+    from scripts.find_new_broadcasts import broadcast_link
+    # Not "path": that name means the episode file to the test that
+    # guards unlocked writes, and this is broadcast_links.json.
+    links_file = ROOT / "data" / "broadcast_links.json"
+    try:
+        settings = get_settings()
+        cred = XCredentials(settings.x_api_key, settings.x_api_secret,
+                            settings.x_access_token, settings.x_access_secret)
+        endpoint = f"{API}/tweets"
+        params = {"ids": episode_id[2:], "tweet.fields": "entities"}
+        async with httpx.AsyncClient(timeout=20) as http:
+            response = await http.get(
+                endpoint, params=params,
+                headers={"Authorization": cred.header("GET", endpoint, params)})
+        posts = ((response.json().get("data") or [])
+                 if response.status_code == 200 else [])
+        link = next((broadcast_link(p) for p in posts if broadcast_link(p)), None)
+        if not link:
+            print(f"  no broadcast player link on {episode_id} -- its "
+                  f"citations will point at the post and not seek")
+            return
+        links = json.loads(links_file.read_text()) if links_file.exists() else {}
+        links[episode_id] = link
+        links_file.write_text(json.dumps(links, indent=1, sort_keys=True) + "\n")
+        print(f"  {episode_id} -> {link}")
+    except Exception as exc:                                    # noqa: BLE001
+        print(f"  could not register the player link: {str(exc)[:120]}")
 
 
 async def main() -> int:
@@ -134,7 +176,7 @@ async def main() -> int:
     before = {e["episode_id"] for e in load(EPISODES)}
 
     # 1 — transcribe ---------------------------------------------------------
-    step(1, 8, "transcribing (local, no API — this is the slow part)")
+    step(1, 10, "transcribing (local, no API — this is the slow part)")
     cmd = [sys.executable, "scripts/transcribe_x_broadcast.py", args.url,
            "--model", args.model, "--keep-audio"]
     if args.date:
@@ -152,7 +194,7 @@ async def main() -> int:
         return 0
 
     # 2 — ingest -------------------------------------------------------------
-    step(2, 8, f"indexing {len(fresh)} episode(s) — appending, not rebuilding")
+    step(2, 10, f"indexing {len(fresh)} episode(s) — appending, not rebuilding")
     index = PodcastIndex()
     parsed = [Episode(**e) for e in fresh]
     windows = await index.ingest(parsed)
@@ -163,7 +205,7 @@ async def main() -> int:
     # transcript with names in it produces "Ansem argued X and Banks pushed
     # back" instead of "the hosts discussed X". Never fatal: an episode
     # without labels is the episode everything before tonight had.
-    step(3, 8, "working out who is speaking")
+    step(3, 10, "working out who is speaking")
     speaker_map: dict[str, dict[str, str]] = {}
     for episode in parsed:
         audio = ROOT / "audio" / f"{episode.episode_id}.mp3"
@@ -191,7 +233,7 @@ async def main() -> int:
             speaker_map = {}
 
     # 4 — summarize ----------------------------------------------------------
-    step(4, 8, "summarising, so it shows up when browsing")
+    step(4, 10, "summarising, so it shows up when browsing")
     summaries = SummaryStore()
     for episode in parsed:
         try:
@@ -210,7 +252,7 @@ async def main() -> int:
     # somebody was about to quote the summary at the show's host. This runs
     # every time now, because the summary is most of what "summarize the
     # latest episode" returns and nobody reads it before it goes out.
-    step(5, 8, "checking the summary's timestamps against the transcript")
+    step(5, 10, "checking the summary's timestamps against the transcript")
     for episode in parsed:
         subprocess.run([sys.executable, "scripts/verify_summaries.py",
                         "--episode-id", episode.episode_id, "--apply"],
@@ -220,11 +262,11 @@ async def main() -> int:
     # Rebuilt here rather than remembered later: a stale index simply has no
     # entry for the new episode, so a question about it silently loses the
     # exact-name matching and nobody finds out.
-    step(6, 8, "rebuilding the exact-token index")
+    step(6, 10, "rebuilding the exact-token index")
     subprocess.run([sys.executable, "scripts/build_term_index.py"], cwd=ROOT)
 
     # 5 — highlights ---------------------------------------------------------
-    step(7, 8, "refreshing the pool the bot answers from unprompted")
+    step(7, 10, "refreshing the pool the bot answers from unprompted")
     if args.skip_highlights:
         print("  skipped")
     else:
@@ -236,8 +278,25 @@ async def main() -> int:
         subprocess.run([sys.executable, "scripts/make_highlights.py", *only],
                        cwd=ROOT)
 
-    # 6 — prove it -----------------------------------------------------------
-    step(8, 8, "asking the live index about it")
+    # 7 — the broadcast player link -----------------------------------------
+    # A citation into an X broadcast has to point at /i/broadcasts/<id>?t=,
+    # not the status post: X renders a status url inside a post as a quote
+    # card, which cannot carry a timestamp. Nothing added to the mapping on
+    # ingest, so ep 19 went live with every citation collapsing into a card
+    # that jumps nowhere -- the exact bug the mapping was built to fix.
+    step(8, 10, "registering the broadcast player, so citations seek")
+    for episode in parsed:
+        await register_player(episode.episode_id)
+
+    # 8 — the copy the server ships -----------------------------------------
+    # episodes.json is gitignored; the image ships episodes.json.gz, which
+    # the clip endpoint reads. Nothing here repacked it, so clips of every
+    # broadcast added since 4 September 404'd on the live site.
+    step(9, 10, "packing episodes.json.gz for the clip endpoint")
+    subprocess.run([sys.executable, "scripts/pack_episodes.py"], cwd=ROOT)
+
+    # 9 — prove it -----------------------------------------------------------
+    step(10, 10, "asking the live index about it")
     for episode in parsed:
         # Named guests are what people actually search for, and the title is
         # where they are named.
@@ -255,6 +314,8 @@ async def main() -> int:
     print(f"  done in {(time.time() - began) / 60:.0f} min · "
           f"{total} episodes indexed")
     print("  the bot needs no restart — it reads the same index.")
+    print("  commit data/episodes.json.gz and data/broadcast_links.json:")
+    print("  clips and seekable citations only reach the site once pushed.")
     print(f"{'─' * 62}\n")
     return 0
 
