@@ -51,6 +51,25 @@ LOOKS_LIKE_AN_EPISODE = re.compile(
     r"""(?ix) \b(?: live\s+w/ | market\s+bubble | ep(?:isode)?\s*\#?\s*\d
                   | presented\s+by | draft\s+night )\b""")
 
+# Ep 19 went out as a post LINKING to the broadcast player, with nothing
+# attached -- the first of nineteen shows posted that way. The filter
+# below required an attached video, so that week's show was invisible to
+# both this script and the watcher, and was found by reading the timeline
+# by hand. A link to /i/broadcasts/ is as much a broadcast as an attached
+# one; it just carries no duration, which the length check below already
+# treats as unknown rather than short.
+BROADCAST_LINK = re.compile(
+    r"https?://(?:www\.)?(?:x|twitter)\.com/i/broadcasts/[A-Za-z0-9]+")
+
+
+def broadcast_link(post: dict) -> str | None:
+    """The /i/broadcasts/ URL a post links to, if it links to one."""
+    for url in (post.get("entities") or {}).get("urls") or []:
+        found = BROADCAST_LINK.search(url.get("expanded_url") or "")
+        if found:
+            return found.group(0)
+    return None
+
 
 def new_broadcasts(posts: list[dict], media: dict[str, dict],
                    indexed: set[str], min_hours: float = 2.0,
@@ -75,7 +94,9 @@ def new_broadcasts(posts: list[dict], media: dict[str, dict],
         keys = (post.get("attachments") or {}).get("media_keys") or []
         has_video = any(media.get(k, {}).get("type") in ("video", "animated_gif")
                         for k in keys)
-        if not has_video or not LOOKS_LIKE_AN_EPISODE.search(post.get("text", "")):
+        if not (has_video or broadcast_link(post)):
+            continue
+        if not LOOKS_LIKE_AN_EPISODE.search(post.get("text", "")):
             continue
         if since and post.get("created_at", "")[:10] < since:
             continue
@@ -131,7 +152,7 @@ async def main() -> int:
                          "One page reaches about a fortnight.")
     ap.add_argument("--since", metavar="YYYY-MM-DD",
                     help="ignore anything older")
-    ap.add_argument("--min-hours", type=float, default=2.0,
+    ap.add_argument("--min-hours", type=float, default=1.25,
                     help="skip anything shorter. The account posts 30-60 "
                          "minute cut-downs between shows and those are "
                          "already inside the full broadcast — indexing them "
@@ -175,7 +196,18 @@ async def main() -> int:
                 # how many to ask for, and asking for 20 at a time turned
                 # 30 pages into 590 posts instead of 3,000.
                 "max_results": "100",
-                "tweet.fields": "created_at,attachments,referenced_tweets",
+                # A broadcast post is never a reply, and the loop below
+                # discards replies anyway -- but only after paying for
+                # them. @MarketBubble answers its own mentions constantly:
+                # 36 posts covered barely two days when this was measured,
+                # and 9 of the 10 newest were replies. So a page of 100
+                # bought about six hours of timeline at full price, and
+                # walking back to May would have cost about $5.
+                #
+                # Excluding them costs nothing and buys roughly five times
+                # the history per page.
+                "exclude": "replies,retweets",
+                "tweet.fields": "created_at,attachments,referenced_tweets,entities",
                 "expansions": "attachments.media_keys",
                 "media.fields": "type,duration_ms",
             }

@@ -114,3 +114,36 @@ def test_ordinary_commentary_is_skipped():
 
 def test_since_excludes_older_shows():
     assert run([post()], video(), since="2026-12-01")[0] == []
+
+
+# Ep 19 went out as a post that LINKED to the broadcast player with nothing
+# attached. The filter only accepted an attached video, so the show was
+# invisible to both the finder and the watcher.
+EP19_TEXT = "HUNTER BIDEN: Market Bubble Episode 19 - Presented by Polymarket"
+
+
+def linked(pid="19", text=EP19_TEXT, url="https://x.com/i/broadcasts/1nGnRBrNmjoGO"):
+    return {"id": pid, "text": text, "created_at": LONG_AGO,
+            "entities": {"urls": [{"expanded_url": url}]}}
+
+
+def test_a_linked_broadcast_is_found_without_an_attachment():
+    found, _ = run([linked()], {})
+    assert [p["id"] for p, _ in found] == ["19"]
+    assert found[0][1] == 0          # no duration from the API; kept anyway
+
+
+def test_a_link_to_something_else_is_not_a_broadcast():
+    found, _ = run([linked(url="https://polymarket.com/event/whatever")], {})
+    assert found == []
+
+
+def test_a_linked_post_still_needs_an_episode_title():
+    found, _ = run([linked(text="gm, catch us live tonight")], {})
+    assert found == []
+
+
+def test_broadcast_link_reads_the_expanded_url():
+    from scripts.find_new_broadcasts import broadcast_link
+    assert broadcast_link(linked()) == "https://x.com/i/broadcasts/1nGnRBrNmjoGO"
+    assert broadcast_link({"text": "no entities"}) is None

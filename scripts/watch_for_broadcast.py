@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import re
 import subprocess
 import sys
 import time
@@ -49,6 +50,7 @@ from app.x_api import API, XCredentials  # noqa: E402
 from scripts.find_new_broadcasts import (  # noqa: E402
     LOOKS_LIKE_AN_EPISODE,
     SHOW,
+    broadcast_link,
 )
 
 EPISODES = ROOT / "data" / "episodes.json"
@@ -86,12 +88,64 @@ def notify(title: str, body: str) -> None:
                    capture_output=True)
 
 
+def replay_ms(url: str) -> int:
+    """Length of a broadcast replay, summed from its HLS manifest.
+
+    For a post that links to the broadcast instead of attaching it, which
+    the API reports no duration for. The manifest lengthens while the show
+    is live and stops when X finalises the recording, so the same growing-
+    then-stable rule in verdict() works on it unchanged.
+
+    0 when it cannot be read, which verdict() treats as "still short": a
+    failed read waits for the next poll rather than indexing blind.
+    """
+    try:
+        import urllib.request
+
+        import yt_dlp
+        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True,
+                               "skip_download": True}) as ydl:
+            info = ydl.extract_info(url, download=False)
+        hls = [f for f in (info.get("formats") or [])
+               if f.get("protocol") == "m3u8_native"]
+        if not hls:
+            return 0
+        request = urllib.request.Request(
+            hls[-1]["url"], headers={"User-Agent": "Mozilla/5.0"})
+        body = urllib.request.urlopen(request, timeout=30).read().decode(
+            "utf-8", "replace")
+        seconds = sum(float(x) for x in re.findall(r"#EXTINF:([0-9.]+)", body))
+        return int(seconds * 1000)
+    except Exception as exc:                                   # noqa: BLE001
+        say(f"could not read the replay length: {str(exc)[:120]}")
+        return 0
+
+
 async def candidate(http: httpx.AsyncClient, cred: XCredentials,
                     user_id: str) -> tuple[str, int] | None:
-    """The newest un-indexed broadcast post, and its reported length."""
+    """The newest un-indexed broadcast post, and its reported length.
+
+    Reads 40 posts with replies excluded, not the newest 10 of everything.
+    Ten was enough for an account that posts a few times a day, and
+    @MarketBubble is not that account: it replies to its own mentions
+    constantly, and on show night most of all. Thirty-six posts covered
+    barely two days when this was measured, nine of the ten newest being
+    replies.
+
+    So on 3 September the broadcast went up at 20:30 UTC, the watcher
+    started at 22:30, and in those two hours the post had already fallen
+    past the tenth slot. It then reported "nothing un-indexed yet" for
+    thirty-six consecutive polls across nine hours while the episode sat
+    there, and ep 18 was indexed by hand the next morning.
+
+    find_new_broadcasts.py reads 100, which is why running it by hand
+    always worked and the unattended path never did -- the same lookup,
+    two different windows, and only one of them wrong.
+    """
     url = f"{API}/users/{user_id}/tweets"
-    params = {"max_results": "10",
-              "tweet.fields": "created_at,attachments,referenced_tweets",
+    params = {"max_results": "40",
+              "exclude": "replies,retweets",
+              "tweet.fields": "created_at,attachments,referenced_tweets,entities",
               "expansions": "attachments.media_keys",
               "media.fields": "type,duration_ms"}
     response = await http.get(
@@ -106,21 +160,74 @@ async def candidate(http: httpx.AsyncClient, cred: XCredentials,
              for m in (payload.get("includes", {}).get("media") or [])}
     indexed = {e["episode_id"] for e in load(EPISODES)}
 
-    for post in (payload.get("data") or []):
+    # Counted rather than just skipped, because "nothing un-indexed yet"
+    # reads identically whether the show has not started, the post fell
+    # out of the window, or the title stopped matching the regex. It said
+    # exactly that thirty-six times in a row on 3 September while the
+    # episode was sitting on the timeline, and nobody could tell from the
+    # log that anything was wrong.
+    posts = payload.get("data") or []
+    already = no_video = not_an_episode = 0
+
+    for post in posts:
         if any(r.get("type") in ("replied_to", "quoted")
                for r in (post.get("referenced_tweets") or [])):
             continue
         if f"x-{post['id']}" in indexed:
+            already += 1
             continue
         keys = (post.get("attachments") or {}).get("media_keys") or []
-        if not any(media.get(k, {}).get("type") == "video" for k in keys):
+        has_video = any(media.get(k, {}).get("type") == "video" for k in keys)
+        link = None if has_video else broadcast_link(post)
+        if not (has_video or link):
+            no_video += 1
             continue
         if not LOOKS_LIKE_AN_EPISODE.search(post.get("text", "")):
+            not_an_episode += 1
             continue
+        if link:
+            return post["id"], replay_ms(link)
         longest = max((media.get(k, {}).get("duration_ms") or 0
                        for k in keys), default=0)
         return post["id"], longest
+
+    say(f"nothing un-indexed yet — scanned {len(posts)} posts: "
+        f"{already} already indexed, {no_video} without video, "
+        f"{not_an_episode} with video but not titled like an episode")
     return None
+
+
+def chapters(episode_id: str) -> None:
+    """Write the episode's contents somewhere a person will see them.
+
+    Indexing makes the show answerable, which only helps once somebody
+    asks. The contents list is the part that is useful the morning after
+    on its own — both shows write one by hand on every episode post, and
+    theirs stop around twenty entries because scrubbing a four-hour
+    stream by hand is where a person gives up.
+
+    Never fatal. The episode is already indexed by the time this runs, so
+    a model outage here must not turn a successful night into a failure.
+    """
+    out = Path.home() / "Desktop"
+    if not out.is_dir():
+        out = ROOT
+    out = out / f"chapters-{episode_id}.txt"
+    try:
+        done = subprocess.run(
+            [sys.executable, "scripts/make_chapters.py",
+             "--episode", episode_id, "--count", "40"],
+            cwd=ROOT, capture_output=True, text=True, timeout=900)
+    except subprocess.TimeoutExpired:
+        say("chapters timed out — the episode is still indexed")
+        return
+    if done.returncode != 0:
+        say(f"chapters failed (exit {done.returncode}) — "
+            f"the episode is still indexed")
+        return
+    out.write_text(done.stdout)
+    say(f"chapters written to {out}")
+    notify("Market Bubble", f"Chapters ready — {out.name}")
 
 
 async def main() -> int:
@@ -131,8 +238,13 @@ async def main() -> int:
                          "counts as ended.")
     ap.add_argument("--window-hours", type=float, default=9.0,
                     help="give up after this long and let a person handle it")
-    ap.add_argument("--min-hours", type=float, default=2.5,
-                    help="a finished show has never been shorter")
+    # 2.5 was "a finished show has never been shorter" until ep 19 ran
+    # 1.74h with its guest cancelled -- the watcher would have reported it
+    # "still short" until the window closed. 1.25 still excludes the 30-60
+    # minute cut-downs the account posts between shows.
+    ap.add_argument("--min-hours", type=float, default=1.25,
+                    help="shorter than this is a cut-down or a stream "
+                         "that has only just started")
     ap.add_argument("--dry-run", action="store_true",
                     help="report what it would do; never starts the pipeline")
     args = ap.parse_args()
@@ -160,7 +272,7 @@ async def main() -> int:
             polls += 1
             found = await candidate(http, cred, user_id)
             if not found:
-                say("nothing un-indexed yet")
+                pass  # candidate() already said why, in detail.
             else:
                 post_id, duration = found
                 hours = duration / 3_600_000
@@ -196,6 +308,7 @@ async def main() -> int:
                     if done.returncode == 0:
                         notify("Market Bubble", "Indexed and searchable.")
                         say("indexed")
+                        chapters(f"x-{post_id}")
                         return 0
                     notify("Market Bubble",
                            "Indexing FAILED — see the log.")
