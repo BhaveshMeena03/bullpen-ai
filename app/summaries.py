@@ -52,9 +52,23 @@ Produce a summary with exactly these sections, in Markdown:
 **TL;DR** — 2-3 sentences: what this episode is about and the single most \
 interesting thread.
 
-**Topics** — 5-10 bullet points in chronological order. Each bullet starts \
+**Topics** — 8-14 bullet points in chronological order. Each bullet starts \
 with the approximate timestamp where the topic begins (taken from the \
 transcript markers, format [h:mm:ss]) followed by a one-line description.
+
+These must cover the WHOLE episode, not the part that was easiest to \
+summarize. Before you write them, look at the timestamp on the last line \
+of the transcript: that is the runtime, and your bullets have to reach it. \
+Divide the runtime into roughly equal stretches and give every stretch at \
+least one bullet, including the last one. A gap of more than twenty \
+minutes between consecutive bullets means you have skipped something, and \
+your final bullet must fall inside the closing fifteen minutes.
+
+The back half of a live show is looser than the front — the main segment \
+ends and it becomes Q&A, tangents and sign-off — and that is exactly where \
+this goes wrong: looser is not the same as empty, and a summary that stops \
+when the structure does tells a reader the episode ended an hour before it \
+did. Say what the loose part actually was.
 
 **Notable moments** — 2-4 bullets for the most quotable or surprising \
 exchanges, each with its timestamp.
@@ -66,7 +80,7 @@ attribute specific wording to a host; paraphrase.
 "the hosts" or "a guest" unless identity is unambiguous from context.
 3. This is an informational summary, not financial advice. Report opinions \
 as opinions ("the hosts argue that...") and never add recommendations.
-4. Keep the whole summary under 500 words."""
+4. Keep the whole summary under 650 words."""
 
 
 def _fmt_ts(seconds: float) -> str:
@@ -130,7 +144,29 @@ class SummaryStore:
 
     # -- generation (run once per episode, by the admin script) -------------
     async def summarize(self, episode: Episode,
-                        speakers: dict[str, str] | None = None) -> str:
+                        speakers: dict[str, str] | None = None,
+                        attempts: int = 3) -> str:
+        """Summarize, retrying an empty response rather than failing.
+
+        Measured on ep 19: roughly half of these calls come back with no
+        text block at all — end_turn, no refusal, nothing to store. The
+        guard below catches it, so nothing bad is ever written, but a
+        single attempt meant an episode indexed at four in the morning
+        was left with no summary and the failure looked like a bug in
+        the prompt rather than the coin flip it is.
+        """
+        last = None
+        for attempt in range(1, attempts + 1):
+            try:
+                return await self._summarize_once(episode, speakers)
+            except RuntimeError as exc:
+                last = exc
+                logger.warning("summary attempt %d/%d for %s: %s",
+                               attempt, attempts, episode.episode_id, exc)
+        raise last
+
+    async def _summarize_once(self, episode: Episode,
+                              speakers: dict[str, str] | None = None) -> str:
         response = await self._anthropic.messages.create(
             model=self._settings.summary_model,
             max_tokens=2000,
