@@ -431,6 +431,51 @@ def settle_names(reads: list[tuple[int, tuple[str, str] | None]]
     return out
 
 
+def vote_within_windows(reads, gap_frames: int = 3):
+    """One name per run of frames, decided by majority.
+
+    The reader is not stable frame to frame and windows_from treats a
+    different string as a different person, so one flicker splits a guest
+    into several windows. Two real cases, both from ep 8:
+
+        LIVE WITH MERT CEO OF HELIUS   -> MERT
+        LIVE WITH MERT SHORT           -> MERT SHORT   (the role line,
+                                          caught half-rendered)
+        LIVE WITH IFORENZ / IFORENZIC  -> the same guest, last letter
+                                          flickering
+
+    settle_names cannot fix either: it only copies from a neighbour that
+    already agrees, and these differ in length so _close() rejects them.
+    A majority over the run does fix both, without a rule per quirk --
+    MERT beats MERT SHORT, IFORENZ beats IFORENZIC, and a genuine
+    handover between two guests is a separate run with its own winner.
+    """
+    import collections
+    out, run = [], []
+
+    def flush():
+        if not run:
+            return
+        names = collections.Counter(g[0] for _t, g in run)
+        winner, _n = names.most_common(1)[0]
+        # Keep the longest subtitle seen anywhere in the run: the role
+        # line arrives a frame or two after the name.
+        sub = max((g[1] for _t, g in run), key=len, default="")
+        for secs, _g in run:
+            out.append((secs, (winner, sub)))
+
+    last = None
+    for secs, got in reads:
+        if got is None:
+            flush(); run = []; out.append((secs, None)); last = None
+            continue
+        if last is not None and secs - last > EVERY_SECONDS * gap_frames:
+            flush(); run = []
+        run.append((secs, got)); last = secs
+    flush()
+    return sorted(out, key=lambda r: r[0])
+
+
 def windows_from(reads: list[tuple[int, tuple[str, str] | None]]) -> list[dict]:
     """Contiguous frames naming the same person become one window.
 
@@ -498,7 +543,8 @@ def main(argv: list[str]) -> int:
             for secs, path in frames:
                 arr = np.asarray(Image.open(path).convert("L"), dtype=float)
                 raw.append((secs, read_frame(path), bool(banner_runs(arr))))
-            reads = settle_names(fill_dropouts(raw))
+            reads = vote_within_windows(
+                settle_names(fill_dropouts(raw)))
             found = windows_from(reads)
             if section and eid in done:
                 # A sectioned run only saw part of the show. Replacing
