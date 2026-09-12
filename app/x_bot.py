@@ -367,6 +367,68 @@ _ASKS_FOR_LATEST = re.compile(
         (?:latest|newest|most\s+recent|last)\b )""")
 
 
+# "what are they talking about", asked under a post carrying an episode.
+# The question names no episode because the post does -- somebody looking
+# at ep 19's chapter list asked for "a summary of all the topics" and got
+# the show's general themes, cited from Episode 1.
+#
+# The trigger has to be a DEMONSTRATIVE with nothing after it: this,
+# they, it, the episode. "about" alone cannot be the trigger, for the
+# reason recorded beside _ASKS -- "what did they say about hyperliquid in
+# episode 17" is a topic question and must reach retrieval untouched.
+_ASKS_WHATS_THIS = re.compile(r"""(?ix)
+    \b what (?:'?s|\s+is|\s+are|\s+was|\s+were)?\s+
+    (?: (?:this|that|the)\s+(?:episode|ep|show|stream|broadcast|clip|video)
+      | this | they | them | it )
+    \s+ (?: about | discuss(?:ing)? | talk(?:ing)? \s+ about
+          | cover(?:ing)? | on )
+    \s* [?.!]? \s* $
+  | \b(?:all\s+)?(?:the\s+)?topics?\b
+  | \bwhat\s+(?:are|were)\s+the\s+topics?\b
+""")
+
+
+def asks_whats_being_discussed(question: str) -> bool:
+    """Is this "what are they talking about" rather than a topic question?"""
+    return bool(_ASKS_WHATS_THIS.search(question or ""))
+
+
+_ROOT_EPISODE_NUMBER = re.compile(r"\b(?:ep\.?|episode|#)\s*(\d{1,2})\b", re.I)
+
+
+def episode_from_context(episodes_all: list[dict], root_id: str = "",
+                         root_text: str = "") -> tuple[dict | None, str]:
+    """Which episode a conversation is about, and on what evidence.
+
+    Three tiers, most trustworthy first:
+
+      1. the root post IS the episode -- a broadcast is stored as
+         x-<status id>, so a question under @MarketBubble's own post
+         resolves with no guessing at all.
+      2. the root post NAMES it. Ansem posts the show from his own
+         account: "Market Bubble ep.19: my full conversation".
+      3. neither -- the newest episode. Somebody asking what is being
+         discussed, under a post nobody can resolve, almost always means
+         the one that just aired.
+    """
+    by_status = {e["episode_id"]: e for e in episodes_all
+                 if e["episode_id"].startswith("x-")}
+    hit = by_status.get(f"x-{root_id}")
+    if hit:
+        return hit, "the root post is the episode"
+    found = _ROOT_EPISODE_NUMBER.search(root_text or "")
+    if found:
+        want = found.group(1)
+        for episode in episodes_all:
+            if re.search(rf"\b(?:ep\.?|episode|#)\s*{want}\b",
+                         episode.get("title", ""), re.I):
+                return episode, f"the root post names episode {want}"
+    if not episodes_all:
+        return None, "nothing indexed"
+    newest_ep = max(episodes_all, key=lambda e: e.get("published_at") or "")
+    return newest_ep, "nothing named it — answering about the newest"
+
+
 def asks_for_the_latest(question: str) -> bool:
     """Is this asking about the newest episode rather than a numbered one?"""
     return bool(_ASKS_FOR_LATEST.search(question or ""))

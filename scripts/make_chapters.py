@@ -188,6 +188,42 @@ def parse_offset(value: str | None) -> float:
     return total
 
 
+async def chapters_for(episode: dict, count: int = 25,
+                       offset: float = 0.0) -> list[tuple[float, str]]:
+    """The chapters for one episode, already checked against the transcript.
+
+    Lifted out of main() so the bot can produce the same list the CLI
+    does. Somebody asking "give me a summary of all the topics" under an
+    episode post wants this, not prose about the show.
+
+    Every title is verified at the second it points at and a weak one is
+    DROPPED rather than returned. The timestamps cannot be invented --
+    the model may only copy one it was shown -- but a title is its
+    reading of a sampled region, and a title on the wrong minute is what
+    makes a list worse than no list.
+    """
+    body, stamps = sample(episode)
+    settings = get_settings()
+    client = AsyncAnthropic(**anthropic_client_kwargs(settings))
+    response = await client.messages.create(
+        model=settings.anthropic_model, max_tokens=4000,
+        # Extraction, not reasoning -- and thinking is billed against
+        # max_tokens, so leaving it on can spend the whole budget and
+        # return nothing, which reads exactly like "no chapters here".
+        thinking={"type": "disabled"},
+        messages=[{"role": "user", "content":
+                   f"{PROMPT.format(n=count)}\n\n"
+                   f"<transcript>\n{body}\n</transcript>"}],
+    )
+    raw = "".join(b.text for b in response.content if b.type == "text")
+    out: list[tuple[float, str]] = []
+    for seconds, title in parse(raw, stamps, offset):
+        score, _missing = support(title, episode, seconds + offset)
+        if score >= TITLE_SUPPORT:
+            out.append((seconds, title))
+    return out
+
+
 async def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--episode", help="episode id (default: newest)")

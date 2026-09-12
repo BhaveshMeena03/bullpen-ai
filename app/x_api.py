@@ -181,6 +181,49 @@ def strip_urls(text: str) -> str:
     )
 
 
+# A bare domain in something the bot POSTS. Not a safety question -- it
+# is what X does with it: "1:13:40 pump.fun competition on solana" was
+# linkified and rendered a full Pump.fun preview card with a VIEW button,
+# so a chapter list read as an advert under somebody else's thread.
+#
+# Deliberately separate from _LINKY_BARE above, which guards against a
+# drainer address and lets project names through on purpose. This is the
+# cosmetic half: the name is fine, the DOT is not. Say pumpfun.
+_BARE_DOMAIN_OUT = re.compile(
+    r"""(?xi)\b[a-z0-9][a-z0-9-]*\.
+        (?: com|org|net|io|ai|co|xyz|app|dev|tech|gg|so|fun|me|tv
+          | fi|sol|eth|link|sh|to|us|uk|info|biz )\b""")
+
+
+def would_render_a_card(text: str, allow: str = "") -> str | None:
+    """The bare domain X would turn into a link card, or None.
+
+    `allow` is the account's own site, which is appended deliberately
+    when links are switched on. Guarding against it would gag the one
+    link the bot is supposed to post -- the target here is a project
+    name that happens to be a domain, sitting mid-sentence.
+    """
+    permitted = {d.lower().lstrip(".")
+                 for d in (allow or "").replace(",", " ").split() if d}
+    body = text or ""
+    for found in _BARE_DOMAIN_OUT.finditer(body):
+        # The pattern matches the registrable part ("lexthedev.com"), so
+        # comparing THAT against an allowed host never matches a
+        # subdomain. Widen the span leftwards through any label.subdomain
+        # prefix first, then compare whole hosts.
+        start = found.start()
+        while start >= 2 and body[start - 1] == "." :
+            back = start - 1
+            while back > 0 and (body[back - 1].isalnum() or body[back - 1] == "-"):
+                back -= 1
+            start = back
+        host = body[start:found.end()].lower()
+        if host in permitted:
+            continue
+        return host
+    return None
+
+
 def assert_linkless(text: str) -> None:
     found = looks_like_a_link(text)
     if found:
@@ -406,6 +449,64 @@ class XClient:
             )
             for m in reversed(found)
         ]
+
+    async def post_by_id(self, post_id: str) -> dict | None:
+        """One post, by id — so a question can be read in its context.
+
+        Somebody replying under an episode post and asking "give me a
+        summary of all the topics" names no episode. The bot answered
+        from Episode 1 and talked about the show in general, under a post
+        carrying ep 19's chapter list. What they were looking at was the
+        missing half of the question.
+
+        An owned read, so $0.001, and only worth spending when the
+        question cannot be anchored any other way.
+
+        Returns {"id", "text", "author_id", "author", "conversation_id"}
+        or None -- a post that is deleted, protected or simply gone is a
+        missing anchor, never an error worth failing a reply over.
+        """
+        url = f"{API}/tweets"
+        params = {
+            "ids": post_id,
+            "tweet.fields": "author_id,conversation_id,created_at",
+            "expansions": "author_id",
+            "user.fields": "username",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=20) as http:
+                response = await http.get(
+                    url, params=params,
+                    headers={"Authorization":
+                             self._credentials.header("GET", url, params)},
+                )
+            if response.status_code == 429:
+                logger.warning("X rate limited the post read; no anchor")
+                return None
+            _raise_if_out_of_credits(response)
+            response.raise_for_status()
+        except OutOfCreditsError:
+            raise
+        except Exception as exc:                              # noqa: BLE001
+            logger.warning("could not read post %s: %s", post_id, exc)
+            return None
+        body = response.json()
+        found = (body.get("data") or [])
+        if not found:
+            return None
+        self.spent_usd += len(found) * PRICE_OWNED_READ
+        users = {u["id"]: u
+                 for u in (body.get("includes", {}).get("users") or [])}
+        self.spent_usd += len(users) * PRICE_USER_READ
+        post = found[0]
+        author = users.get(post.get("author_id", ""), {})
+        return {
+            "id": post.get("id", ""),
+            "text": post.get("text", ""),
+            "author_id": post.get("author_id", ""),
+            "author": author.get("username", ""),
+            "conversation_id": post.get("conversation_id", post.get("id", "")),
+        }
 
     async def post(self, text: str,
                    allow_link: bool = False) -> str | None:
