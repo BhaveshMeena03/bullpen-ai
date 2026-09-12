@@ -157,6 +157,17 @@ def main() -> int:
             continue
         clusters = json.loads(fingerprints.read_text())["segments"]
         hand = hand_all.get(eid, {})
+        # Without a hand map there are no known host clusters, so
+        # host_clusters() returns nothing, every cluster looks like a
+        # guest's, and the banner's name would be pinned to the hosts'
+        # own lines. Refusing is the only safe answer: an unnamed line
+        # is a worse answer, a wrongly named one is a false claim about
+        # a real person.
+        if not hand:
+            print(f"{eid}: no speaker map — skipped. The hosts' clusters "
+                  f"are unknown, so nothing here can be attributed "
+                  f"safely. Run build_speaker_map.py first.")
+            continue
         labels, notes = labels_for(episodes[eid], windows_all[eid],
                                    clusters, hand)
         print(f"\n{eid}  {episodes[eid]['title'][:54]}")
