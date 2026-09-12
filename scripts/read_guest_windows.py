@@ -476,6 +476,41 @@ def vote_within_windows(reads, gap_frames: int = 3):
     return sorted(out, key=lambda r: r[0])
 
 
+def merge_flickered_names(windows: list[dict],
+                          apart_seconds: int = 180) -> list[dict]:
+    """One guest, one name.
+
+    Voting inside a run cannot reach across a dropout, so a name that
+    flickers still leaves two windows for one person -- ep 8 ends up with
+    IFORENZ and IFORENZIC, and MERT beside MERT SHORT. Written into the
+    archive that is the same guest's lines attributed to two different
+    people, which is the failure the labels exist to avoid.
+
+    Merged only when one name is a COMPLETE PREFIX of the other, and the
+    shorter wins: the extra characters are what the reader added. That
+    test is what keeps it safe. MIKE MAJLAK and MIKE DUDAS are two real
+    guests who share a first name, and neither is a prefix of the other,
+    so they never merge -- where "close enough" on a shared prefix would
+    have joined them.
+    """
+    out: list[dict] = []
+    for window in sorted(windows, key=lambda w: w["start"]):
+        if out:
+            last = out[-1]
+            a, b = last["name"], window["name"]
+            prefix = a.startswith(b) or b.startswith(a)
+            near = window["start"] - last["end"] <= apart_seconds
+            if prefix and near:
+                keeper = a if len(a) <= len(b) else b
+                last["name"] = keeper
+                last["end"] = max(last["end"], window["end"])
+                if len(window["subtitle"]) > len(last["subtitle"]):
+                    last["subtitle"] = window["subtitle"]
+                continue
+        out.append(dict(window))
+    return out
+
+
 def windows_from(reads: list[tuple[int, tuple[str, str] | None]]) -> list[dict]:
     """Contiguous frames naming the same person become one window.
 
@@ -545,7 +580,7 @@ def main(argv: list[str]) -> int:
                 raw.append((secs, read_frame(path), bool(banner_runs(arr))))
             reads = vote_within_windows(
                 settle_names(fill_dropouts(raw)))
-            found = windows_from(reads)
+            found = merge_flickered_names(windows_from(reads))
             if section and eid in done:
                 # A sectioned run only saw part of the show. Replacing
                 # the episode's entry would throw away windows found by
