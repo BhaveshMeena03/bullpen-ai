@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<!-- Source for the "on both shows" card. 1600x900.
+
+     Found by checking every Market Bubble guest against every MCG
+     episode and live stream, then confirming each one in BOTH transcripts
+     rather than trusting a title match -- the title pass also flagged
+     "Mert" (a Helius comparison) and "Ansem" (titles about him, not
+     appearances), neither of which was a guest.
+
+     Re-run against the full archive after the stream backfill, which
+     changed the answer twice. Guest names come from the X broadcast
+     titles ("LIVE W/ ERIK VOORHEES, MIKE MAJLAK, & FLOOD"), NOT from the
+     deduplicated show list -- dedupe keeps the YouTube upload as each
+     show's representative, and the YouTube titles name no guests, so
+     reading guests off the deduplicated list finds three of twenty-two.
+
+     Al Dunlap is transcribed "AI Dunlap" everywhere in MCG, so searching
+     his real name returns nothing and the Net Net row looks false.
+
+       Squire   MCG 1 Jun      "We got Chris coming on... talking about Squire"
+                MB ep 10 9 Jul "We're about to have Gilbert from Squire AI protocol"
+       Flood    MB ep 5 4 Jun  "we got flood... let's talk to flood for 10 minutes"
+                MCG 10 Jul     "an absolute legend, Duncan, Flood Capital, coming on"
+       Net Net  MCG 16 Aug     "We got Mr. AI Dunlap in the waiting room"
+                MB ep 18 3 Sep "Al Dunlap. How are you? Great to have you
+                               on the show"
+       Clutch   MCG 22 Jul     "Simple Farmer, welcome to MCG"
+       Markets  MB ep 15 13Aug "I'm Zerox Simple Farmer. I'm the founder
+                               of Clutch Markets"
+
+     The company, not the product. Clutch Markets is what he says he
+     founded, on both shows; Stonk Brokers is the NFT collection it
+     built -- "the stock brokers program created by Clutch Markets"
+     (MCG, 10 Aug), and MCG books the pair as one thing on 21 Jul:
+     "Clutch Markets, um with uh stunt brokers".
+
+     Do NOT write the product name from the transcripts. The ticker is
+     $STONK and the misspelling is the joke, which Whisper normalises
+     away: "stock broker" 187 times against "stonk broker" 32, in the
+     same transcripts that render Solana as "Salana" and Al Dunlap as
+     "AI Dunlap". MCG's hand-typed titles are the reliable witness --
+     "STONK New ATH", "RWA Memes on Solana $Stonk".
+
+     An earlier pass had this row as "Syrup", from a half-heard intro.
+
+     MCG's 11 Jul "$SYN: Flood Capital's new lifestyle" repeats lines from
+     the 10 Jul stream word for word, so it is the same appearance cut
+     again and counts once.
+
+     The softest link is Flood: Market Bubble only ever says "Flood", and
+     it is MCG's side that says "Flood Capital". Everything else is named
+     on both shows. -->
+<html><head><meta charset="utf-8"><style>
+  @font-face{font-family:"Instrument Serif";
+    src:url("fonts/InstrumentSerif-Regular.ttf") format("truetype")}
+  @font-face{font-family:"Inter";
+    src:url("fonts/Inter-Variable.ttf") format("truetype")}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{width:1600px;height:900px;background:#0b0e11;color:#e6e8ea;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,sans-serif;
+    padding:56px 88px 44px;position:relative;overflow:hidden;
+    display:flex;flex-direction:column}
+  .glow{position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(820px 520px at 50% 0%, #16c78418, transparent 68%)}
+  header{display:flex;align-items:center;gap:14px;margin-bottom:22px}
+  header img{width:32px;height:32px;border-radius:8px;display:block}
+  .name{font-size:21px;font-weight:600;letter-spacing:-.01em}
+  .name b{color:#16c784;font-weight:600}
+
+  h1{font-family:"Instrument Serif",Georgia,serif;font-weight:400;
+    font-size:60px;line-height:1.04;letter-spacing:-.02em;margin-bottom:12px}
+  h1 em{color:#16c784;font-style:normal}
+  .sub{font-size:19px;color:#8a939e;margin-bottom:30px}
+
+  .row{display:grid;grid-template-columns:300px 1fr 70px 1fr 120px;
+    align-items:center;gap:0 20px;padding:26px 0;border-bottom:1px solid #1c222a}
+  .row.head{padding:0 0 10px;border-bottom:1px solid #232a33;font-size:12px;
+    font-weight:500;color:#6b7480;letter-spacing:.05em;text-transform:uppercase}
+  .who{font-size:30px;font-weight:700}
+  .who small{display:block;font-size:17px;font-weight:500;color:#6b7480;margin-top:4px}
+  .show{font-size:23px;font-weight:600}
+  .show span{display:block;font-size:17px;font-weight:400;color:#8a939e;margin-top:4px}
+  .show.first{color:#16c784}
+  .arrow{font-size:30px;color:#3b434d;text-align:center}
+  .gap{font-size:26px;font-weight:700;text-align:right;color:#8a939e;
+    font-variant-numeric:tabular-nums}
+  .gap small{display:block;font-size:13px;font-weight:500;color:#6b7480;
+    letter-spacing:.05em;text-transform:uppercase;margin-top:4px}
+  .row.head .gap{font-size:12px;color:#6b7480;font-weight:500}
+
+  footer{margin-top:auto;padding-top:16px;display:flex;
+    align-items:baseline;justify-content:space-between}
+  .site{font-size:22px;color:#16c784;font-weight:600}
+  .note{font-size:17px;color:#6b7480}
+</style></head><body>
+  <div class="glow"></div>
+  <header>
+    <img src="logo-200.png" alt="">
+    <div class="name">Market Bubble <b>Search</b></div>
+  </header>
+
+  <h1>Four founders have been on both shows.<br><em>MCG found three of them first.</em></h1>
+  <div class="sub">Every Market Bubble guest checked against every MCG episode and live
+    stream — and confirmed in both transcripts.</div>
+
+  <div class="row head"><div>Guest</div><div>First on</div><div></div>
+    <div>Then on</div><div class="gap">Gap</div></div>
+
+  <div class="row">
+    <div class="who">Squire<small>Chris Gilbert</small></div>
+    <div class="show first">MCG Live<span>1 June</span></div>
+    <div class="arrow">→</div>
+    <div class="show">Market Bubble<span>ep 10 · 9 July</span></div>
+    <div class="gap">38<small>days</small></div>
+  </div>
+  <div class="row">
+    <div class="who">Flood Capital<small>Duncan</small></div>
+    <div class="show first">Market Bubble<span>ep 5 · 4 June</span></div>
+    <div class="arrow">→</div>
+    <div class="show">MCG Live<span>10 July</span></div>
+    <div class="gap">36<small>days</small></div>
+  </div>
+  <div class="row">
+    <div class="who">Clutch Markets<small>Simple Farmer</small></div>
+    <div class="show first">MCG Live<span>22 July</span></div>
+    <div class="arrow">→</div>
+    <div class="show">Market Bubble<span>ep 15 · 13 August</span></div>
+    <div class="gap">22<small>days</small></div>
+  </div>
+  <div class="row">
+    <div class="who">Net Net<small>Al Dunlap</small></div>
+    <div class="show first">MCG Live<span>16 August</span></div>
+    <div class="arrow">→</div>
+    <div class="show">Market Bubble<span>ep 18 · 3 September</span></div>
+    <div class="gap">18<small>days</small></div>
+  </div>
+
+  <footer>
+    <div class="site">search.lexthedev.com</div>
+    <div class="note">19 Market Bubble shows · every MCG episode and live stream · one
+      search across both</div>
+  </footer>
+</body></html>

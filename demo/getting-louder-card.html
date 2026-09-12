@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<!-- Source for the "getting louder" card. 1600x900.
+
+     Mentions per 10,000 words: the last three shows (27 Aug, 3 Sep,
+     10 Sep) against the six before them (16 Jul - 20 Aug). One recording
+     per show via app/dedupe.py, so a clip re-upload does not count the
+     same sentence twice. Normalised by words because ep 19 ran 1.7h.
+
+     Checked two ways before it went on a card. Pooled rates give Solana
+     0.6x and Robinhood 2.1x; per-show MEDIANS, which a single guest
+     episode cannot drag, give ~0.5x and ~1.9x. Guest episodes spike a
+     topic -- Mert's put Solana at 35 per 10k -- and the median is what
+     says the shift is the show and not one booking.
+
+     "Solana" counts Salana/Salada and, checked separately, Sol/Soul too:
+     0.6x either way. Hyperliquid is the strict name only -- "hype" is
+     also an English word and inflated it. Left off: Net Net (7.5x, one
+     guest appearance, not a narrative) and Stomp/ZZZ (six mentions or
+     fewer, too small to call a trend). -->
+<html><head><meta charset="utf-8"><style>
+  @font-face{font-family:"Instrument Serif";
+    src:url("fonts/InstrumentSerif-Regular.ttf") format("truetype")}
+  @font-face{font-family:"Inter";
+    src:url("fonts/Inter-Variable.ttf") format("truetype")}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{width:1600px;height:900px;background:#0b0e11;color:#e6e8ea;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,sans-serif;
+    padding:56px 88px 44px;position:relative;overflow:hidden;
+    display:flex;flex-direction:column}
+  .glow{position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(820px 500px at 40% 0%, #16c78418, transparent 68%)}
+  header{display:flex;align-items:center;gap:14px;margin-bottom:22px}
+  header img{width:32px;height:32px;border-radius:8px;display:block}
+  .name{font-size:21px;font-weight:600;letter-spacing:-.01em}
+  .name b{color:#16c784;font-weight:600}
+
+  h1{font-family:"Instrument Serif",Georgia,serif;font-weight:400;
+    font-size:56px;line-height:1.04;letter-spacing:-.02em;margin-bottom:10px}
+  h1 em{color:#16c784;font-style:normal}
+  h1 i{color:#e5a54e;font-style:normal}
+  .sub{font-size:19px;color:#8a939e;margin-bottom:26px}
+
+  .row{display:grid;grid-template-columns:260px 110px 110px 1fr 110px;
+    align-items:center;gap:0 22px;padding:11px 0;border-bottom:1px solid #1c222a}
+  .row.head{font-size:12px;font-weight:500;color:#6b7480;letter-spacing:.05em;
+    text-transform:uppercase;border-bottom:1px solid #232a33;padding:0 0 9px}
+  .row.split{border-bottom:2px solid #2b333d}
+  .t{font-size:24px;font-weight:600}
+  .n{font-size:21px;color:#8a939e;text-align:right;font-variant-numeric:tabular-nums}
+  .n.now{color:#e6e8ea;font-weight:600}
+  .bar{height:14px;border-radius:3px;background:#16c784}
+  .row.down .bar{background:#e5a54e}
+  .x{font-size:26px;font-weight:700;text-align:right;color:#16c784;
+    font-variant-numeric:tabular-nums}
+  .row.down .x{color:#e5a54e}
+  .row.head .n,.row.head .x{font-size:12px;color:#6b7480;font-weight:500}
+
+  footer{margin-top:auto;padding-top:16px;display:flex;
+    align-items:baseline;justify-content:space-between}
+  .site{font-size:22px;color:#16c784;font-weight:600}
+  .note{font-size:17px;color:#6b7480}
+</style></head><body>
+  <div class="glow"></div>
+  <header>
+    <img src="logo-200.png" alt="">
+    <div class="name">Market Bubble <b>Search</b></div>
+  </header>
+
+  <h1>The show is getting <em>louder about Robinhood</em> —<br>and
+    <i>quieter about Solana</i>.</h1>
+  <div class="sub">Mentions per 10,000 words: the last three shows against the six
+    before them.</div>
+
+  <div id="rows"></div>
+
+  <footer>
+    <div class="site">search.lexthedev.com</div>
+    <div class="note">every word of 9 shows · one recording per show · medians agree</div>
+  </footer>
+
+<script>
+// [topic, before, now]  -- per 10k words, 16 Jul-20 Aug vs 27 Aug-10 Sep
+const UP = [["Tokenized stocks",0.8,2.6],["Zcash",1.8,4.9],["Bitcoin",6.0,14.7],
+            ["Robinhood",5.3,11.2],["Hyperliquid",4.2,7.9]];
+const DOWN = [["Pump",7.1,5.4],["Ethereum",3.1,1.9],["Solana",10.0,5.7]];
+const MAX = 14.7, WIDE = 560;   // bar length = where the topic is NOW
+const row = ([t,b,n], cls) => `<div class="row ${cls}">
+    <div class="t">${t}</div><div class="n">${b.toFixed(1)}</div>
+    <div class="n now">${n.toFixed(1)}</div>
+    <div><div class="bar" style="width:${Math.max(6, n/MAX*WIDE)}px"></div></div>
+    <div class="x">${(n/b).toFixed(1)}×</div></div>`;
+document.getElementById("rows").innerHTML =
+  `<div class="row head"><div>Topic</div><div class="n">Before</div>
+    <div class="n">Now</div><div></div><div class="x">Change</div></div>`
+  + UP.map((r,i) => row(r, i === UP.length - 1 ? "split" : "")).join("")
+  + DOWN.map(r => row(r, "down")).join("");
+</script>
+</body></html>

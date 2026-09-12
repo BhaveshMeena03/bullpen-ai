@@ -2,8 +2,9 @@
 <meta charset="utf-8">
 <title>The MCG Index — ask MCG Live anything</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="Every MCG interview, transcribed and searchable
-by meaning. 459 episodes, one project each. Ask a question, get the moment.">
+<meta name="description" content="Every MCG interview and live stream, transcribed
+and searchable by meaning. 634 episodes, 1,000 hours. Ask a question, get the
+moment.">
 
 <!--
   MCG's own colours, not a third invention.
@@ -13,7 +14,7 @@ by meaning. 459 episodes, one project each. Ask a question, get the moment.">
   show, so that is what this wears: #6ecf9e on true black, deep jade for
   the quiet parts, condensed type for anything that acts as a wordmark.
 
-  The layout is still a catalogue rather than a broadcast. 458 interviews
+  The layout is still a catalogue rather than a broadcast. 413 interviews
   and almost every one is a different project, so an answer is usually
   concentrated in one episode rather than scattered across a long
   multi-topic show — and the results lean on that, naming the project
@@ -348,8 +349,8 @@ by meaning. 459 episodes, one project each. Ask a question, get the moment.">
   </header>
 
   <dl class="readout">
-    <div class="cell"><dt>Episodes</dt><dd id="r-eps">459</dd></div>
-    <div class="cell"><dt>Runtime</dt><dd id="r-hours">448<em>hrs</em></dd></div>
+    <div class="cell"><dt>Episodes</dt><dd id="r-eps">634</dd></div>
+    <div class="cell"><dt>Runtime</dt><dd id="r-hours">1002<em>hrs</em></dd></div>
     <div class="cell"><dt>Span</dt><dd id="r-span">2025<em>–2026</em></dd></div>
   </dl>
 
@@ -361,11 +362,15 @@ by meaning. 459 episodes, one project each. Ask a question, get the moment.">
        JavaScript runs and still right if the call below fails, and it is
        refreshed from the same response as the readout above. It was a
        plain "458" that nothing updated, so the day an episode was indexed
-       the headline figure and this sentence disagreed on the same screen. -->
-  <p class="sub"><span id="sub-eps">459</span> interviews, one project an
-  episode, transcribed and indexed by meaning rather than keywords. Ask what a
-  project does, who built it or what it raised — and get the episode and the
-  second it was said.</p>
+       the headline figure and this sentence disagreed on the same screen.
+
+       The word after the number is "episodes", not "interviews": the API
+       replaces the number alone, so the noun has to be true of the live
+       streams too. It said "interviews" while 221 broadcasts were in. -->
+  <p class="sub"><span id="sub-eps">634</span> episodes — every interview and
+  every live stream — transcribed and indexed by meaning rather than keywords.
+  Ask what a project does, who built it or what it raised — and get the episode
+  and the second it was said.</p>
 
   <form id="f" autocomplete="off">
     <span class="prompt">&gt;</span>
@@ -456,7 +461,7 @@ by meaning. 459 episodes, one project each. Ask a question, get the moment.">
     })
     .catch(function(){});
 
-  // The shelf shows the most recent. 458 rows is a list nobody reaches the
+  // The shelf shows the most recent. 634 rows is a list nobody reaches the
   // end of, and the useful end is the top.
   var SHOWN = 24;
   var ALL_ROWS = [];
@@ -478,7 +483,7 @@ by meaning. 459 episodes, one project each. Ask a question, get the moment.">
           '<button id="all">show all ' + rows.length.toLocaleString()
           + " episodes</button><span>every one searchable above</span>";
         $("all").addEventListener("click", function(){
-          // Rendered in one pass rather than paged: 458 rows of text is
+          // Rendered in one pass rather than paged: 634 rows of text is
           // nothing to a browser, and a second "show more" is just the
           // same question again.
           paint(ALL_ROWS);

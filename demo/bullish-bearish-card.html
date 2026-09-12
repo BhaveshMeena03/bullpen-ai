@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<!-- Source for the bullish / bearish card. 1600x900.
+
+     Every word of all 19 shows, one recording per show (app/dedupe.py),
+     so a clip re-upload never counts the same sentence twice.
+
+     "bullish" 251, "bearish" 75. Negations checked before this went on a
+     card: "not bullish" appears twice in the whole archive and "not
+     bearish" once, so the ratio barely moves -- 249 to 74 net.
+
+     The voice split is over voice-matched lines only: Ansem 120 bullish
+     in 182,855 matched words (6.6 per 10k), Banks 32 in 195,892 (1.6 per
+     10k), so about 4x per word. 38% of all "bullish" are on lines no
+     voiceprint claims -- guests, crosstalk -- which is why the card says
+     "matched by voice" rather than implying the split covers everything.
+
+     Deliberately NOT on the card, after reading every instance in
+     context: "it's over" (14) is mostly literal -- "it's over a thousand",
+     "over-collateralized", "it's over here" -- and "we're so back" (1) is
+     sarcastic. Counting them would have been counting the wrong thing. -->
+<html><head><meta charset="utf-8"><style>
+  @font-face{font-family:"Instrument Serif";
+    src:url("fonts/InstrumentSerif-Regular.ttf") format("truetype")}
+  @font-face{font-family:"Inter";
+    src:url("fonts/Inter-Variable.ttf") format("truetype")}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{width:1600px;height:900px;background:#0b0e11;color:#e6e8ea;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,sans-serif;
+    padding:56px 88px 44px;position:relative;overflow:hidden;
+    display:flex;flex-direction:column}
+  .glow{position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(760px 520px at 30% 30%, #16c7841c, transparent 68%)}
+  header{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+  header img{width:32px;height:32px;border-radius:8px;display:block}
+  .name{font-size:21px;font-weight:600;letter-spacing:-.01em}
+  .name b{color:#16c784;font-weight:600}
+
+  .kicker{font-size:20px;color:#8a939e;margin-bottom:6px}
+  .duel{display:flex;align-items:flex-end;gap:54px;margin:auto 0}
+  .vs{font-family:"Instrument Serif",Georgia,serif;font-size:84px;color:#3b434d;
+    padding-bottom:88px;font-style:italic}
+  .side .num{font-family:"Instrument Serif",Georgia,serif;font-size:300px;
+    line-height:.82;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .side .lab{font-size:22px;font-weight:700;letter-spacing:.14em;
+    text-transform:uppercase;margin-top:14px}
+  .bull .num,.bull .lab{color:#16c784}
+  .bear .num,.bear .lab{color:#e5a54e}
+  .ratio{margin-left:auto;text-align:right;padding-bottom:10px}
+  .ratio .r{font-family:"Instrument Serif",Georgia,serif;font-size:96px;line-height:.9}
+  .ratio .c{font-size:17px;color:#6b7480;margin-top:10px;letter-spacing:.04em;
+    text-transform:uppercase}
+
+  .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+  .tile{border:1px solid #232a33;border-radius:10px;padding:20px 22px;background:#0f1317}
+  .tile .big{font-size:36px;font-weight:700;margin-bottom:6px;font-variant-numeric:tabular-nums}
+  .tile .big em{color:#16c784;font-style:normal}
+  .tile .txt{font-size:18px;color:#8a939e;line-height:1.4}
+
+  footer{margin-top:22px;display:flex;align-items:baseline;justify-content:space-between}
+  .site{font-size:22px;color:#16c784;font-weight:600}
+  .note{font-size:17px;color:#6b7480}
+</style></head><body>
+  <div class="glow"></div>
+  <header>
+    <img src="logo-200.png" alt="">
+    <div class="name">Market Bubble <b>Search</b></div>
+  </header>
+
+  <div class="kicker">Times the show has said it, every word of 19 episodes</div>
+  <div class="duel">
+    <div class="side bull"><div class="num">251</div><div class="lab">bullish</div></div>
+    <div class="vs">vs</div>
+    <div class="side bear"><div class="num">75</div><div class="lab">bearish</div></div>
+    <div class="ratio"><div class="r">3.4 : 1</div><div class="c">after negations</div></div>
+  </div>
+
+  <div class="tiles">
+    <div class="tile"><div class="big"><em>80</em> of them</div>
+      <div class="txt">came with a "super", "very" or "so" in front</div></div>
+    <div class="tile"><div class="big">Ansem <em>4×</em> Banks</div>
+      <div class="txt">"bullish" per word, matched by voice — 120 to 32</div></div>
+    <div class="tile"><div class="big">Ep 10 · <em>24×</em></div>
+      <div class="txt">the most bullish show, 9 July — Luca Netz on</div></div>
+  </div>
+
+  <footer>
+    <div class="site">search.lexthedev.com</div>
+    <div class="note">one recording per show · "not bullish" said twice, total</div>
+  </footer>
+</body></html>
