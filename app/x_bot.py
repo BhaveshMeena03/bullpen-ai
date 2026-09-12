@@ -39,7 +39,9 @@ from pathlib import Path
 
 from app import attribution, hedging, names
 from app.podcast import NOT_FOUND_ANSWER, _broadcast_players
-from app.x_api import _URL_SHAPED, Mention, XClient, looks_like_a_link, strip_urls
+from app.x_api import (_URL_SHAPED, Mention, XClient,
+                       looks_like_a_link, strip_urls,
+                       would_render_a_card)
 
 logger = logging.getLogger(__name__)
 
@@ -396,7 +398,7 @@ def asks_whats_being_discussed(question: str) -> bool:
 _ROOT_EPISODE_NUMBER = re.compile(r"\b(?:ep\.?|episode|#)\s*(\d{1,2})\b", re.I)
 
 
-def episode_from_context(episodes_all: list[dict], root_id: str = "",
+def episode_from_context(known: list[dict], root_id: str = "",
                          root_text: str = "") -> tuple[dict | None, str]:
     """Which episode a conversation is about, and on what evidence.
 
@@ -411,21 +413,26 @@ def episode_from_context(episodes_all: list[dict], root_id: str = "",
          discussed, under a post nobody can resolve, almost always means
          the one that just aired.
     """
-    by_status = {e["episode_id"]: e for e in episodes_all
-                 if e["episode_id"].startswith("x-")}
+    # `known` is the stored summaries: they carry episode_id, title and
+    # published_at, which is everything needed here, and the bot already
+    # holds them. Reading episodes.json instead would give this the only
+    # direct file dependency in the reply path.
+    by_status = {e.get("episode_id", ""): e for e in known
+                 if str(e.get("episode_id", "")).startswith("x-")}
     hit = by_status.get(f"x-{root_id}")
     if hit:
         return hit, "the root post is the episode"
     found = _ROOT_EPISODE_NUMBER.search(root_text or "")
     if found:
         want = found.group(1)
-        for episode in episodes_all:
+        for episode in known:
             if re.search(rf"\b(?:ep\.?|episode|#)\s*{want}\b",
                          episode.get("title", ""), re.I):
                 return episode, f"the root post names episode {want}"
-    if not episodes_all:
+    dated = [e for e in known if e.get("published_at")]
+    if not dated:
         return None, "nothing indexed"
-    newest_ep = max(episodes_all, key=lambda e: e.get("published_at") or "")
+    newest_ep = max(dated, key=lambda e: e["published_at"])
     return newest_ep, "nothing named it — answering about the newest"
 
 
@@ -3422,6 +3429,36 @@ class MentionBot:
                         "description", mention.id)
             return about
 
+        # "what are they talking about", asked under a post that carries
+        # the episode. The question names none because the post does.
+        # Somebody looking at ep 19's chapter list asked for "a summary of
+        # all the topics" and got the show's general themes, cited from
+        # Episode 1, because summary_request() resolves a NUMBER and there
+        # was none to find.
+        #
+        # Only when the thread has no episode already: a follow-up in a
+        # conversation this account has answered in is handled by the
+        # back-reference above, and re-reading the root would spend a read
+        # to learn something already known.
+        if (asks_whats_being_discussed(question)
+                and not self.state.last_episode.get(
+                    str(mention.conversation_id))):
+            if self._summaries is not None and self._summary_cache is None:
+                self._summary_cache = await self._summaries.list_all()
+            root = await self._client.post_by_id(str(mention.conversation_id))
+            found, why = episode_from_context(
+                self._summary_cache or [],
+                (root or {}).get("id", ""), (root or {}).get("text", ""))
+            if found:
+                logger.info("%s asked what is being discussed — %s: %s",
+                            mention.id, why, found.get("title", "?")[:50])
+                mode = ("always" if self.include_links is True
+                        else "off" if self.include_links is False
+                        else str(self.include_links))
+                return format_summary(
+                    found["summary"], found["title"], self._summary_limit,
+                    url=episode_link(found) if mode != "off" else None)
+
         if asks_for_the_latest(question):
             found = await self._latest_summary()
             if found:
@@ -3794,6 +3831,19 @@ class MentionBot:
         # include_links setting instead meant the about answer, which
         # carries the site link by design, could not be posted at all when
         # links were off.
+        # A bare domain this code did not mean as a link. X renders one as
+        # a preview card: "1:13:40 pump.fun competition on solana" went out
+        # and pulled in a full Pump.fun advert with a VIEW button, under
+        # somebody else's thread. The dot is dropped rather than the word,
+        # so the sentence still reads. The site this account posts on
+        # purpose is exempt -- the note above records what happened the
+        # last time a guard here refused a link the code had placed itself.
+        card = would_render_a_card(text, self._site or "")
+        if card:
+            logger.warning("%s: %r would render a link card — posting it "
+                           "as text instead", mention.id, card)
+            text = text.replace(card, card.replace(".", ""))
+
         posted = await self._client.reply(
             text, mention.id, allow_link=bool(_URL_SHAPED.search(text)))
         logger.info("replied to %s -> %s", mention.id, posted or "dry run")

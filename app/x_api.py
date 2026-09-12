@@ -206,6 +206,14 @@ def would_render_a_card(text: str, allow: str = "") -> str | None:
     permitted = {d.lower().lstrip(".")
                  for d in (allow or "").replace(",", " ").split() if d}
     body = text or ""
+    # A URL with a scheme is a link this code placed on purpose -- a deep
+    # link into an episode, or the site in the "what is this" answer. The
+    # target here is only a BARE domain sitting in a sentence. Rewriting
+    # inside a real URL turned https://x.com/... into https://xcom/... and
+    # broke the one link the bot exists to post, which is exactly what the
+    # note beside assert_linkless warns about.
+    if _URL_SHAPED.search(body):
+        return None
     for found in _BARE_DOMAIN_OUT.finditer(body):
         # The pattern matches the registrable part ("lexthedev.com"), so
         # comparing THAT against an allowed host never matches a

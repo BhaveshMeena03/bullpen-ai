@@ -345,6 +345,14 @@ class FakeClient:
         self.spent_usd += len(got) * PRICE_OWNED_READ
         return got
 
+    async def post_by_id(self, post_id: str):
+        """The root of a conversation. `roots` maps id -> post; a
+        missing id models a post that is deleted, protected or simply
+        gone, which must leave the bot without an anchor rather than
+        raise."""
+        self.post_by_id_calls = getattr(self, "post_by_id_calls", 0) + 1
+        return getattr(self, "roots", {}).get(str(post_id))
+
     async def replied_to(self, limit=100):
         """X's record of what this account has answered. Empty by default;
         RestartingClient models an account with history.
@@ -3966,3 +3974,57 @@ def test_no_mcg_project_name_can_steal_a_broadcast_question():
     assert not clashes, (
         "these MCG project names are also said on the broadcast or in the "
         f"Musk interviews, so they would misroute: {sorted(clashes)[:8]}")
+
+
+@pytest.mark.anyio
+async def test_whats_this_about_reads_the_post_it_was_asked_under(tmp_path):
+    """The live failure this exists for.
+
+    Somebody replying to ep 19's chapter list asked "give me a summary of
+    all the topics". The question names no episode -- the post they were
+    looking at does -- so summary_request() found nothing, it fell through
+    to ordinary search, and the answer was the show's general themes cited
+    from Episode 1. 26 impressions under a post with 47,000.
+    """
+    rows = [
+        {"episode_id": "x-2098149424623132694", "published_at": "2026-09-10",
+         "title": "HUNTER BIDEN: Market Bubble Episode 19",
+         "summary": "TL;DR -- ep 19, thrown together last minute.",
+         "url": "https://x.com/MarketBubble/status/2098149424623132694"},
+        {"episode_id": "older", "published_at": "2026-05-07",
+         "title": "Market Bubble Ep 2", "summary": "TL;DR -- the early one.",
+         "url": "https://x.com/MarketBubble/status/1"},
+    ]
+    client = FakeClient([[mention("1")],
+                         [mention("2", text="@bot what are they talking about",
+                                  conversation="900")]])
+    # Rooted on somebody ELSE's post, which names the episode in its text:
+    # Ansem posts the show from his own account.
+    client.roots = {"900": {"id": "900", "author": "blknoiz06",
+                            "text": "Market Bubble ep.19: my full conversation"}}
+    bot = MentionBot(client, FakeIndex(), summaries=FakeSummaries(rows),
+                     state_path=tmp_path / "s.json")
+    await bot.tick("2026-09-13")
+    await bot.tick("2026-09-13")
+    assert client.posted, "nothing was posted"
+    sent = client.posted[0][1]
+    assert "ep 19" in sent.lower(), sent
+    assert "the early one" not in sent, sent
+    assert client.post_by_id_calls == 1, "the root should be read once"
+
+
+@pytest.mark.anyio
+async def test_a_bare_domain_is_posted_as_text_not_a_link_card(tmp_path):
+    """X renders a bare domain as a preview card. "1:13:40 pump.fun
+    competition on solana" went out and pulled in a full Pump.fun advert
+    with a VIEW button, under somebody else's thread. The dot goes, the
+    word stays, so the sentence still reads."""
+    client = FakeClient([[mention("1")], [mention("2")]])
+    bot = MentionBot(client, FakeIndex(answer="Around 1:13:40 they cover pump.fun today."),
+                     state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-26")
+    await bot.tick("2026-08-26")
+    assert client.posted, "nothing was posted"
+    sent = client.posted[0][1]
+    assert "pump.fun" not in sent, sent
+    assert "pumpfun" in sent, sent
