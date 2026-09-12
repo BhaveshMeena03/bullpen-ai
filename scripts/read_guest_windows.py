@@ -228,7 +228,24 @@ LIVE = re.compile(r"\bL\s*[I1l]\s*V\s*E\s+W[A-Za-z1l|]{1,5}\s+(.+)", re.I)
 LEAD_JUNK = re.compile(r"^(?:bubble|market|buble|[^A-Za-z]+)\s*", re.I)
 
 
+# The same bar carries TRAILERS, not just the guest on air:
+#
+#     LIVE WITH MIKE MAJLAK IN 2:55
+#     ERIK GIVES LIFE ADVICE
+#     WHAT'S NEXT FOR VENICE
+#
+# The second and third name nobody and never matched. The first does --
+# and it means "coming up in 2:55", not "on air now". Read as a guest it
+# produced MIKE MAJEAK IN, MERT IN and MERT SHORT: one person split into
+# four windows, at times they were not on.
+# The leading digit is often mangled -- "IN 2:55" came back as
+# "IN £:55" -- so anything short before the colon counts.
+COUNTDOWN = re.compile(r"\bIN\s+\S{1,3}\s*[:.]\s*\d{2}\b")
+
+
 def guest_from(text: str) -> tuple[str, str] | None:
+    if COUNTDOWN.search(text):
+        return None
     m = LIVE.search(text)
     if not m:
         return None
@@ -260,6 +277,9 @@ def guest_from(text: str) -> tuple[str, str] | None:
         if len(words) == 3:
             break
     name = " ".join(words).strip(" .-&")
+    # A trailing "IN" is the start of a countdown the OCR cut short
+    # ("MIKE MAJLAK IN 2:5" -> "MIKE MAJLAK IN"). Never part of a name.
+    name = re.sub(r"\s+IN$", "", name).strip(" .-&")
     subtitle = re.sub(r"\s+", " ", subtitle).strip(" .-&")
     if len(name) < 3:
         return None
