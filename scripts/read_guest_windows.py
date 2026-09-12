@@ -247,6 +247,19 @@ def guest_from(text: str) -> tuple[str, str] | None:
         name, subtitle = rest, ""
     name = re.sub(r"[^A-Za-z0-9 .'&-]", " ", name)
     name = re.sub(r"\s+", " ", name).strip(" .-&")
+    # Stop the name where the banner stops. Underneath it sit the ticker
+    # tape and the sponsor line, and a tall crop catches them: fed
+    # "LIVE WITH MIKE MAJLAK 55 SOL 104.06 +3.66" this used to return
+    # the whole thing as the name. A digit is never part of one here,
+    # and nobody on this show is billed in more than three words.
+    words = []
+    for word in name.split():
+        if any(ch.isdigit() for ch in word):
+            break
+        words.append(word)
+        if len(words) == 3:
+            break
+    name = " ".join(words).strip(" .-&")
     subtitle = re.sub(r"\s+", " ", subtitle).strip(" .-&")
     if len(name) < 3:
         return None
@@ -353,6 +366,51 @@ def fill_dropouts(reads: list[tuple[int, tuple[str, str] | None, bool]]
     return out
 
 
+def _close(a: str, b: str) -> bool:
+    """Two readings of the same name, one of them mis-OCR'd.
+
+    Same length and differing in a couple of characters is a misread,
+    not a second person: EASY EATS / EASY FATS, TRADERMAYNE /
+    PRADERMAYNE. Length is required to match so that genuinely
+    different names of similar spelling are never merged.
+    """
+    if a == b:
+        return True
+    if len(a) != len(b) or not a:
+        return False
+    wrong = sum(1 for x, y in zip(a, b) if x != y)
+    return wrong <= max(1, len(a) // 8)
+
+
+def settle_names(reads: list[tuple[int, tuple[str, str] | None]]
+                 ) -> list[tuple[int, tuple[str, str] | None]]:
+    """Replace a one-off misreading with what its neighbours say.
+
+    fill_dropouts covers frames that read NOTHING. This covers frames
+    that read something slightly wrong, which is worse: a garbled name
+    is a different person as far as windows_from is concerned, so one
+    bad frame splits a guest's window into three and puts a name like
+    PRADERMAYNE into the output. Writing that into a passage would be a
+    false claim about a real person.
+
+    Only a reading whose neighbours agree with each other, and which is
+    a near-miss of theirs, is corrected. Anything else is left alone --
+    a genuine handover between two guests must survive this.
+    """
+    out = list(reads)
+    for i, (secs, got) in enumerate(out):
+        if got is None:
+            continue
+        before = next((g for _, g in reversed(out[:i]) if g), None)
+        after = next((g for _, g in out[i + 1:] if g), None)
+        if not (before and after):
+            continue
+        if before[0] == after[0] and got[0] != before[0] \
+                and _close(got[0], before[0]):
+            out[i] = (secs, before)
+    return out
+
+
 def windows_from(reads: list[tuple[int, tuple[str, str] | None]]) -> list[dict]:
     """Contiguous frames naming the same person become one window.
 
@@ -420,7 +478,7 @@ def main(argv: list[str]) -> int:
             for secs, path in frames:
                 arr = np.asarray(Image.open(path).convert("L"), dtype=float)
                 raw.append((secs, read_frame(path), bool(banner_runs(arr))))
-            reads = fill_dropouts(raw)
+            reads = settle_names(fill_dropouts(raw))
             found = windows_from(reads)
             if section and eid in done:
                 # A sectioned run only saw part of the show. Replacing
