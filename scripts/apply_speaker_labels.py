@@ -51,6 +51,12 @@ from app.schemas import Episode  # noqa: E402
 
 EPISODES = ROOT / "data" / "episodes.json"
 SPEAKER_MAP = ROOT / "data" / "speaker_map.json"
+# Guests, read off the show's own lower third and pinned to a voice
+# cluster by write_guest_labels.py. Kept in a separate file on purpose:
+# speaker_map.json is what a human vouched for by ear, and blending
+# machine output into it would lose the distinction for good. The hand
+# map wins every tie below.
+GUEST_LABELS = ROOT / "data" / "guest_labels.json"
 
 
 def vector_id(episode_id: str, start_seconds: float) -> str:
@@ -96,6 +102,18 @@ async def main() -> int:
     settings = get_settings()
     episodes = {e["episode_id"]: e for e in json.loads(EPISODES.read_text())}
     mapping = json.loads(SPEAKER_MAP.read_text())
+    if GUEST_LABELS.exists():
+        guests = json.loads(GUEST_LABELS.read_text())
+        added = 0
+        for episode_id, labels in guests.items():
+            known = mapping.setdefault(episode_id, {})
+            for index, name in labels.items():
+                # The hand map is never overwritten.
+                if index not in known:
+                    known[index] = name
+                    added += 1
+        print(f"  + {added} guest labels from "
+              f"{GUEST_LABELS.name} across {len(guests)} episode(s)")
     index = Pinecone(api_key=settings.pinecone_api_key).Index(
         settings.pinecone_index)
 
