@@ -255,9 +255,38 @@ def guest_from(text: str) -> tuple[str, str] | None:
         return None
     # The name runs until the subtitle starts. The subtitle is the role,
     # and it reliably begins with one of these.
+    # Where the name stops and the role starts. Naming every role does
+    # not work -- the show writes whatever it likes on that line:
+    #
+    #   LIVE WITH KENDRICK PERKINS NBA CHAMPION
+    #   LIVE WITH POORGOAT MAKE AMERICA BULLISH AGAIN
+    #   LIVE WITH JINSENTOS "FOLLOW THE ATTENTION"
+    #
+    # None of those start with CEO or FOUNDER, so the role words were
+    # absorbed into the name. A quote always begins one, and otherwise a
+    # name is at most two words: everything after that is the role.
     role = re.search(r"\b(CEO|FOUNDER|CO-?FOUNDER|TRADER|CREATOR|INVESTOR|"
                      r"PRESIDENT|HEAD OF|PARTNER|LEADING|ANALYST|BUILDER)\b",
                      rest, re.I)
+    if role is None:
+        quoted = re.search(r"[\u201c\u201d\"']", rest)
+        if quoted and quoted.start() > 0:
+            role = quoted
+        else:
+            words = rest.split()
+            # A verb after the first word means the rest is a slogan, not
+            # a surname: "POORGOAT MAKE AMERICA BULLISH AGAIN" is one
+            # handle and a tagline, where "AL DUNLAP CEO OF..." is two
+            # name words and a role. Without this the name took one word
+            # too many and became "POORGOAT MAKE".
+            SLOGAN = {"MAKE", "FOLLOW", "BUY", "SELL", "STAY", "KEEP",
+                      "NEVER", "ALWAYS", "GET", "GO", "LET", "DONT",
+                      "DON'T", "IS", "ARE", "THE", "A", "AN"}
+            at = 2
+            if len(words) > 1 and words[1].upper().strip(",.") in SLOGAN:
+                at = 1
+            if len(words) > at:
+                role = re.search(r"\b" + re.escape(words[at]) + r"\b", rest)
     if role and role.start() > 0:
         name, subtitle = rest[:role.start()], rest[role.start():]
     else:
