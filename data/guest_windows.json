@@ -52,12 +52,6 @@
    "name": "MIKE MAJLAK",
    "subtitle": "",
    "start": 11400,
-   "end": 11940
-  },
-  {
-   "name": "MIKE MAJLAK",
-   "subtitle": "",
-   "start": 12060,
    "end": 13650
   },
   {
@@ -72,36 +66,12 @@
    "name": "IFORENZ",
    "subtitle": "",
    "start": 1560,
-   "end": 1620
-  },
-  {
-   "name": "IFORENZIC",
-   "subtitle": "",
-   "start": 1740,
-   "end": 1770
-  },
-  {
-   "name": "IFORENZ",
-   "subtitle": "",
-   "start": 1770,
    "end": 1800
   },
   {
    "name": "MERT",
-   "subtitle": "",
-   "start": 2460,
-   "end": 2490
-  },
-  {
-   "name": "MERT SHORT",
-   "subtitle": "",
-   "start": 2580,
-   "end": 2640
-  },
-  {
-   "name": "MERT",
    "subtitle": "CEO OF HELIUS",
-   "start": 2640,
+   "start": 2460,
    "end": 2790
   }
  ],
@@ -111,6 +81,126 @@
    "subtitle": "CEO OF BULLPEN LA",
    "start": 3300,
    "end": 3570
+  },
+  {
+   "name": "MERT",
+   "subtitle": "",
+   "start": 7200,
+   "end": 7500
+  },
+  {
+   "name": "BREZ",
+   "subtitle": "",
+   "start": 7500,
+   "end": 8400
+  },
+  {
+   "name": "INSENTOS",
+   "subtitle": "",
+   "start": 8400,
+   "end": 8520
+  },
+  {
+   "name": "JINSENTOS FOLLOW THE",
+   "subtitle": "",
+   "start": 8520,
+   "end": 8550
+  },
+  {
+   "name": "INSENTOS FOLLOW THE",
+   "subtitle": "",
+   "start": 8550,
+   "end": 8580
+  },
+  {
+   "name": "JINSENTOS FOLLOW THE",
+   "subtitle": "",
+   "start": 8580,
+   "end": 8610
   }
- ]
+ ],
+ "x-2075316750439338088": [
+  {
+   "name": "LUCA NETZ",
+   "subtitle": "CEO OF PUDGY PENGUI",
+   "start": 3570,
+   "end": 3600
+  },
+  {
+   "name": "GPT-LIVE",
+   "subtitle": "",
+   "start": 7530,
+   "end": 10800
+  },
+  {
+   "name": "CHRIS GILBERT",
+   "subtitle": "",
+   "start": 14400,
+   "end": 16230
+  }
+ ],
+ "x-2077854740575092752": [
+  {
+   "name": "JESSE POLLAK",
+   "subtitle": "",
+   "start": 3600,
+   "end": 5520
+  },
+  {
+   "name": "LUCAS BRUDER",
+   "subtitle": "CEO OF JITO LAB",
+   "start": 6060,
+   "end": 7200
+  }
+ ],
+ "x-2080390322110992735": [
+  {
+   "name": "KENDRICK PERKINS NBA",
+   "subtitle": "",
+   "start": 3960,
+   "end": 6690
+  }
+ ],
+ "x-2088002434253922358": [
+  {
+   "name": "MIKE DUDAS",
+   "subtitle": "PARTNER OF 6TH MAN VENTURE",
+   "start": 3600,
+   "end": 4740
+  },
+  {
+   "name": "SIMPLE FARMER",
+   "subtitle": "PARTNER OF 6TH MAN VENTUR",
+   "start": 4770,
+   "end": 6690
+  },
+  {
+   "name": "POORGOAT MAKE AMERICA",
+   "subtitle": "",
+   "start": 6810,
+   "end": 7200
+  }
+ ],
+ "x-2090537938899845434": [
+  {
+   "name": "ORANGIE",
+   "subtitle": "TRADER, CREATOR, INVESTOR",
+   "start": 3600,
+   "end": 6510
+  },
+  {
+   "name": "SE YONG PARK",
+   "subtitle": "CO-FOUNDER OF FOMI",
+   "start": 6540,
+   "end": 7200
+  },
+  {
+   "name": "ANDREJ",
+   "subtitle": "FOUNDER OF GRASS PROTOCOL",
+   "start": 10950,
+   "end": 13770
+  }
+ ],
+ "x-2093074127011909791": [],
+ "x-2098149424623132694": []
 }
