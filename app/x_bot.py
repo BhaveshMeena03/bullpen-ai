@@ -192,15 +192,30 @@ def _unhandle(text: str, handle: str = "mbubbleSearch") -> str:
     return _WHITESPACE.sub(" ", body).strip()
 
 
+# Endings that are not endings. A cut after one of these reads as a
+# sentence that stopped rather than one that finished.
+_ABBREV = re.compile(r"\b(?:vs|etc|e\.g|i\.e|approx|no|mr|mrs|dr|st|jr|sr|vol|fig|ft)\.$", re.I)
+
+
 def _fit(text: str, budget: int) -> str:
     """Trim to budget on a sentence boundary if there is one, else a word."""
     text = text.strip()
     if len(text) <= budget:
         return text
     cut = text[:budget]
+    # A newline first. These summaries are one topic per line, so the
+    # natural place to stop is the end of a topic -- not mid-clause in the
+    # middle of one. A live reply ended "...Zcash bull case, Pump vs."
+    # because the only sentence break in reach was rejected by the 0.55
+    # floor below and it fell through to the word branch.
+    at = cut.rfind("\n")
+    if at > budget * 0.5:
+        return cut[:at].strip()
     for boundary in (". ", "! ", "? "):
         at = cut.rfind(boundary)
-        if at > budget * 0.55:
+        # Not an abbreviation. "vs." and "e.g." end in a period and are
+        # not the end of anything.
+        if at > budget * 0.55 and not _ABBREV.search(cut[:at + 1]):
             return cut[:at + 1].strip()
     at = cut.rfind(" ")
     # Trailing joiners read as a typo once the ellipsis lands after them:

@@ -4028,3 +4028,43 @@ async def test_a_bare_domain_is_posted_as_text_not_a_link_card(tmp_path):
     sent = client.posted[0][1]
     assert "pump.fun" not in sent, sent
     assert "pumpfun" in sent, sent
+
+
+def test_a_trimmed_summary_stops_at_the_end_of_a_topic():
+    """A live reply ended "...Zcash bull case, Pump vs." and then stopped.
+
+    These summaries are one topic per line, so the place to stop is the
+    end of a topic. The sentence-boundary search alone found nothing in
+    reach and fell through to cutting at a word, mid-clause.
+
+    The assertion is that every line KEPT is a whole line -- not that the
+    text avoids some particular ending, which an earlier version of this
+    test got wrong: if every source line ends the same way, a correct cut
+    ends that way too.
+    """
+    from app.x_bot import _fit
+    lines = [f"0:{n:02d}:00 A topic line about something discussed at length."
+             for n in range(10, 60, 5)]
+    body = "\n".join(lines)
+    out = _fit(body, 300)
+    assert len(out) <= 300
+    kept = out.rstrip("\u2026").rstrip().split("\n")
+    assert kept, out
+    for line in kept:
+        assert line in lines, f"cut mid-line: {line!r}"
+    assert len(kept) < len(lines), "nothing was trimmed, so nothing is proven"
+
+
+def test_a_bare_domain_is_caught_even_beside_a_real_link():
+    """The summary carried "Anthem.io updates" AND the episode link. The
+    guard stood down on the whole post at the first real URL, so the bare
+    domain went out and X rendered it as a t.co card anyway."""
+    from app.x_api import would_render_a_card
+    site = "search.lexthedev.com"
+    both = ("covering ZZZ, Anthem.io updates.\n\nFull episode:\n"
+            "https://x.com/i/broadcasts/1abc")
+    assert (would_render_a_card(both, site) or "").lower() == "anthem.io"
+    # A deliberate link on its own is still left alone.
+    only_url = "a summary.\n\nFull episode:\nhttps://www.youtube.com/watch?v=a"
+    assert would_render_a_card(only_url, site) is None
+    assert would_render_a_card(f"topics {site}", site) is None

@@ -212,9 +212,22 @@ def would_render_a_card(text: str, allow: str = "") -> str | None:
     # inside a real URL turned https://x.com/... into https://xcom/... and
     # broke the one link the bot exists to post, which is exactly what the
     # note beside assert_linkless warns about.
-    if _URL_SHAPED.search(body):
-        return None
+    # Spans covered by a real URL. Standing down on the WHOLE post the
+    # moment one deliberate link appeared was too blunt: a summary
+    # carrying "Anthem.io updates" plus the episode link went out with the
+    # bare domain intact, and X turned it into a t.co card anyway. Skip
+    # only what sits inside a real URL, and keep reading the rest.
+    spans = [(m.start(), m.end()) for m in _URL_SHAPED.finditer(body)]
+    # A scheme match is only the prefix; the URL runs to the next space.
+    widened = []
+    for a, _b in spans:
+        end = a
+        while end < len(body) and not body[end].isspace():
+            end += 1
+        widened.append((a, end))
     for found in _BARE_DOMAIN_OUT.finditer(body):
+        if any(a <= found.start() < b for a, b in widened):
+            continue
         # The pattern matches the registrable part ("lexthedev.com"), so
         # comparing THAT against an allowed host never matches a
         # subdomain. Widen the span leftwards through any label.subdomain
