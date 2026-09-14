@@ -57,6 +57,29 @@ _CANON = {"faze banks": "FaZe Banks", "banks": "FaZe Banks",
 # A real attribution does not need a comma to reach its verb: "Ansem said",
 # "Ansem explained around 3:05". Anything that has to cross one is reaching
 # past the sentence it belongs to.
+_VERBS = (r"said|says|noted|notes|explained|explains|argued|argues"
+          r"|described|describes|recalled|recalls|admitted|admits"
+          r"|mentioned|mentions|claimed|claims|stated|states|revealed"
+          r"|reveals|put it|called|calls|added|adds|joked|jokes"
+          r"|pointed out")
+
+
+def _credit_pattern(names) -> re.Pattern:
+    """The same shape as _CREDIT, over whichever names can be credited.
+
+    Longest first, or "Banks" matches inside "FaZe Banks" and the
+    comparison below reads the wrong claimed speaker. Guest names are
+    escaped: "GPT-LIVE" carries regex metacharacters.
+    """
+    alts = "|".join(re.escape(n) for n in
+                    sorted(names, key=len, reverse=True))
+    return re.compile(
+        rf"\b({alts})\b"
+        r"(?!\s+(?:Edition|Episode|Ep\b))"
+        r"(?P<gap>[^.!?\n\",|]{0,60}?)"
+        rf"\b(?P<verb>{_VERBS})\b")
+
+
 _CREDIT = re.compile(
     r"\b(FaZe Banks|Ansem|Banks)\b"
     r"(?!\s+(?:Edition|Episode|Ep\b))"
@@ -80,15 +103,34 @@ def _words(text: str) -> set[str]:
     return {w for w in re.findall(r"[a-z0-9']{4,}", text.lower())}
 
 
+def canon(name: str) -> str:
+    """"banks" and "FaZe Banks" are one man; everyone else is himself.
+
+    _CANON exists to fold the host aliases together. A guest has no
+    aliases, so an unknown name is already canonical -- returning it
+    unchanged is what lets this module see guests at all.
+    """
+    return _CANON.get(name.strip().lower(), name.strip())
+
+
 def labelled_lines(hits) -> list[tuple[str, str]]:
-    """(speaker, text) for every labelled line the model was shown."""
+    """(speaker, text) for every labelled line the model was shown.
+
+    Every prefixed name, not just the two hosts. Dropping the rest is
+    what made this module blind to the errors the guest labels exposed:
+    asked what Banks said about FaZe, an answer credited SIX of his lines
+    to Erik Voorhees, and nothing here could see it because "Erik
+    Voorhees" was not in _CANON and his lines never reached the matcher.
+
+    A name in a prefix is a name the label pipeline vouched for -- it
+    got there from a voice cluster matched against the show's own lower
+    third -- so there is nothing to validate it against here.
+    """
     out: list[tuple[str, str]] = []
     for hit in hits or ():
         stamped = getattr(hit, "text_ts", "") or ""
         for who, said in _LABELLED.findall(stamped):
-            canon = _CANON.get(who.strip().lower())
-            if canon:
-                out.append((canon, said))
+            out.append((canon(who), said))
     return out
 
 
@@ -112,7 +154,11 @@ def speaker_of(quote: str, lines: list[tuple[str, str]]) -> str | None:
 
 
 def _same(a: str, b: str) -> bool:
-    return _CANON.get(a.lower().strip()) == _CANON.get(b.lower().strip())
+    """Careful: this used to read _CANON.get(...) == _CANON.get(...), and
+    two guests both missed the dict, both returned None, and compared
+    EQUAL. That is why four Lucas Bruder quotes credited to Jesse Pollak
+    passed clean -- the check said they were the same person."""
+    return canon(a) == canon(b)
 
 
 def correct(answer: str, hits) -> tuple[str, list[str]]:
@@ -128,6 +174,12 @@ def correct(answer: str, hits) -> tuple[str, list[str]]:
     if not lines:
         return answer, []
 
+    # Every name that could be credited here: the hosts, plus whoever the
+    # labels put in these passages. Built per call rather than baked into
+    # _CREDIT, because the guest list is a property of the hits and grows
+    # every time read_guest_windows reads another broadcast.
+    credit_re = _credit_pattern({who for who, _ in lines} | set(HOSTS))
+
     changes: list[str] = []
     # Walk quotes in reverse so earlier offsets stay valid as we edit.
     for found in reversed(list(_QUOTED.finditer(answer))):
@@ -136,17 +188,28 @@ def correct(answer: str, hits) -> tuple[str, list[str]]:
         if not truth:
             continue
         # The nearest credit BEFORE this quote is the one it belongs to.
-        credits = list(_CREDIT.finditer(answer[:found.start()]))
+        credits = list(credit_re.finditer(answer[:found.start()]))
         if not credits:
             continue
         credit = credits[-1]
         claimed = credit.group(1)
         if _same(claimed, truth):
             continue
+        # Keyed on TRUTH, never on what was claimed. All three shapes
+        # appear in the measurements and each needs different words to
+        # stay true:
+        #
+        #   "Erik Voorhees said" over a FaZe Banks line -> a host spoke
+        #   "Ansem said" over a Lucas Bruder line       -> a guest spoke
+        #   "Jesse Pollak said" over a Lucas Bruder line-> a guest spoke
+        #
+        # Keying on `claimed` would call the first one "a guest" and
+        # replace one false statement with another.
+        vague = "one of the hosts" if truth in HOSTS else "a guest"
         # Replace only the name, leaving the verb and everything between
         # it intact: "Ansem explained around 3:05" keeps its shape.
         start, end = credit.start(1), credit.end(1)
-        answer = answer[:start] + "one of the hosts" + answer[end:]
-        changes.append(f"{claimed!r} -> 'one of the hosts' for "
+        answer = answer[:start] + vague + answer[end:]
+        changes.append(f"{claimed!r} -> {vague!r} for "
                        f"{quote[:44]!r} (labelled {truth})")
     return answer, list(reversed(changes))

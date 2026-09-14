@@ -96,10 +96,20 @@ class TestItLeavesCorrectRepliesAlone:
         answer = "Around 40:17 Ansem explained his position on the token."
         assert correct(answer, [REAL]) == (answer, [])
 
-    def test_a_guest_is_never_demoted(self):
-        """Only the two hosts are voice-labelled; every guest line is
-        unprefixed. Touching those would take 'what did Jesse say about
-        Base' from a good answer to a vague one."""
+    def test_a_quote_from_an_unlabelled_line_is_never_demoted(self):
+        """Nothing to contradict, so nothing to act on.
+
+        This was called test_a_guest_is_never_demoted, and said guests
+        were safe because "only the two hosts are voice-labelled; every
+        guest line is unprefixed". That stopped being true the day
+        write_guest_labels.py put 2,901 guest names into text_ts, and the
+        test kept passing for a different reason than its name gave --
+        REAL's guest line carries no "Name:" prefix, so it never reaches
+        the matcher at all.
+
+        What is actually guaranteed, then and now: a quote that matches
+        no labelled line is left exactly as written.
+        """
         answer = 'Jesse said "Base is the consumer chain" around 1:06.'
         assert correct(answer, [REAL]) == (answer, [])
 
@@ -173,3 +183,106 @@ class TestItRunsInTheReplyPath:
         """Silent rewriting of a public reply is not acceptable; this has
         to be greppable after the fact."""
         assert "attribution corrected" in self.source
+
+
+# --- guests carry names now, so guests can be got wrong ---------------
+#
+# Until the guest labels landed, only Ansem and FaZe Banks had a name on a
+# line, so `correct` only ever had to choose between two people. Every
+# guest quote was unverifiable -- nothing could contradict it -- and the
+# harness reported 0 wrong because it was blind, not because replies were
+# right.
+#
+# With 2,901 guest labels in text_ts the errors became visible, and they
+# are not rare. Measured over three runs of verify_attribution.py against
+# the live index, all verbatim:
+#
+#   "we completely ... up the company"  -> Erik Voorhees, line says FaZe Banks
+#   "really fell in love with the team" -> Jesse Pollak, line says Lucas Bruder
+#   "like buying a Ferrari..."          -> Cirrus, line says FaZe Banks
+#   "now it's consistently been a ..."  -> Al Dunlap, line says Ansem
+#
+# Six of those landed in ONE answer about what Banks said about FaZe --
+# his own company, credited to a guest six times.
+#
+# The demotion is keyed on who really spoke, never on who was claimed:
+# calling a host's line "a guest" would swap one false statement for
+# another.
+
+LABELLED_GUESTS = Hit(
+    "[1:01] FaZe Banks: we completely wrecked the company early on honestly\n"
+    "[1:02] Erik Voorhees: venice does not retain any of your prompts at all\n"
+    "[1:03] Lucas Bruder: really fell in love with the team and the solana stack\n"
+    "[1:04] Jesse Pollak: base is about getting builders onchain quickly\n"
+    "[1:06] Cirrus: nfts were the first thing that actually made sense to me\n"
+)
+
+
+class TestGuestsCanBeGotWrongToo:
+    def test_a_guest_credited_with_a_host_line_becomes_one_of_the_hosts(self):
+        """The shape that hurts most: the host is the identifiable person
+        whose words were moved."""
+        out, changed = correct(
+            'Erik Voorhees said "we completely wrecked the company early '
+            'on honestly".', [LABELLED_GUESTS])
+        assert "one of the hosts said" in out
+        assert "Erik Voorhees said" not in out
+        assert changed and "FaZe Banks" in changed[0]
+
+    def test_a_guest_credited_with_another_guests_line_becomes_a_guest(self):
+        """Both unlabelled before, so _same() compared None to None and
+        called them the same person. Four of these passed clean in one
+        run."""
+        out, changed = correct(
+            'Jesse Pollak said "really fell in love with the team and the '
+            'solana stack".', [LABELLED_GUESTS])
+        assert "a guest said" in out
+        assert "Jesse Pollak said" not in out
+        assert changed and "Lucas Bruder" in changed[0]
+
+    def test_a_host_credited_with_a_guest_line_becomes_a_guest(self):
+        out, changed = correct(
+            'Ansem said "nfts were the first thing that actually made '
+            'sense to me".', [LABELLED_GUESTS])
+        assert "a guest said" in out
+        assert "Ansem said" not in out
+
+    def test_a_correct_guest_credit_is_untouched(self):
+        """The whole point of the labels. Demoting this would undo them."""
+        answer = ('Erik Voorhees said "venice does not retain any of your '
+                  'prompts at all".')
+        assert correct(answer, [LABELLED_GUESTS]) == (answer, [])
+
+    def test_the_episode_title_is_still_not_a_credit(self):
+        """Widening the name set is exactly the change that could bring
+        back "in the one of the hosts Edition episode", which shipped
+        once."""
+        answer = ('in the Ansem Edition episode, FaZe Banks said "we '
+                  'completely wrecked the company early on honestly".')
+        assert correct(answer, [LABELLED_GUESTS]) == (answer, [])
+
+    def test_the_quote_survives_a_guest_demotion(self):
+        out, _ = correct(
+            'Cirrus said "we completely wrecked the company early on '
+            'honestly" on air.', [LABELLED_GUESTS])
+        assert '"we completely wrecked the company early on honestly"' in out
+
+    def test_a_name_with_no_line_in_the_passages_is_not_detected(self):
+        """A known limit, pinned so it is a decision rather than a
+        surprise.
+
+        The credit pattern is built from the speakers the passages
+        actually name, so a credit to somebody with no labelled line here
+        is invisible -- even though that is the more suspicious case: the
+        model named a person who demonstrably did not speak in the
+        material it was given.
+
+        Widening it to any capitalised name before a verb would reach
+        company names and episode titles, and the title case already
+        shipped a reply reading "in the one of the hosts Edition
+        episode". Left narrow on purpose; revisit with a real failure in
+        hand rather than a hypothetical.
+        """
+        answer = ('Mizkif said "we completely wrecked the company early on '
+                  'honestly".')
+        assert correct(answer, [LABELLED_GUESTS]) == (answer, [])
