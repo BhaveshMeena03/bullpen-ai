@@ -272,6 +272,13 @@ class Settings(BaseSettings):
     # The bot's own numeric id, used for the mentions endpoint and to keep it
     # from answering itself.
     x_bot_user_id: str | None = None
+
+    # Hosted transcription, for placing a posted clip in the archive.
+    # Optional on purpose: a deploy without it answers exactly as before,
+    # because the clip path checks for the key and declines rather than
+    # raising. Local mlx_whisper is not an option on the server -- it is
+    # Apple Silicon only, and the box is Linux.
+    groq_api_key: str | None = None
     # Off unless deliberately switched on. The bot spends money on every
     # reply, so it should never start just because credentials happen to be
     # present in the environment.
@@ -418,7 +425,7 @@ class Settings(BaseSettings):
     @field_validator(
         "anthropic_api_key", "voyage_api_key", "pinecone_api_key",
         "admin_token", "x_api_key", "x_api_secret", "x_access_token",
-        "x_access_secret", mode="before",
+        "x_access_secret", "groq_api_key", mode="before",
     )
     @classmethod
     def _sanitize_secret(cls, v):

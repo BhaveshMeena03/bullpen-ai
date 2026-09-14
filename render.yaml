@@ -40,6 +40,12 @@ services:
         sync: false
       - key: ADMIN_TOKEN
         sync: false
+      # Hosted transcription for clip matching. Declared as a stub for the
+      # same reason ANTHROPIC_BASE_URL is: set in the dashboard and absent
+      # from the blueprint, a sync can prune it, and clip matching would
+      # simply stop placing clips -- quietly, with nothing failing.
+      - key: GROQ_API_KEY
+        sync: false
       - key: ANTHROPIC_MODEL
         value: claude-sonnet-5
       - key: PINECONE_INDEX
