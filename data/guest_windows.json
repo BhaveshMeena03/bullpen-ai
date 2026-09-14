@@ -80,42 +80,36 @@
    "name": "SAL QADIR",
    "subtitle": "CEO OF BULLPEN LA",
    "start": 3300,
-   "end": 3570
+   "end": 3690
   },
   {
-   "name": "MERT",
+   "name": "THREADGUY",
    "subtitle": "",
-   "start": 7200,
-   "end": 7500
+   "start": 4500,
+   "end": 5280
+  },
+  {
+   "name": "RASMR",
+   "subtitle": "",
+   "start": 5310,
+   "end": 5940
+  },
+  {
+   "name": "TJR",
+   "subtitle": "BACK",
+   "start": 5970,
+   "end": 6570
   },
   {
    "name": "BREZ",
-   "subtitle": "",
-   "start": 7500,
-   "end": 8400
+   "subtitle": "BACK",
+   "start": 6600,
+   "end": 8430
   },
   {
    "name": "INSENTOS",
-   "subtitle": "",
-   "start": 8400,
-   "end": 8520
-  },
-  {
-   "name": "JINSENTOS FOLLOW THE",
-   "subtitle": "",
-   "start": 8520,
-   "end": 8550
-  },
-  {
-   "name": "INSENTOS FOLLOW THE",
-   "subtitle": "",
-   "start": 8550,
-   "end": 8580
-  },
-  {
-   "name": "JINSENTOS FOLLOW THE",
-   "subtitle": "",
-   "start": 8580,
+   "subtitle": "\"FOLLOW THE ATTENT",
+   "start": 8460,
    "end": 8610
   }
  ],
@@ -155,17 +149,41 @@
  ],
  "x-2080390322110992735": [
   {
-   "name": "KENDRICK PERKINS NBA",
-   "subtitle": "",
+   "name": "CIRRUS",
+   "subtitle": "THE KING OF AR",
+   "start": 2070,
+   "end": 3270
+  },
+  {
+   "name": "KENDRICK PERKINS",
+   "subtitle": "NBA CHAMPION",
    "start": 3960,
    "end": 6690
+  },
+  {
+   "name": "BRIAN ARMSTRONG",
+   "subtitle": "CEO OF COINBASE",
+   "start": 7620,
+   "end": 8460
+  },
+  {
+   "name": "TH BRIAN",
+   "subtitle": "ARMSTRONG",
+   "start": 8580,
+   "end": 8610
+  },
+  {
+   "name": "BRIAN ARMSTRONG",
+   "subtitle": "CEO OF COINBASE",
+   "start": 8760,
+   "end": 9540
   }
  ],
  "x-2088002434253922358": [
   {
    "name": "MIKE DUDAS",
-   "subtitle": "PARTNER OF 6TH MAN VENTURE",
-   "start": 3600,
+   "subtitle": "PARTNER OF 6TH MAN VENTUR",
+   "start": 3270,
    "end": 4740
   },
   {
@@ -175,10 +193,16 @@
    "end": 6690
   },
   {
-   "name": "POORGOAT MAKE AMERICA",
-   "subtitle": "",
+   "name": "POORGOAT",
+   "subtitle": "MAKE AMERICA BULLISH AGAIN",
    "start": 6810,
-   "end": 7200
+   "end": 8430
+  },
+  {
+   "name": "BRETT HARRISON",
+   "subtitle": "FOUNDER AND CEO, ARCHITE",
+   "start": 8670,
+   "end": 10770
   }
  ],
  "x-2090537938899845434": [

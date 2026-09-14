@@ -567,11 +567,16 @@ def windows_from(reads: list[tuple[int, tuple[str, str] | None]]) -> list[dict]:
 
 
 def main(argv: list[str]) -> int:
-    only = None
     keep = "--keep" in argv
     height = 720
-    if "--only" in argv:
-        only = argv[argv.index("--only") + 1]
+    # Repeatable. It used to be argv[argv.index("--only") + 1], which
+    # takes the FIRST value and discards the rest in silence: a run with
+    # three --only flags read one episode, wrote the file, and exited 0,
+    # so the two it skipped looked like episodes whose names the reader
+    # could not fix rather than episodes it never opened. Hours went into
+    # the wrong explanation before the argument parsing was suspected.
+    only = [argv[i + 1] for i, a in enumerate(argv)
+            if a == "--only" and i + 1 < len(argv)]
     if "--height" in argv:
         height = int(argv[argv.index("--height") + 1])
     section = None
@@ -582,9 +587,14 @@ def main(argv: list[str]) -> int:
     episodes = json.loads(EPISODES.read_text())
     links = json.loads(BROADCASTS.read_text()) if BROADCASTS.exists() else {}
     if only:
-        episodes = [e for e in episodes if e["episode_id"] == only]
+        known = {e["episode_id"] for e in episodes}
+        # Name every id that matches nothing. Dropping them quietly is
+        # how a typo becomes "the reader could not fix that episode".
+        for wanted in only:
+            if wanted not in known:
+                log(f"no episode {wanted}")
+        episodes = [e for e in episodes if e["episode_id"] in only]
         if not episodes:
-            log(f"no episode {only}")
             return 1
 
     done = json.loads(OUT.read_text()) if OUT.exists() else {}
