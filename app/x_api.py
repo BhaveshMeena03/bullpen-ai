@@ -471,6 +471,33 @@ class XClient:
             for m in reversed(found)
         ]
 
+    @staticmethod
+    def _pick_video(body: dict) -> dict | None:
+        """The smallest MP4 in the post, if it carries a video at all.
+
+        Smallest on purpose: only the audio is ever used, and the
+        variants for one 71-second clip ran 832kbps to 10.4Mbps for the
+        same soundtrack. The m3u8 variant is skipped -- it has no
+        bit_rate and needs a second fetch to resolve.
+
+        Returns {"url", "duration_ms"} or None. None is the ordinary
+        case: most posts are text.
+        """
+        media = (body.get("includes", {}) or {}).get("media") or []
+        best = None
+        for item in media:
+            if item.get("type") != "video":
+                continue
+            for variant in item.get("variants") or []:
+                rate = variant.get("bit_rate")
+                if rate is None or not variant.get("url"):
+                    continue          # m3u8 playlist, not a file
+                if best is None or rate < best[0]:
+                    best = (rate, variant["url"], item.get("duration_ms"))
+        if best is None:
+            return None
+        return {"url": best[1], "duration_ms": best[2]}
+
     async def post_by_id(self, post_id: str) -> dict | None:
         """One post, by id — so a question can be read in its context.
 
@@ -491,8 +518,16 @@ class XClient:
         params = {
             "ids": post_id,
             "tweet.fields": "author_id,conversation_id,created_at",
-            "expansions": "author_id",
+            # Media too, because a clipper's post is often a video and
+            # nothing else. Asked "what are they talking about" under a
+            # clip captioned "must watch", the bot fell through to the
+            # newest episode and posted 3,890 characters about it -- right
+            # only when the clip happened to come from that show.
+            # The expansion is free; the variants are what make the clip
+            # readable at all.
+            "expansions": "author_id,attachments.media_keys",
             "user.fields": "username",
+            "media.fields": "type,duration_ms,variants",
         }
         try:
             async with httpx.AsyncClient(timeout=20) as http:
@@ -527,6 +562,7 @@ class XClient:
             "author_id": post.get("author_id", ""),
             "author": author.get("username", ""),
             "conversation_id": post.get("conversation_id", post.get("id", "")),
+            "video": self._pick_video(body),
         }
 
     async def post(self, text: str,
