@@ -451,6 +451,37 @@ def episode_from_context(known: list[dict], root_id: str = "",
     return newest_ep, "nothing named it — answering about the newest"
 
 
+_STRIP_FOR_SUBSTANCE = re.compile(r"https?://\S+|@\w+|[^\w\s]")
+
+
+def worth_asking_about(root_text: str) -> bool:
+    """Does the root post say enough to be a question on its own?
+
+    episode_from_context's third tier answers with the newest episode
+    when nothing names one, and that is right under "we're live" or a
+    clip with no caption -- the newest show is what somebody means.
+
+    It is wrong under a post that is ABOUT something. Asked "what are
+    they talking about" under @MarketBubble's "Not your inference, not
+    your thoughts. Privacy using AI will soon be a non-negotiable
+    feature", the bot returned 3,874 characters about Hunter Biden's
+    meme coin, because that was the newest episode. Confidently
+    answering a question nobody asked is worse than a miss: a miss is
+    honest.
+
+    The post's own words are a better query than a fallback. Searching
+    that one found Erik Voorhees on Venice -- "Venice is not storing all
+    your prompts" -- which is what should have gone out.
+
+    So: enough real words to retrieve on, once links and handles are
+    gone. Six is deliberately low; the cost of being wrong here is
+    falling through to ordinary retrieval, which declines cleanly when
+    it finds nothing.
+    """
+    bare = _STRIP_FOR_SUBSTANCE.sub(" ", root_text or "")
+    return len([w for w in bare.split() if len(w) > 2]) >= 6
+
+
 def asks_for_the_latest(question: str) -> bool:
     """Is this asking about the newest episode rather than a numbered one?"""
     return bool(_ASKS_FOR_LATEST.search(question or ""))
@@ -3461,10 +3492,24 @@ class MentionBot:
             if self._summaries is not None and self._summary_cache is None:
                 self._summary_cache = await self._summaries.list_all()
             root = await self._client.post_by_id(str(mention.conversation_id))
+            root_text = (root or {}).get("text", "")
             found, why = episode_from_context(
-                self._summary_cache or [],
-                (root or {}).get("id", ""), (root or {}).get("text", ""))
-            if found:
+                self._summary_cache or [], (root or {}).get("id", ""),
+                root_text)
+            # The third tier is a guess, and episode_from_context always
+            # returns one, so `if found` was always true and every such
+            # question got a summary. When the root post says enough to
+            # search on, its own words beat the guess -- see
+            # worth_asking_about. Tiers 1 and 2 are evidence, not guesses,
+            # and still answer directly.
+            guessed = why.startswith("nothing named it")
+            if guessed and worth_asking_about(root_text):
+                logger.info("%s asked what is being discussed, but nothing "
+                            "named an episode — searching the root post's "
+                            "own words instead of guessing at the newest",
+                            mention.id)
+                question = root_text
+            elif found:
                 logger.info("%s asked what is being discussed — %s: %s",
                             mention.id, why, found.get("title", "?")[:50])
                 mode = ("always" if self.include_links is True

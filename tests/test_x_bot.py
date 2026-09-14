@@ -4068,3 +4068,71 @@ def test_a_bare_domain_is_caught_even_beside_a_real_link():
     only_url = "a summary.\n\nFull episode:\nhttps://www.youtube.com/watch?v=a"
     assert would_render_a_card(only_url, site) is None
     assert would_render_a_card(f"topics {site}", site) is None
+
+
+# --- "what are they talking about", under a post that is about something ---
+#
+# episode_from_context always returns an episode: its third tier answers
+# with the newest one when nothing names an episode. So `if found` was
+# always true, and every such question got a summary no matter what the
+# thread was about.
+#
+# Asked under @MarketBubble's "Not your inference, not your thoughts.
+# Privacy using AI will soon be a non-negotiable feature", the bot replied
+# with 3,874 characters about Hunter Biden's meme coin collapse -- the
+# newest episode, and nothing to do with the post. A fluent answer to a
+# question nobody asked is worse than a miss, because a miss is honest.
+#
+# This feature shipped and answered live mentions with no test at all.
+
+PRIVACY_POST = ("Not your inference, not your thoughts. \n\n"
+                "Privacy using AI will soon be a non-negotiable feature. "
+                "https://t.co/5YQg9WQTWs")
+
+
+def _newest_only():
+    return [{"episode_id": "x-999", "title": "Ep 19 — Hunter Biden",
+             "summary": "All about a meme coin that collapsed.",
+             "published_at": "2026-09-12T00:00:00Z"}]
+
+
+@pytest.mark.anyio
+async def test_a_post_about_something_is_searched_not_summarised(tmp_path):
+    """The root post's own words beat a guess at the newest episode."""
+    client = FakeClient([[mention("0")],
+                         [mention("1", text="@bot what are they talking about",
+                                  conversation="77")]])
+    client.roots = {"77": {"id": "77", "text": PRIVACY_POST}}
+    index = FakeIndex()
+    bot = MentionBot(client, index, summaries=FakeSummaries(_newest_only()),
+                     state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-26")        # cold start answers nothing
+    await bot.tick("2026-08-26")
+
+    posted = " ".join(text for _id, text in client.posted)
+    assert "Hunter Biden" not in posted, (
+        "answered with the newest episode under a post about something else")
+    assert any("Privacy" in q or "inference" in q for q in index.asked), (
+        f"never searched the post's own words; asked {index.asked!r}")
+
+
+@pytest.mark.anyio
+async def test_a_post_with_no_subject_still_answers_about_the_newest(tmp_path):
+    """The third tier is right when the root says nothing to search on.
+
+    "we're live" names no episode and retrieves nothing, and the newest
+    show is what somebody means. The fix above must not cost this.
+    """
+    client = FakeClient([[mention("0")],
+                         [mention("1", text="@bot what are they talking about",
+                                  conversation="88")]])
+    client.roots = {"88": {"id": "88", "text": "we're live 🔴"}}
+    index = FakeIndex()
+    bot = MentionBot(client, index, summaries=FakeSummaries(_newest_only()),
+                     state_path=tmp_path / "s.json")
+    await bot.tick("2026-08-26")        # cold start answers nothing
+    await bot.tick("2026-08-26")
+
+    posted = " ".join(text for _id, text in client.posted)
+    assert "Hunter Biden" in posted, (
+        f"lost the newest-episode answer; posted {posted[:120]!r}")
