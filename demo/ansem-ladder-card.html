@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<!-- Source for the "ladder" card. 1600x900.
+
+     Why this one is defensible: he did not just say "bullish". He named
+     three specific levels in sequence, on air, with a timestamp, while
+     bitcoin was at 59,967 -- and the sequence is checkable against the
+     tape without anyone's interpretation. All three printed, in order.
+
+     The 80-82k row cites the HIGH (81,731 on 3 Sep), not spot (77,101).
+     Spot alone silently assumes the high never happened -- an earlier
+     draft of this card said "not yet" for exactly that reason and was
+     wrong. Any future re-render must re-check the range high, not spot.
+
+     "59,671 that day, and never below it since" is the window low across
+     2 Jul -> today, and 2 Jul is itself that low. Name the number: an
+     earlier draft said "not traded below that day since", which is
+     unreadable -- below WHAT? A reader cannot check a claim with no
+     figure in it. It says the bottom held; it does NOT claim he picked a
+     global bottom, which would need the June tape too.
+
+     Dated 2 July, the LIVE broadcast of the Ansem Edition
+     (x-2072780197179666519), which is where the words were transcribed.
+     Quotes verbatim from data/episodes.json at 3:05:13, 3:07:22 and
+     3:08:09-3:08:29 -- not from the model's summary of them, which
+     drifted ("sidelined on Bitcoin" where he actually said Solana).
+
+     Prices are CoinGecko market_chart/range, 2 Jul -> spot.
+     RE-RENDER BEFORE POSTING -- spot and the high both move. -->
+<html><head><meta charset="utf-8"><style>
+  @font-face{font-family:"Instrument Serif";
+    src:url("fonts/InstrumentSerif-Regular.ttf") format("truetype")}
+  @font-face{font-family:"Inter";
+    src:url("fonts/Inter-Variable.ttf") format("truetype")}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{width:1600px;height:810px;background:#0b0e11;color:#e6e8ea;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,sans-serif;
+    padding:58px 88px 46px;position:relative;overflow:hidden;
+    display:flex;flex-direction:column}
+  .glow{position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(820px 500px at 50% 0%, #16c78418, transparent 68%)}
+  header{display:flex;align-items:center;gap:14px;margin-bottom:24px}
+  header img{width:32px;height:32px;border-radius:8px;display:block}
+  .name{font-size:21px;font-weight:600;letter-spacing:-.01em}
+  .name b{color:#16c784;font-weight:600}
+
+  h1{font-family:"Instrument Serif",Georgia,serif;font-weight:400;
+    font-size:58px;line-height:1.04;letter-spacing:-.02em;margin-bottom:16px}
+  h1 em{color:#16c784;font-style:normal}
+  .quote{font-size:23px;color:#c7ccd2;line-height:1.45;
+    border-left:3px solid #16c784;padding-left:20px;margin-bottom:8px;
+    max-width:1180px}
+  .who{font-size:18px;color:#6b7480;margin:12px 0 0;padding-left:23px}
+  .who b{color:#e5a54e;font-weight:600}
+
+  .why{margin:24px 0 0;padding-left:23px;font-size:19px;line-height:1.5;
+    color:#8a939e;max-width:1240px}
+  .why i{font-style:normal;color:#c7ccd2}
+
+  table{width:100%;border-collapse:collapse;margin-top:auto}
+  th{font-size:13px;font-weight:500;color:#6b7480;text-align:right;
+    padding:0 0 12px;letter-spacing:.05em;text-transform:uppercase;
+    border-bottom:1px solid #232a33}
+  th.l{text-align:left}
+  td{padding:17px 0;border-bottom:1px solid #1c222a;font-size:27px;
+    font-variant-numeric:tabular-nums;text-align:right}
+  td.sym{text-align:left;font-weight:700;font-size:29px}
+  td.said{text-align:left;color:#8a939e;font-size:21px;font-style:italic}
+  td.chg{font-weight:700;font-size:25px;color:#16c784}
+  tr.bench td{border-bottom:none}
+  tr.bench td.sym,tr.bench td.said{color:#6b7480}
+  tr.bench td.sym{font-weight:600;font-size:27px}
+
+  footer{margin-top:20px;padding-top:18px;border-top:1px solid #1c222a;
+    display:flex;align-items:baseline;justify-content:space-between}
+  .site{font-size:22px;color:#16c784;font-weight:600}
+  .note{font-size:17px;color:#6b7480}
+</style></head><body>
+  <div class="glow"></div>
+  <header>
+    <img src="logo-200.png" alt="">
+    <div class="name">Market Bubble <b>Search</b></div>
+  </header>
+
+  <h1>Bitcoin was $59,967. He named <em>three levels</em>.</h1>
+  <div class="quote">“But I think the bottom is in bro. I mean I'm super
+    high conviction above this resistance.”</div>
+  <div class="who">Ansem · the Ansem Edition · 2 July · 3:05:13 ·
+    <b>$59,671 that day, and never below it since</b></div>
+
+  <!-- Why 60k, in his words, because a level with no reason behind it is
+       just a number somebody guessed. -->
+  <div class="why">On why 60k held, at 3:07:22 — <i>“it's the previous
+    highs from 2021, huge support level… and it's also the support of this
+    range that we spent like 90% of 2024 in.”</i></div>
+
+  <table>
+    <tr><th class="l">Level</th><th class="l">What he called it</th>
+      <th>What happened</th></tr>
+    <tr><td class="sym">62k</td>
+      <td class="said">“break above here”</td>
+      <td class="chg">cleared</td></tr>
+    <tr><td class="sym">66k</td>
+      <td class="said">“the weekly resistance”</td>
+      <td class="chg">cleared</td></tr>
+    <tr><td class="sym">80–82k</td>
+      <td class="said">“back to its range highs”</td>
+      <td class="chg">$81,731 · 3 Sep</td></tr>
+    <tr class="bench"><td class="sym">$SOL</td>
+      <td class="said">“equivalent on Sol is like 80 to 84”</td>
+      <td class="chg">$109 · 27 Aug</td></tr>
+  </table>
+
+  <footer>
+    <div class="site">search.lexthedev.com</div>
+    <div class="note">coingecko · btc spot today $76,683</div>
+  </footer>
+</body></html>

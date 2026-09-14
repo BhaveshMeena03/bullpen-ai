@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<!-- Source for the "reads the post" card. 1600x860.
+
+     Shows the chain, not the answer. The post asks people to reply and
+     try it, so a card that prints the full answer removes the reason to
+     engage. Three panels: what was posted, what was asked, what came
+     back -- titles and timestamps only, no prose from the answer.
+
+     Both citations are live, from a real query run on 14 Sep against the
+     production index: ep 19 at 29:51 and the Erik Voorhees broadcast at
+     1:10:03. Neither episode is named anywhere in the question, which is
+     the whole claim.
+
+     The question really is just "what are they talking about". It routes
+     through asks_whats_being_discussed(), and until 13 Sep it answered
+     that exact post with 3,874 characters about Hunter Biden's meme coin
+     -- the newest episode, nothing to do with privacy. Fixed, mutation-
+     tested, two regression tests. RE-CHECK before reposting this card if
+     the serving path changes again. -->
+<html><head><meta charset="utf-8"><style>
+  @font-face{font-family:"Instrument Serif";
+    src:url("fonts/InstrumentSerif-Regular.ttf") format("truetype")}
+  @font-face{font-family:"Inter";
+    src:url("fonts/Inter-Variable.ttf") format("truetype")}
+  *{margin:0;padding:0;box-sizing:border-box}
+  /* 640, not 860: three short steps do not fill a tall card, and
+     margin-top:auto on the footer turned the slack into 300px of dead
+     space under the last citation. */
+  body{width:1600px;height:640px;background:#0b0e11;color:#e6e8ea;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,sans-serif;
+    padding:58px 88px 46px;position:relative;overflow:hidden;
+    display:flex;flex-direction:column}
+  .glow{position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(820px 500px at 50% 0%, #16c78418, transparent 68%)}
+  header{display:flex;align-items:center;gap:14px;margin-bottom:22px}
+  header img{width:32px;height:32px;border-radius:8px;display:block}
+  .name{font-size:21px;font-weight:600;letter-spacing:-.01em}
+  .name b{color:#16c784;font-weight:600}
+
+  h1{font-family:"Instrument Serif",Georgia,serif;font-weight:400;
+    font-size:56px;line-height:1.04;letter-spacing:-.02em;margin-bottom:34px}
+  h1 em{color:#16c784;font-style:normal}
+
+  .step{margin-bottom:26px}
+  .lbl{font-size:13px;font-weight:500;color:#6b7480;letter-spacing:.06em;
+    text-transform:uppercase;margin-bottom:10px}
+  .box{border-left:3px solid #232a33;padding-left:20px;font-size:23px;
+    line-height:1.42;color:#c7ccd2;max-width:1240px}
+  .box.ask{border-left-color:#e5a54e;color:#e6e8ea;font-weight:600}
+  .box.out{border-left-color:#16c784}
+
+  .hit{display:flex;justify-content:space-between;align-items:baseline;
+    padding:13px 0;border-bottom:1px solid #1c222a;max-width:1240px}
+  .hit:last-child{border-bottom:none}
+  .ep{font-size:22px;color:#e6e8ea}
+  .at{font-size:22px;color:#16c784;font-weight:700;
+    font-variant-numeric:tabular-nums}
+
+  footer{margin-top:auto;padding-top:18px;border-top:1px solid #1c222a;
+    display:flex;align-items:baseline;justify-content:space-between}
+  .site{font-size:22px;color:#16c784;font-weight:600}
+  .note{font-size:17px;color:#6b7480}
+</style></head><body>
+  <div class="glow"></div>
+  <header>
+    <img src="logo-200.png" alt="">
+    <div class="name">Market Bubble <b>Search</b></div>
+  </header>
+
+  <h1>You don't name the episode. <em>It reads the post.</em></h1>
+
+  <div class="step">
+    <div class="lbl">The post you reply under</div>
+    <div class="box">“Not your inference, not your thoughts. Privacy using
+      AI will soon be a non-negotiable feature.”</div>
+  </div>
+
+  <div class="step">
+    <div class="lbl">What you type</div>
+    <div class="box ask">@mbubbleSearch what are they talking about</div>
+  </div>
+
+  <div class="step">
+    <div class="lbl">What it finds — two episodes, neither one named</div>
+    <div class="box out">
+      <div class="hit"><span class="ep">Market Bubble Ep 19</span>
+        <span class="at">29:51</span></div>
+      <div class="hit"><span class="ep">LIVE W/ Erik Voorhees, Mike Majlak
+        &amp; Flood</span><span class="at">1:10:03</span></div>
+    </div>
+  </div>
+
+  <footer>
+    <div class="site">search.lexthedev.com</div>
+    <div class="note">reply under any @MarketBubble post and try it</div>
+  </footer>
+</body></html>
