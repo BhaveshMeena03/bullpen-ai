@@ -38,7 +38,7 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 from voyageai import error as voyage_error
 
-from . import market, og_card, quotes
+from . import attribution, market, og_card, quotes
 from .agent import REFUSAL_MESSAGE, ConciergeAgent
 from .answer_cache import AnswerCache, make_key
 from .assets import aggregate as aggregate_assets
@@ -958,6 +958,26 @@ async def podcast_search(
         return cached
     try:
         result = await podcast.search(body.query, top_k=body.top_k)
+        # The same guard the X bot has had since before this endpoint did.
+        # attribution.correct demotes a named host to "one of the hosts"
+        # when the transcript labels the quoted line as the other one --
+        # the failure rule 5b describes and seven prompt rules did not
+        # close. The bot was protected and the website was not, so the
+        # page could serve a misattribution the bot would have caught.
+        #
+        # Before answers.put, not after: a cache hit returns early above,
+        # so correcting afterwards would store the uncorrected answer and
+        # re-serve it to everyone who follows a shared link.
+        #
+        # Only this endpoint. The Elon and MCG surfaces have their own
+        # indexes and their own speakers, and this check knows about two
+        # Market Bubble hosts -- on a Musk answer it would strip "Elon
+        # said" off a line Elon really said.
+        fixed, demoted = attribution.correct(result.answer, result.hits)
+        if demoted:
+            logger.warning("attribution corrected on the page — %s",
+                           "; ".join(demoted))
+            result = result.model_copy(update={"answer": fixed})
         answers.put(key, result)
         return result
     except anthropic.RateLimitError as exc:
@@ -1015,7 +1035,27 @@ async def podcast_search_stream(
             # Only a complete answer is stored. A stream that died halfway
             # would otherwise be served instantly, forever, to everyone.
             if whole and answers.enabled:
-                answers.put(key, {"answer": "".join(whole),
+                # The text has already gone to this viewer -- a stream
+                # cannot be recalled, and holding every sentence back to
+                # check it would cost the streaming this endpoint exists
+                # for. What CAN be stopped is the replay: a cache hit
+                # above serves the stored answer as one frame, so an
+                # uncorrected misattribution would be handed to everyone
+                # who follows a shared link, forever. Correct it on the
+                # way into the cache.
+                #
+                # The live stream therefore remains the one podcast
+                # surface where a misattribution can reach a reader once.
+                # Closing that needs sentence-level buffering in
+                # answer_stream, which is a separate change.
+                answer = "".join(whole)
+                fixed, demoted = attribution.correct(answer, hits)
+                if demoted:
+                    logger.warning("attribution corrected before caching "
+                                   "a streamed answer — %s",
+                                   "; ".join(demoted))
+                    answer = fixed
+                answers.put(key, {"answer": answer,
                                   "hits": [h.model_dump() for h in hits]})
             yield "event: done\ndata: {}\n\n"
         except asyncio.CancelledError:

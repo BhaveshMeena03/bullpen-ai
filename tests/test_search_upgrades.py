@@ -251,3 +251,78 @@ class TestTradingQuestionsDeclineInCode:
         # reader has already read the recommendation.
         assert not already_declines(
             "They were buying heavily. This is not investment advice.")
+
+
+# --- the page must not serve a misattribution the bot would have caught ---
+#
+# attribution.correct has guarded the X bot since before the page had any
+# guard at all: app/x_bot.py applied it, app/main.py did not. So the same
+# question could answer correctly in a reply and wrongly on the site --
+# "Ansem said" over a line the transcript labels FaZe Banks.
+#
+# Both endpoints correct before writing the cache, not after. A cache hit
+# returns early, so correcting afterwards would store the uncorrected
+# answer and hand it to everyone who follows a shared link.
+
+LABELLED_HIT = PodcastHit(
+    episode_id="ep1", title="Test Ep", start_seconds=61,
+    timestamp="1:01", deep_link="https://youtube.com/watch?v=x&t=61s",
+    text="the transcript moment", score=0.9,
+    text_ts=("[1:01] Ansem: i did hyper liquid because it obviously is\n"
+             "[1:02] FaZe Banks: I poured it hyper liquid at thirty bucks.\n"),
+    speakers=["Ansem", "FaZe Banks"],
+)
+
+# Credits Ansem for a line the transcript labels FaZe Banks.
+WRONG = ('Around 1:02 Ansem said "I poured it hyper liquid at thirty '
+         'bucks." He was early.')
+
+
+class _MisattributingPodcast(StubPodcast):
+    async def retrieve(self, query, top_k=None):
+        return [LABELLED_HIT]
+
+    async def search(self, query, top_k=None):
+        from app.schemas import PodcastSearchResponse
+        return PodcastSearchResponse(answer=WRONG, hits=[LABELLED_HIT],
+                                     model="test")
+
+    async def answer_stream(self, query, hits):
+        yield WRONG
+
+
+@pytest.fixture
+def wrong_client(monkeypatch):
+    monkeypatch.setattr(main_module, "Retriever", _Stub)
+    monkeypatch.setattr(main_module, "ConciergeAgent", _Stub)
+    monkeypatch.setattr(main_module, "IngestionPipeline", _Stub)
+    monkeypatch.setattr(main_module, "PodcastIndex", _MisattributingPodcast)
+    monkeypatch.setattr(main_module, "SummaryStore", _Stub)
+    with TestClient(main_module.app) as c:
+        yield c
+
+
+class TestThePageDoesNotMisattribute:
+    def test_the_non_streaming_endpoint_demotes_a_wrong_name(self, wrong_client):
+        r = wrong_client.post("/v1/podcast/search", json={"query": "hyperliquid"})
+        assert r.status_code == 200
+        answer = r.json()["answer"]
+        assert "Ansem said" not in answer, (
+            f"served a quote credited to the wrong host: {answer!r}")
+        assert "one of the hosts" in answer
+        assert "hyper liquid at thirty bucks" in answer, "the quote survives"
+
+    def test_a_streamed_answer_is_corrected_before_it_is_cached(self, wrong_client):
+        """The stream itself cannot be recalled. The replay can.
+
+        A cache hit serves the stored answer as one frame, so an
+        uncorrected answer would reach everyone who follows a shared
+        link. The second request is the one that must be clean.
+        """
+        first = wrong_client.post("/v1/podcast/search/stream",
+                                  json={"query": "hyperliquid"})
+        assert first.status_code == 200
+        second = wrong_client.post("/v1/podcast/search/stream",
+                                   json={"query": "hyperliquid"})
+        assert "Ansem said" not in second.text, (
+            "the cached replay still credits the wrong host")
