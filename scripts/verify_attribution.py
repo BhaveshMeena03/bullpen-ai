@@ -32,12 +32,38 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+import json  # noqa: E402
+
 from app.podcast import PodcastIndex  # noqa: E402
 
+SPEAKER_MAP = ROOT / "data" / "speaker_map.json"
+GUEST_LABELS = ROOT / "data" / "guest_labels.json"
+
 HOSTS = ("Ansem", "FaZe Banks", "Banks")
+
+# Every name the archive can attribute a line to, not just the two hosts.
+# Hard-coding the hosts made this blind to exactly the thing the guest
+# labels add: an answer saying "Mizkif said X" matched nothing here and
+# was skipped in silence, so a wrong guest attribution could never be
+# reported. Built from the label files so it widens as they do, and
+# falls back to the hosts alone when guest labels have not been written.
+def _known_names() -> list[str]:
+    names: set[str] = set(HOSTS)
+    for path in (SPEAKER_MAP, GUEST_LABELS):
+        if not path.exists():
+            continue
+        for rows in json.loads(path.read_text()).values():
+            names.update(rows.values())
+    # Longest first: "FaZe Banks" has to win against "Banks", or the
+    # alternation matches the short one and the comparison below reads
+    # the wrong claimed speaker.
+    return sorted(names, key=len, reverse=True)
+
+
 # "X said", "X noted", "X explained" — the shapes an attribution takes.
 ATTRIBUTION = re.compile(
-    r"\b(Ansem|FaZe Banks|Banks)\b[^.!?\n]{0,40}?"
+    r"\b(" + "|".join(re.escape(n) for n in _known_names()) + r")\b"
+    r"[^.!?\n]{0,40}?"
     r"\b(said|says|noted|explained|argued|described|recalled|admitted"
     r"|mentioned|claimed|stated|revealed|put it)\b")
 QUOTED = re.compile(r'"([^"]{18,140})"')
@@ -59,6 +85,32 @@ QUESTIONS = [
     "what did ansem say about memecoins",
     "what did banks say about kick",
     "what did ansem say about trading",
+    # Guest questions, weighted to the guests write_guest_labels.py can
+    # actually claim. Without these the harness only ever asked about the
+    # two hosts, so the guest labels -- the whole point of the change it
+    # is meant to measure -- could neither pass nor fail here.
+    "what did erik voorhees say about venice",
+    "what did erik voorhees say about the government",
+    "what did andrej say about grass",
+    "what did andrej say about training data",
+    "what did chris gilbert say about inference",
+    "what did chris gilbert say about compute",
+    "what did gpt live say about attention",
+    "what did brez say about solana",
+    "what did simple farmer say about robinhood",
+    "what did lucas bruder say about solana",
+    "what did cirrus say about nfts",
+    "what did tjr say about tiktok",
+    "what did jesse pollak say about coinbase",
+    "what did sal qadir say about bullpen",
+    "what did will clemente say about bitcoin",
+    "what did al dunlap say about treasury",
+    # Both hosts in one question. This is the shape that produced the
+    # original bug -- passages containing both, and the model crediting
+    # whichever name the question mentioned rather than the one on the
+    # line -- and the shape the hyperliquid failure took again today.
+    "what did ansem and banks say about hyperliquid",
+    "who said what about solana between ansem and banks",
 ]
 
 
