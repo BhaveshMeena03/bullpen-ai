@@ -58,12 +58,42 @@ def test_a_post_url_is_accepted_where_an_id_is_expected():
     ) == "2092822509368607177"
 
 
+class _Settings:
+    """Everything canned() reads, fixed.
+
+    Stubbed rather than taken from get_settings() because the result
+    otherwise depends on whichever .env happens to be loaded. Reading the
+    real settings made the "ca" case pass on a machine carrying a contract
+    address and fail on every machine without one -- which is exactly how
+    it failed the first time CI got far enough to run the suite.
+    """
+
+    x_bot_site = "search.lexthedev.com"
+    x_bot_contract_address = "8VjFid8BVGcTPpUzf4PAWsA5nHJ5h2GQNXPEj"
+    x_bot_token_label = "$MBS"
+
+
 @pytest.mark.parametrize("name", ["about", "automated", "ca"])
 def test_every_canned_message_has_something_to_say(name):
     """They are built from the bot's own functions, so a change to the
     description cannot leave this posting a stale version of it."""
-    from app.config import get_settings
-
     say = _say()
-    text = say.canned(name, get_settings())
+    text = say.canned(name, _Settings())
     assert text and len(text) > 40, name
+
+
+def test_the_ca_message_is_absent_rather_than_wrong_without_an_address():
+    """No address configured means no message, not an invented one.
+
+    pinned_answer returns None when the address is unset, and say's main()
+    prints "nothing to say" and exits 2 on that. Posting a made-up
+    44-character string under a token account is the one failure here that
+    could cost a reader money, so the absence is the behaviour worth
+    pinning down.
+    """
+    say = _say()
+
+    class _NoAddress(_Settings):
+        x_bot_contract_address = None
+
+    assert say.canned("ca", _NoAddress()) is None

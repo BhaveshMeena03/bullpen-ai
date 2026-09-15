@@ -112,7 +112,16 @@ def _make(path, vstart=0.0, seconds=3, audio=True):
     if audio:
         cmd += ["-c:a", "aac"]
     cmd += [str(path)]
-    subprocess.run(cmd, capture_output=True, timeout=120)
+    done = subprocess.run(cmd, capture_output=True, timeout=120)
+    # Checked, because ignoring it means a failed encode writes nothing and
+    # the test then fails inside the code under test with a
+    # FileNotFoundError about a fixture -- which reads as a bug in
+    # _has_audio rather than "ffmpeg did not run". That is how these three
+    # presented the first time CI ran them.
+    if done.returncode != 0 or not path.exists():
+        raise AssertionError(
+            f"ffmpeg did not write {path.name}: "
+            + (done.stderr or b"").decode(errors="replace")[-300:])
 
 
 def test_a_section_with_no_audio_is_detected(tmp_path):

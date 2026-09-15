@@ -19,6 +19,15 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
 
+      # The binary, not the python wrapper. voyageai pulls in ffmpeg-python,
+      # which is bindings and no executable, so three clipper tests died on
+      # FileNotFoundError: 'ffmpeg'. Skipping them instead would leave
+      # _has_audio and leading_video_gap unverified in CI, and render.yaml
+      # treats ffmpeg's behaviour as a production concern -- a max-quality
+      # encode peaks near 1GB and OOM-kills a smaller box.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       - name: Lint
         run: ruff check .
 
