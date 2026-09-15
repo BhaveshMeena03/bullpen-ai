@@ -35,12 +35,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from app.clipper import (CLIP_HEIGHT,   # noqa: E402
-    make_wide_overlay,  # noqa: E402
+from app.clipper import (  # noqa: E402
+    CLIP_HEIGHT,
     build_captions,
     fetch_section,
     ffmpeg_available,
     make_backdrop,
+    make_wide_overlay,  # noqa: E402
     render,
     snap_to_speech,
     stamp,

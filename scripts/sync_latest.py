@@ -29,8 +29,7 @@ from anthropic import AsyncAnthropic  # noqa: E402
 
 from app.announce import announce  # noqa: E402
 from app.assets_store import AssetStore  # noqa: E402
-from app.config import (anthropic_client_kwargs,  # noqa: E402
-                        get_settings)
+from app.config import anthropic_client_kwargs, get_settings  # noqa: E402
 from app.episode_store import merge as merge_episodes  # noqa: E402
 from app.podcast import PodcastIndex  # noqa: E402
 from app.schemas import Episode  # noqa: E402

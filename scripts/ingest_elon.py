@@ -30,7 +30,6 @@ interrupt it; anything already transcribed is skipped.
 from __future__ import annotations
 
 import argparse
-import json
 import shutil
 import subprocess
 import sys
@@ -39,8 +38,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from app.episode_store import load as load_episodes, merge  # noqa: E402
-from app.provenance import admissible, drop_hallucinated   # noqa: E402
+from app.episode_store import load as load_episodes  # noqa: E402
+from app.episode_store import merge
+from app.provenance import admissible, drop_hallucinated  # noqa: E402
 
 OUT = ROOT / "data" / "elon_episodes.json"
 AUDIO_DIR = Path("/tmp/elon_audio")
@@ -162,7 +162,7 @@ def main() -> int:
             if (not args.only or s[0] == args.only) and s[0] not in have]
 
     if args.list:
-        for vid, channel, date, title in SOURCES:
+        for vid, _channel, date, title in SOURCES:
             mark = "done" if vid in have else "    "
             print(f"  {mark}  {date}  {vid}  {title[:56]}")
         return 0

@@ -192,9 +192,9 @@ def read_banner(im: Image.Image, band: tuple[int, int], psm: int = 3) -> str:
     # happens to put it -- which is why this read perfectly at 1280 and
     # 480 and returned nothing at every width in between. Same band,
     # same ink, unreadable type.
-    TARGET_H = 150.0
-    if crop.height and crop.height < TARGET_H:
-        f = TARGET_H / crop.height
+    target_h = 150.0
+    if crop.height and crop.height < target_h:
+        f = target_h / crop.height
         crop = crop.resize((max(1, int(crop.width * f)),
                             max(1, int(crop.height * f))), Image.LANCZOS)
     a = np.asarray(crop, dtype=float)
@@ -279,11 +279,11 @@ def guest_from(text: str) -> tuple[str, str] | None:
             # handle and a tagline, where "AL DUNLAP CEO OF..." is two
             # name words and a role. Without this the name took one word
             # too many and became "POORGOAT MAKE".
-            SLOGAN = {"MAKE", "FOLLOW", "BUY", "SELL", "STAY", "KEEP",
+            slogan = {"MAKE", "FOLLOW", "BUY", "SELL", "STAY", "KEEP",
                       "NEVER", "ALWAYS", "GET", "GO", "LET", "DONT",
                       "DON'T", "IS", "ARE", "THE", "A", "AN"}
             at = 2
-            if len(words) > 1 and words[1].upper().strip(",.") in SLOGAN:
+            if len(words) > 1 and words[1].upper().strip(",.") in slogan:
                 at = 1
             if len(words) > at:
                 role = re.search(r"\b" + re.escape(words[at]) + r"\b", rest)
@@ -427,7 +427,7 @@ def _close(a: str, b: str) -> bool:
         return True
     if len(a) != len(b) or not a:
         return False
-    wrong = sum(1 for x, y in zip(a, b) if x != y)
+    wrong = sum(1 for x, y in zip(a, b, strict=True) if x != y)
     return wrong <= max(1, len(a) // 8)
 
 
@@ -496,11 +496,16 @@ def vote_within_windows(reads, gap_frames: int = 3):
     last = None
     for secs, got in reads:
         if got is None:
-            flush(); run = []; out.append((secs, None)); last = None
+            flush()
+            run = []
+            out.append((secs, None))
+            last = None
             continue
         if last is not None and secs - last > EVERY_SECONDS * gap_frames:
-            flush(); run = []
-        run.append((secs, got)); last = secs
+            flush()
+            run = []
+        run.append((secs, got))
+        last = secs
     flush()
     return sorted(out, key=lambda r: r[0])
 

@@ -49,8 +49,7 @@ sys.path.insert(0, str(ROOT))
 
 from anthropic import AsyncAnthropic  # noqa: E402
 
-from app.config import (anthropic_client_kwargs,  # noqa: E402
-                        get_settings, redact)
+from app.config import anthropic_client_kwargs, get_settings, redact  # noqa: E402
 
 EPISODES = ROOT / "data" / "episodes.json"
 

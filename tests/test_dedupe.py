@@ -1,9 +1,7 @@
 import pytest
 
-
 # --- one card per show ------------------------------------------------------
-
-from app.dedupe import group_by_show, canonical_episode_ids   # noqa: E402
+from app.dedupe import canonical_episode_ids, group_by_show  # noqa: E402
 
 
 def _ep(eid, day, words, seconds=100):
@@ -91,7 +89,7 @@ def test_an_episode_the_data_file_has_never_seen_is_still_listed():
 
 # --- the number the show gives its own episodes -----------------------------
 
-from app.dedupe import episode_number                          # noqa: E402
+from app.dedupe import episode_number  # noqa: E402
 
 
 @pytest.mark.parametrize("title,expected", [

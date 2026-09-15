@@ -45,7 +45,6 @@ from .assets import aggregate as aggregate_assets
 from .assets_store import AssetStore
 from .clawpump import NAMESPACE as CLAWPUMP_NAMESPACE
 from .clawpump import ClawPumpAgent
-from .dedupe import canonical_episode_ids, episode_number
 from .clipper import (
     MAX_CLIP_SECONDS,
     MIN_CLIP_SECONDS,
@@ -53,16 +52,16 @@ from .clipper import (
     ffmpeg_available,
 )
 from .config import get_settings
+from .dedupe import canonical_episode_ids, episode_number
 from .ingest import IngestionPipeline
 from .podcast import REFUSAL_ANSWER as PODCAST_REFUSAL
-from .podcast import inference_routes
-from .podcast import PodcastIndex
+from .podcast import PodcastIndex, inference_routes
 from .questions import QuestionLog
 from .retriever import Retriever
 from .schemas import (
-    ClipRequest,
     ChatRequest,
     ChatResponse,
+    ClipRequest,
     Episode,
     IngestDocument,
     PodcastHit,
@@ -208,8 +207,7 @@ async def _run_x_bot(app: FastAPI, settings) -> None:
     is a fact about billing, and a cancelled task is a shutdown.
     """
     from app.x_api import OutOfCreditsError, XClient, XCredentials
-    from app.x_bot import (STATE_PATH, MentionBot, load_guest_windows,
-                           load_highlights)
+    from app.x_bot import STATE_PATH, MentionBot, load_guest_windows, load_highlights
 
     beat = app.state.x_bot_heartbeat
     beat.enabled = True
@@ -1398,7 +1396,7 @@ async def podcast_archive(
     except Exception as exc:                                    # noqa: BLE001
         # The page keeps the figures already written into the markup.
         logger.warning("could not size the archive: %s", exc)
-        raise HTTPException(status_code=503, detail="unavailable")
+        raise HTTPException(status_code=503, detail="unavailable") from exc
 
 
 @app.get("/v1/podcast/episodes", dependencies=[Depends(public_rate_limit)])

@@ -43,8 +43,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from app.clipper import stamp                          # noqa: E402
-from label_speakers import cluster                      # noqa: E402
+from label_speakers import cluster  # noqa: E402
+
+from app.clipper import stamp  # noqa: E402
 
 EPISODES = ROOT / "data" / "episodes.json"
 FINGERPRINTS = ROOT / "data" / "speakers"
@@ -146,7 +147,12 @@ def main() -> int:
     kept = list(data["kept"])
     segments = episode["segments"]
     by_cluster: dict[int, list[int]] = collections.defaultdict(list)
-    for idx, c in zip(kept, labels):
+    # strict=True on purpose: cluster() returns one label per vector and
+    # kept is parallel to those vectors, so a length mismatch means the
+    # npz is malformed. Zipping short would silently label the wrong
+    # speaker for every index past the end, which is the failure this
+    # file exists to prevent.
+    for idx, c in zip(kept, labels, strict=True):
         by_cluster[int(c)].append(int(idx))
 
     known = (json.loads(MAP.read_text()) if MAP.exists() else {}

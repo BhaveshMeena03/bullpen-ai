@@ -43,8 +43,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from app.podcast import PodcastIndex          # noqa: E402
-from app.x_bot import format_reply            # noqa: E402
+from app.podcast import PodcastIndex  # noqa: E402
+from app.x_bot import format_reply  # noqa: E402
 
 EPISODES = ROOT / "data" / "episodes.json"
 

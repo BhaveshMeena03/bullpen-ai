@@ -2,8 +2,12 @@
 was imagined. The tests carry the real cases."""
 import pytest
 
-from app.provenance import (drop_hallucinated, is_original_publisher,
-                            looks_like_someone_elses_cut, admissible)
+from app.provenance import (
+    admissible,
+    drop_hallucinated,
+    is_original_publisher,
+    looks_like_someone_elses_cut,
+)
 
 
 def _seg(t, text):
@@ -81,7 +85,7 @@ def test_the_game_time_reupload_is_refused_by_channel():
 # --- the two archives must not share a vector -------------------------------
 
 def test_the_index_defaults_to_the_market_bubble_corpus():
-    from app.podcast import PodcastIndex, NAMESPACE
+    from app.podcast import NAMESPACE, PodcastIndex
     assert PodcastIndex._namespace == NAMESPACE == "podcast"
 
 
@@ -124,8 +128,9 @@ def test_the_archive_reports_how_long_each_recording_is():
 def test_a_missing_archive_file_does_not_take_the_service_down():
     """Nothing else in the service reads this file, so the page degrades to
     empty panels rather than a 500."""
-    import app.main as m
     from pathlib import Path
+
+    import app.main as m
     original, m._ELON_CACHE = m._ELON_FILE, None
     m._ELON_FILE = Path("/nonexistent/elon_episodes.json")
     try:

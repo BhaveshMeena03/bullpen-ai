@@ -25,10 +25,18 @@ from app.x_api import (
     assert_linkless,
     strip_urls,
 )
-from app.x_bot import (BotState, MentionBot, format_reply, fingerprint,
-                       is_rhetorical_praise,
-                       has_a_known_intent, has_substance, is_a_mass_tag,
-                       pinned_answer, question_from)
+from app.x_bot import (
+    BotState,
+    MentionBot,
+    fingerprint,
+    format_reply,
+    has_a_known_intent,
+    has_substance,
+    is_a_mass_tag,
+    is_rhetorical_praise,
+    pinned_answer,
+    question_from,
+)
 
 # --- reading the question --------------------------------------------------
 
@@ -3844,7 +3852,8 @@ async def test_routing_reads_the_mention_not_the_parsed_question(tmp_path):
     # And the leading handle run is still X's, not the asker's: a reply in
     # a thread carries everyone tagged in it, and a Market Bubble question
     # asked under the Musk announcement must stay on the broadcast.
-    show.asked.clear(); musk.asked.clear()
+    show.asked.clear()
+    musk.asked.clear()
     await bot.compose(Mention(
         id="2",
         text="@Lexx_eth @elonmusk @lexfridman what did ansem say about zcash",
@@ -3867,7 +3876,7 @@ class TestTheThirdArchive:
     """
 
     def _route(self, q):
-        from app.x_bot import corpus_for, _LEADING_HANDLES
+        from app.x_bot import _LEADING_HANDLES, corpus_for
         return corpus_for(_LEADING_HANDLES.sub(" ", q))
 
     def test_a_project_name_reaches_mcg(self):
@@ -3953,6 +3962,7 @@ def test_no_mcg_project_name_can_steal_a_broadcast_question():
     import json
     import re
     from pathlib import Path
+
     from app.x_bot import _MCG_NAMES
 
     data = Path(__file__).resolve().parent.parent / "data"

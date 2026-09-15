@@ -154,7 +154,6 @@ class TestRetrievalActuallyRunsTheExpansion:
     def test_the_rarest_first_order_survives(self):
         """lookup() returns a list ranked by rarity. A set would discard
         that ranking, and the ranking is the whole value of the index."""
-        from app import podcast
 
         seen = {}
         index = self._index({})

@@ -41,7 +41,6 @@ import hmac
 import json
 import re
 import secrets
-import sys
 import time
 import urllib.parse
 from pathlib import Path

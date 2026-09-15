@@ -42,10 +42,10 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from anthropic import AsyncAnthropic  # noqa: E402
+from clip_episode import newest  # noqa: E402
 
 from app.config import anthropic_client_kwargs, get_settings  # noqa: E402
 from app.podcast import _timestamp  # noqa: E402
-from clip_episode import newest  # noqa: E402
 
 EPISODES = [ROOT / "data" / "episodes.json",
             ROOT / "data" / "elon_episodes.json"]
@@ -300,7 +300,7 @@ async def main() -> int:
     # A long stretch with no entry is either one genuine segment or the
     # picker thinning out. Either way it is the thing to look at before
     # handing the list to anybody.
-    gaps = [(a[0], b[0]) for a, b in zip(chapters, chapters[1:])
+    gaps = [(a[0], b[0]) for a, b in zip(chapters, chapters[1:], strict=False)
             if b[0] - a[0] > 900]
     for start, end in gaps:
         print(f"\n  gap: nothing between {_timestamp(start)} and "

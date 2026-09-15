@@ -39,9 +39,14 @@ from pathlib import Path
 
 from app import attribution, hedging, names
 from app.podcast import NOT_FOUND_ANSWER, _broadcast_players
-from app.x_api import (_URL_SHAPED, Mention, XClient,
-                       looks_like_a_link, strip_urls,
-                       would_render_a_card)
+from app.x_api import (
+    _URL_SHAPED,
+    Mention,
+    XClient,
+    looks_like_a_link,
+    strip_urls,
+    would_render_a_card,
+)
 
 logger = logging.getLogger(__name__)
 

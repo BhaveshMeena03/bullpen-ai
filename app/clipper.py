@@ -721,7 +721,7 @@ def largest_frame_gap(path: Path) -> float:
             continue
     if len(stamps) < 2:
         return 0.0
-    return max(b - a for a, b in zip(stamps, stamps[1:]))
+    return max(b - a for a, b in zip(stamps, stamps[1:], strict=False))
 
 
 

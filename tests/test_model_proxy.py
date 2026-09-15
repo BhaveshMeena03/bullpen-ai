@@ -155,7 +155,7 @@ class TestTheTokenStaysOutOfTheLogs:
 
         from app.main import _RedactProxyToken
 
-        rec = _l.LogRecord("x", _l.INFO, __file__, 1, "%s", 
+        rec = _l.LogRecord("x", _l.INFO, __file__, 1, "%s",
                            ("https://api.usepod.ai/proxy/leaky/v1/messages",), None)
         _RedactProxyToken().filter(rec)
         assert "leaky" not in rec.getMessage()

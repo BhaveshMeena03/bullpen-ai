@@ -42,9 +42,15 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from app.podcast import PodcastIndex                      # noqa: E402
-from verify_elon import (COMPLIED, DECLINED, A_STAMP,     # noqa: E402
-                         quotes_hold, source_holds)
+from verify_elon import (  # noqa: E402
+    A_STAMP,
+    COMPLIED,
+    DECLINED,
+    quotes_hold,
+    source_holds,
+)
+
+from app.podcast import PodcastIndex  # noqa: E402
 
 EPISODES = ROOT / "data" / "elon_episodes.json"
 NAMESPACE = "elon"

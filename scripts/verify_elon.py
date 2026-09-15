@@ -41,7 +41,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from app.podcast import PodcastIndex, source_label     # noqa: E402
+from app.podcast import PodcastIndex, source_label  # noqa: E402
 
 EPISODES = ROOT / "data" / "elon_episodes.json"
 NAMESPACE = "elon"

@@ -266,8 +266,8 @@ async def main() -> int:
                   f"processing the recording. Check again later.")
 
     if not missing:
-        print(f"  nothing new — every broadcast in those posts is already "
-              f"indexed. Older broadcasts need more --max-pages.")
+        print("  nothing new — every broadcast in those posts is already "
+              "indexed. Older broadcasts need more --max-pages.")
         waiting()
         return 0
 

@@ -29,6 +29,8 @@ Friday by cron, nothing checking. Running this after ANY fetch covers both.
 
 from __future__ import annotations
 
+import collections
+import datetime
 import random
 import re
 
@@ -187,9 +189,6 @@ def describe(dropped: list[dict]) -> str:
 # known pairs: the same show scores 0.73 to 0.82, different shows 0.09 to
 # 0.11, and the band between is empty. That is a property of the pair
 # alone, so two machines cannot disagree.
-
-import collections
-import datetime
 
 # Where to cut, in the middle of a gap seven times wider than either
 # cluster. Nothing observed lands between 0.11 and 0.73.

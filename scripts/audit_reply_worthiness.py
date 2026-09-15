@@ -34,9 +34,9 @@ sys.path.insert(0, str(ROOT))
 
 import httpx  # noqa: E402
 
+from app import x_bot  # noqa: E402
 from app.config import get_settings  # noqa: E402
 from app.x_api import API, XCredentials  # noqa: E402
-from app import x_bot  # noqa: E402
 
 # Each guard, named the way it would be reported. Order matches the order
 # the mention loop applies them, so the first hit is the one that would

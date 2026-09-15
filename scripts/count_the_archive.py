@@ -32,7 +32,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from app.dedupe import group_by_show, _length as seconds   # noqa: E402
+from app.dedupe import _length as seconds
+from app.dedupe import group_by_show  # noqa: E402
 
 EPISODES = ROOT / "data" / "episodes.json"
 

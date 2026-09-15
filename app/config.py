@@ -4,9 +4,8 @@ All secrets and tunables are sourced from the environment (or a local
 `.env` file) via pydantic-settings, so nothing sensitive lives in code.
 """
 
-from functools import lru_cache
-
 import re
+from functools import lru_cache
 from urllib.parse import urlparse
 
 from pydantic import field_validator, model_validator

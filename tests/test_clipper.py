@@ -1,10 +1,9 @@
 from pathlib import Path
+
 import pytest
 
-
 # --- pinning one exit IP ----------------------------------------------------
-
-from app.clipper import pin_one_exit_ip                        # noqa: E402
+from app.clipper import pin_one_exit_ip  # noqa: E402
 
 
 # A rotating proxy gave yt-dlp one exit and ffmpeg another, so YouTube saw
@@ -42,6 +41,7 @@ def test_a_read_only_secret_is_copied_somewhere_writable(tmp_path):
     at it failed every attempt with "[Errno 30] Read-only file system" --
     correct cookies that never got used."""
     from pathlib import Path
+
     from app.clipper import _writable_cookie_jar
     secret = tmp_path / "cookies.txt"
     secret.write_text("# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tSID\tx\n")
@@ -64,6 +64,7 @@ def test_a_missing_cookie_file_is_a_warning_not_a_failure(tmp_path, caplog):
     """A secret file that did not mount would otherwise fail every attempt
     with an error about the path, hiding the real problem."""
     import logging
+
     from app.clipper import _writable_cookie_jar
     with caplog.at_level(logging.WARNING):
         assert _writable_cookie_jar(str(tmp_path / "nope.txt")) is None
@@ -189,7 +190,7 @@ def test_out_of_memory_is_told_apart_from_a_broken_graph(returncode, stderr,
 
 # --- what goes over the picture --------------------------------------------
 
-from app.clipper import short_title                            # noqa: E402
+from app.clipper import short_title  # noqa: E402
 
 
 @pytest.mark.parametrize("full,expected", [
@@ -218,7 +219,7 @@ def test_the_local_script_defaults_to_the_sites_canvas():
     the same file. A silent bump to 1920 here meant a posted clip was 1080p
     while the button on the same moment gave 720p."""
     import re
-    from app.clipper import CLIP_HEIGHT
+
     src = (Path(__file__).resolve().parent.parent
            / "scripts" / "make_clip.py").read_text()
     assert "default=CLIP_HEIGHT" in src

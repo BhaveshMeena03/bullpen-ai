@@ -73,10 +73,9 @@ sys.path.insert(0, str(ROOT))
 from app.config import (  # noqa: E402
     anthropic_client_kwargs,
     get_settings,
-    redact,
 )
 from app.podcast import PodcastIndex, _windows  # noqa: E402
-from app.schemas import Episode              # noqa: E402
+from app.schemas import Episode  # noqa: E402
 from app.x_bot import is_a_deflection, is_a_miss  # noqa: E402
 
 EPISODES = ROOT / "data" / "episodes.json"

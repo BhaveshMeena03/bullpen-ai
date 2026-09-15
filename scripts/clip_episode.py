@@ -209,7 +209,8 @@ async def main() -> int:
         try:
             wanted = [int(x) for x in args.pick.replace(" ", "").split(",") if x]
         except ValueError:
-            raise SystemExit(f"  could not read --pick {args.pick!r}; want 1,4,7")
+            raise SystemExit(
+                f"  could not read --pick {args.pick!r}; want 1,4,7") from None
         bad = [i for i in wanted if not 1 <= i <= len(pool)]
         if bad:
             raise SystemExit(f"  no candidate {bad} — the shortlist has "
