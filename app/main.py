@@ -208,7 +208,8 @@ async def _run_x_bot(app: FastAPI, settings) -> None:
     is a fact about billing, and a cancelled task is a shutdown.
     """
     from app.x_api import OutOfCreditsError, XClient, XCredentials
-    from app.x_bot import STATE_PATH, MentionBot, load_highlights
+    from app.x_bot import (STATE_PATH, MentionBot, load_guest_windows,
+                           load_highlights)
 
     beat = app.state.x_bot_heartbeat
     beat.enabled = True
@@ -248,6 +249,11 @@ async def _run_x_bot(app: FastAPI, settings) -> None:
         post_limit=settings.x_bot_post_limit,
         summary_limit=settings.x_bot_summary_limit,
         summaries=SummaryStore(),
+        # Who was on screen, read off the show's own lower third. Read
+        # once here rather than in the reply path, the same way the
+        # highlights pool is. Absent or unreadable means the bot says the
+        # episode has not been read, never that nobody was on it.
+        guest_windows=load_guest_windows(),
         questions=QuestionLog(),
         priority_authors=settings.priority_author_ids,
         site=settings.x_bot_site,

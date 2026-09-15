@@ -4219,3 +4219,130 @@ class TestItStillLeavesTheArchiveAlone:
     def test_the_contract_address_branch_is_untouched(self):
         out = pinned_answer("ca pls", self.CA, "$MBS")
         assert self.CA in out
+
+
+# --- who was on an episode, read off the show's own lower third --------
+#
+# read_guest_windows.py reads the banner frame by frame, so this is a
+# lookup rather than a question: no retrieval, no model call, and the
+# answer cannot come back paraphrased. 34 windows across 11 broadcasts.
+#
+# The resolution is the part that broke. Every numbered show has TWO
+# summary rows -- the YouTube upload and the live broadcast -- and
+# _summary_for returns whichever has the longest text, which is right for
+# a summary and wrong here: only the broadcast has guest windows. Asked
+# who was on ep 18 it picked the upload, found nothing, and said the
+# episode had not been read. _broadcast_for prefers the x- row.
+
+GUESTS = {
+    "x-18": [
+        {"name": "TYLER BERNABE", "subtitle": "LEADING AI CREATO",
+         "start": 3300, "end": 5130},
+        {"name": "AL DUNLAP", "subtitle": "CEO OF NETNET CAPITAL MANAGEMENT",
+         "start": 5460, "end": 7200},
+        # Two windows, one person: he leaves and comes back. Listing both
+        # made him two of "four guests" on the real ep 12.
+        {"name": "WILL CLEMENTE", "subtitle": "TRADER & INVEST",
+         "start": 7380, "end": 8300},
+        {"name": "WILL CLEMENTE", "subtitle": "",
+         "start": 8400, "end": 9060},
+        # Thirty seconds is the banner caught mid-transition, not an
+        # appearance. Ep 12 really does carry "TH BRIAN / ARMSTRONG".
+        {"name": "TH TYLER", "subtitle": "BERNABE",
+         "start": 9100, "end": 9130},
+    ],
+}
+
+
+class _GuestSummaries:
+    """Both rows for ep 18, upload first and longer -- the shape that
+    made _summary_for pick the wrong one."""
+
+    ROWS = [
+        {"episode_id": "yt-18", "title": "A Supercycle | Market Bubble #18",
+         "summary": "x" * 4000, "published_at": "2026-09-05T00:00:00Z"},
+        {"episode_id": "x-18", "title": "LIVE W/ ...: Market Bubble Ep 18",
+         "summary": "y" * 100, "published_at": "2026-09-03T00:00:00Z"},
+        {"episode_id": "yt-9", "title": "Ansem | Market Bubble #9",
+         "summary": "z" * 500, "published_at": "2026-07-03T00:00:00Z"},
+    ]
+
+    async def list_all(self):
+        return list(self.ROWS)
+
+
+def _guest_bot(tmp_path, client, index):
+    return MentionBot(client, index, summaries=_GuestSummaries(),
+                      guest_windows=GUESTS,
+                      state_path=tmp_path / "s.json")
+
+
+@pytest.mark.anyio
+async def test_who_was_on_lists_the_guests(tmp_path):
+    client = FakeClient([[mention("0")],
+                         [mention("1", text="@bot who was on ep 18")]])
+    index = FakeIndex()
+    bot = _guest_bot(tmp_path, client, index)
+    await bot.tick("2026-09-15")
+    await bot.tick("2026-09-15")
+
+    reply = client.posted[0][1]
+    assert "Tyler Bernabe" in reply
+    assert "CEO of NetNet Capital Management" in reply or "Al Dunlap" in reply
+    assert index.asked == [], "a lookup must not reach retrieval"
+
+
+@pytest.mark.anyio
+async def test_one_guest_with_two_windows_is_one_person(tmp_path):
+    """Will Clemente leaves and comes back. That is one guest across the
+    combined span, not two, and the header counts people."""
+    client = FakeClient([[mention("0")],
+                         [mention("1", text="@bot who was on ep 18")]])
+    bot = _guest_bot(tmp_path, client, FakeIndex())
+    await bot.tick("2026-09-15")
+    await bot.tick("2026-09-15")
+
+    reply = client.posted[0][1]
+    assert reply.count("Will Clemente") == 1
+    assert "3 guests" in reply, reply.splitlines()[0]
+
+
+@pytest.mark.anyio
+async def test_a_thirty_second_banner_is_not_a_guest(tmp_path):
+    """"TH TYLER / BERNABE" is one frame of somebody's lower third read
+    while it was still drawing. Printed as a guest it invents a person."""
+    client = FakeClient([[mention("0")],
+                         [mention("1", text="@bot who was on ep 18")]])
+    bot = _guest_bot(tmp_path, client, FakeIndex())
+    await bot.tick("2026-09-15")
+    await bot.tick("2026-09-15")
+    assert "Th Tyler" not in client.posted[0][1]
+
+
+@pytest.mark.anyio
+async def test_an_unread_episode_says_so_rather_than_guessing(tmp_path):
+    """Ep 9 exists only as an upload, so it has no windows. Falling
+    through to retrieval would infer a guest list from the transcript --
+    the shape of answer that put a Market Bubble #13 story under a
+    question about the token."""
+    client = FakeClient([[mention("0")],
+                         [mention("1", text="@bot who was on ep 9")]])
+    index = FakeIndex()
+    bot = _guest_bot(tmp_path, client, index)
+    await bot.tick("2026-09-15")
+    await bot.tick("2026-09-15")
+
+    reply = client.posted[0][1]
+    assert "not one of them yet" in reply
+    assert index.asked == [], "must not search for a guest list"
+
+
+@pytest.mark.anyio
+async def test_an_ordinary_question_still_reaches_retrieval(tmp_path):
+    client = FakeClient([[mention("0")],
+                         [mention("1", text="@bot what did ansem say about zcash")]])
+    index = FakeIndex()
+    bot = _guest_bot(tmp_path, client, index)
+    await bot.tick("2026-09-15")
+    await bot.tick("2026-09-15")
+    assert index.asked == ["what did ansem say about zcash"]

@@ -493,6 +493,148 @@ _ASKS_FOR_SUMMARY = re.compile(
         | \bep(?:isode)?\s*\#?\s* {_NUMBER} [^0-9]{{0,20}} \b(?:{_ASKS})\b )""")
 
 
+# "who was on ep 18", "who were the guests on episode 12". The show's own
+# lower third names every guest and read_guest_windows.py reads it frame by
+# frame, so this is a lookup rather than a question -- no retrieval, no
+# model call, and the answer cannot come back paraphrased.
+#
+# The trigger words are deliberately narrow, for the reason the _ASKS
+# comment above records: a word that merely appears near a number turns an
+# ordinary question into a lookup. "who was on" and "guests" only ever mean
+# this; "about" would not.
+_ASKS_WHO = r"who\s+(?:was|were|is|are)\s+on|guests?\s+(?:on|in|for)|line\s*up"
+_ASKS_WHO_WAS_ON = re.compile(
+    rf"""(?ix)
+      (?: \b(?:{_ASKS_WHO})\b [^0-9]{{0,30}} (?:ep(?:isode)?\s*)? \#?\s* {_NUMBER}
+        | \bep(?:isode)?\s*\#?\s* {_NUMBER} [^0-9]{{0,20}} \b(?:{_ASKS_WHO})\b )""")
+
+
+def who_was_on_request(question: str) -> int | None:
+    """The episode number somebody wants the guest list for, or None."""
+    found = _ASKS_WHO_WAS_ON.search(question or "")
+    if not found:
+        return None
+    number = found.group(1) or found.group(2)
+    return int(number) if number else None
+
+
+_LOWER_IN_ROLE = frozenset(
+    ("of", "the", "a", "an", "and", "at", "for", "in", "on", "to", "&"))
+# Read off the banner, so they arrive shouting: "CEO OF NETNET CAPITAL
+# MANAGEMENT". Lowercasing the whole thing and title-casing it back turns
+# NETNET into Netnet, which is wrong in a reply whose entire value is
+# being read off the screen rather than guessed at.
+_KEEPS_ITS_CAPS = frozenset(("CEO", "CTO", "CFO", "COO", "AI", "AR", "VR",
+                             "NFT", "NFTS", "DEFI", "US", "UK", "LA", "NYC",
+                             "NBA", "NFL", "MMA", "UFC", "DJ", "VC"))
+
+
+def _tidy_role(subtitle: str) -> str:
+    """The banner shouts. This stops it shouting, and changes nothing else.
+
+    Deliberately does NOT repair truncation. The crop is sampled every
+    thirty seconds and a long role often arrives clipped -- "TRADER &
+    INVEST", "LEADING AI CREATO" -- and the obvious fix, dropping a final
+    fragment, destroys a real one: "THE KING OF AR" is Cirrus's actual
+    banner, AR as in augmented reality. A rule tuned on thirty-four rows
+    to tell those apart is the same overfitting that made the plate
+    detector score 4/6, then 1/6, then 3/6.
+
+    So: clipped text stays clipped. It is what the screen said, and a
+    truthful fragment beats an invented word.
+    """
+    role = " ".join((subtitle or "").split())
+    # An unmatched quote is the crop cutting through a quoted tagline --
+    # INSENTOS's banner reads "FOLLOW THE ATTENTION" and arrives as
+    # '"follow the Attent'. A dangling quotation mark reads as broken
+    # markup rather than a clipped phrase, so the quotes go.
+    role = role.replace('"', "").replace("\u201c", "").replace("\u201d", "").strip()
+    # "BACK" is the show's re-entry marker, not a job. Printed as a role
+    # it reads as though Tjr's title is Back.
+    if role.upper() in ("BACK", "RETURNS", "AGAIN"):
+        return ""
+    if not role:
+        return ""
+    out = []
+    for i, word in enumerate(role.split()):
+        bare = word.strip(".,&")
+        if bare.upper() in _KEEPS_ITS_CAPS:
+            out.append(word.upper())
+        elif i and bare.lower() in _LOWER_IN_ROLE:
+            out.append(word.lower())
+        else:
+            # Title-case only the first letter, so NetNet-style casing in
+            # the source survives instead of being flattened.
+            out.append(word[:1].upper() + word[1:].lower()
+                       if word.isupper() else word)
+    return " ".join(out)
+
+
+def guest_list_answer(number: int, episode_id: str | None,
+                      windows: dict | None) -> str | None:
+    """Who was on screen, and when. None when nothing is known.
+
+    None matters more than the answer. The lower third has been read for
+    eleven of the live broadcasts; for everything else this knows nothing,
+    and saying so is the only honest reply. Falling through to retrieval
+    would produce a guest list inferred from the transcript, which is the
+    shape of the answer that put a Market Bubble #13 story under a
+    question about the token.
+    """
+    if not windows or not episode_id:
+        return None
+    found = windows.get(episode_id) or []
+    if not found:
+        return None
+    # One line per PERSON, not per window. A guest who leaves and comes
+    # back has two windows -- Brian Armstrong is on ep 12 at 2:07 and
+    # again at 2:26 -- and listing both made him two of "five guests".
+    # The header counts people, so the rows have to as well.
+    people: dict[str, dict] = {}
+    for w in sorted(found, key=lambda x: x.get("start", 0)):
+        name = " ".join(str(w.get("name", "")).split()).title()
+        if not name:
+            continue
+        start, end = int(w.get("start", 0)), int(w.get("end", 0))
+        # Under a minute on screen is the banner caught mid-transition,
+        # not an appearance. Ep 12 has "TH BRIAN / ARMSTRONG" for thirty
+        # seconds, which is one frame of Brian Armstrong's own lower third
+        # read while it was still drawing. Printed as a guest it invents a
+        # person. write_guest_labels.py drops fragments for the same
+        # reason, and this is the same fragment reaching a reply instead.
+        if end - start < 60:
+            continue
+        seen = people.get(name)
+        if seen is None:
+            people[name] = {"start": start, "end": end,
+                            "role": _tidy_role(w.get("subtitle", ""))}
+        else:
+            seen["end"] = max(seen["end"], end)
+            seen["role"] = seen["role"] or _tidy_role(w.get("subtitle", ""))
+
+    lines = []
+    for name, who in people.items():
+        when = f"{who['start'] // 60}m-{who['end'] // 60}m"
+        lines.append(f"{name} - {who['role']} - {when}" if who["role"]
+                     else f"{name} - {when}")
+    if not lines:
+        return None
+    head = (f"ep {number} - {len(lines)} guest"
+            f"{'s' if len(lines) != 1 else ''} on screen:")
+    return head + "\n\n" + "\n".join(lines)
+
+
+# Said when the episode is real but its lower third has not been read. It
+# names the gap rather than implying nobody was on: eleven broadcasts have
+# been read and the rest have not, and a reader who cannot tell those apart
+# will read silence as "no guests".
+_GUESTS_NOT_READ = (
+    "i read the guest names off the show's own lower third, frame by "
+    "frame, and i have only done that for the live broadcasts so far - "
+    "ep {number} is not one of them yet."
+)
+
+
 def summary_request(question: str) -> int | None:
     """The episode number someone is asking to have summarised, or None."""
     found = _ASKS_FOR_SUMMARY.search(question or "")
@@ -1825,6 +1967,7 @@ _DEFLECTION = re.compile(
 
 
 HIGHLIGHTS = ROOT / "data" / "highlights.json"
+GUEST_WINDOWS = ROOT / "data" / "guest_windows.json"
 
 # Openers for an unprompted fact, so twenty compliments do not produce
 # twenty posts beginning the same way.
@@ -1842,6 +1985,29 @@ _UNSURE = re.compile(
     r"""(?ix) unnamed\s+speaker | speaker\s+(?:identity|unclear)
       | unclear\s+from\s+(?:the\s+)?transcript | identity\s+unclear
       | \bunidentified\b""")
+
+
+def load_guest_windows(path: Path = GUEST_WINDOWS) -> dict:
+    """Who was on screen and when, per episode.
+
+    Written ahead of time by scripts/read_guest_windows.py, which reads
+    the show's own lower third frame by frame. Read here and handed to
+    the bot rather than opened in the reply path, the same way highlights
+    and summaries are.
+
+    An empty dict on any failure, and the caller treats that as "not
+    read": guest_list_answer returns None and the reply says so. A
+    missing file must never become a guest list inferred from the
+    transcript.
+    """
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text())
+    except json.JSONDecodeError:
+        logger.warning("guest_windows.json is unreadable — who-was-on "
+                       "questions will say it has not been read")
+        return {}
 
 
 def load_highlights(path: Path = HIGHLIGHTS) -> list[dict]:
@@ -3065,6 +3231,7 @@ class MentionBot:
                  per_author_cap: int = 8,
                  post_limit: int = POST_LIMIT,
                  summaries=None, summary_limit: int = 4000,
+                 guest_windows: dict | None = None,
                  highlights: list | None = None,
                  questions: object | None = None,
                  priority_authors: set | None = None,
@@ -3095,6 +3262,11 @@ class MentionBot:
         self._post_limit = post_limit
         self._summaries = summaries
         self._summary_limit = summary_limit
+        # Who was on screen, read off the show's own lower third. Passed
+        # in rather than read here, the same way summaries are: the reply
+        # path owns no file dependency, and a deploy without it answers
+        # exactly as before because guest_list_answer returns None.
+        self._guest_windows = guest_windows or {}
         # Fetched once and kept: 32 summaries change only when an
         # episode is added, and a lookup should not cost a round trip.
         self._summary_cache: list | None = None
@@ -3495,6 +3667,26 @@ class MentionBot:
             return None
         return max(dated, key=lambda s: s["published_at"])
 
+    async def _broadcast_for(self, number: int) -> dict | None:
+        """The live broadcast for an episode number, if one is indexed.
+
+        Guest windows are read off the broadcast's own lower third, so
+        only the broadcast row can have them. Falls back to any row with
+        that number, which keeps the caller honest when a show exists
+        only as an upload: no windows, and it says so.
+        """
+        if self._summaries is None:
+            return None
+        if self._summary_cache is None:
+            self._summary_cache = await self._summaries.list_all()
+        matches = [s for s in self._summary_cache
+                   if episode_number(s.get("title", "")) == number]
+        if not matches:
+            return None
+        live = [s for s in matches
+                if str(s.get("episode_id", "")).startswith("x-")]
+        return (live or matches)[0]
+
     async def _summary_for(self, number: int) -> dict | None:
         """The stored summary for an episode number, if there is one.
 
@@ -3621,6 +3813,33 @@ class MentionBot:
                 return format_summary(
                     found["summary"], found["title"], self._summary_limit,
                     url=episode_link(found) if mode != "off" else None)
+
+        # Before summary_request, which also resolves a number: "who was
+        # on ep 18" is a guest question, and the summary branch would
+        # answer it with the whole episode instead.
+        guests = who_was_on_request(question)
+        if guests is not None:
+            # The BROADCAST row, not whichever summary is longest.
+            # _summary_for prefers the longest text, which is right for a
+            # summary -- the cut is a summary of a cut -- and wrong here:
+            # every numbered show has two rows, the YouTube upload and the
+            # live broadcast, and only the broadcast has guest windows.
+            # Asked who was on ep 18 it picked the upload, found no
+            # windows, and said the episode had not been read.
+            found = await self._broadcast_for(guests)
+            answer = guest_list_answer(
+                guests, (found or {}).get("episode_id"), self._guest_windows)
+            if answer:
+                logger.info("%s asked who was on ep %d — %d on screen",
+                            mention.id, guests, answer.count("\n") - 1)
+                return answer
+            # Real episode, lower third not read. Saying so beats falling
+            # through to retrieval, which would infer a guest list from
+            # the transcript -- the shape of answer that put a Market
+            # Bubble #13 story under a question about the token.
+            logger.info("%s asked who was on ep %d — not read yet",
+                        mention.id, guests)
+            return _GUESTS_NOT_READ.format(number=guests)
 
         wanted = summary_request(question)
         if wanted is not None:

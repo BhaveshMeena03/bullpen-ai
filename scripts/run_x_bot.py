@@ -42,6 +42,7 @@ from app.summaries import SummaryStore  # noqa: E402
 from app.x_api import OutOfCreditsError, XClient, XCredentials  # noqa: E402
 from app.x_bot import (  # noqa: E402
     MentionBot,
+    load_guest_windows,
     question_from,
     summary_request,
     weighted_length,
@@ -88,6 +89,11 @@ def build(dry_run: bool, cap: int | None, links: bool | None):
         post_limit=settings.x_bot_post_limit,
         summary_limit=settings.x_bot_summary_limit,
         summaries=SummaryStore(),
+        # Both entry points pass this. A bot built here without it would
+        # decline every who-was-on question while the one app/main.py
+        # builds answered them -- the same code behaving differently
+        # depending on which process started it.
+        guest_windows=load_guest_windows(),
         questions=QuestionLog(),
         priority_authors=settings.priority_author_ids,
         site=settings.x_bot_site,
