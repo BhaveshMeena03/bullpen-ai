@@ -1344,6 +1344,17 @@ _ASKS_OUR_MECHANICS = re.compile(
       | \b(?:fee|revenue)\s+(?:split|routing|share)\b
       | \bholder\s+rewards?\b
       | \blottery\b
+      # "what percent of fees buy back $MBS" reached the archive and was
+      # deflected -- the plainest way anyone asks this, and the shape of
+      # the question that actually arrived in a reply. Both orders, since
+      # the qualifier leads about as often as it trails ("how much of the
+      # fees goes to buybacks" vs "the buyback is what percent"). Still
+      # behind _ABOUT_THE_SHOW, so "what did ansem say about buybacks"
+      # goes to the index where it belongs.
+      | \bbuys?\s?backs?\b [^.?!]{0,25}
+        \b(?:fees?|revenue|percent|pct|token|mbs|supply|much)\b
+      | \b(?:fees?|revenue|percent|pct|token|mbs|supply|much)\b [^.?!]{0,25}
+        \bbuys?\s?backs?\b
       | \b(?:equal|weighted)\b [^.?!]{0,15} \b(?:odds|chance|wallet)\b
     )""")
 
@@ -1490,19 +1501,26 @@ def pinned_answer(question: str, contract_address: str | None,
     account.
     """
     q = question or ""
-    # Before anything: a question about this project's token, price or plans
-    # is not a question retrieval should answer.
-    if asks_about_us(q):
-        return _NOT_OUR_LANE
-    # And never answer a request for somebody else's address with ours.
+    # First, because it is the one wrong answer here that could cost a
+    # reader money: never answer a request for somebody else's address
+    # with ours.
     if _SOMEONE_ELSES_ADDRESS.search(q):
         return _NOT_OUR_LANE
-    # How the token is configured is a fact, not a forecast. _NOT_OUR_LANE
-    # above still owns price, roadmap and predictions -- this only answers
-    # settings that can be stated exactly, the way the contract address is.
+    # How the token is configured is a fact, not a forecast -- and the
+    # specific matcher has to run before the general decline. "what % of
+    # revenue buys back the token" is BOTH a mechanics question and an
+    # _ABOUT_US match (on "the token"), and with asks_about_us first it
+    # was declined instead of answered: the bot refused to state its own
+    # fee split because the asker named the token. Price, roadmap and
+    # predictions still reach _NOT_OUR_LANE below -- none of them match a
+    # mechanics shape, which is what makes this order safe.
     mechanics = mechanics_answer(q)
     if mechanics:
         return mechanics
+    # A question about this project's price or plans is not a question
+    # retrieval should answer.
+    if asks_about_us(q):
+        return _NOT_OUR_LANE
     if not contract_address or not _ASKS_FOR_CA.search(q):
         return None
     label = token_label or "This project"

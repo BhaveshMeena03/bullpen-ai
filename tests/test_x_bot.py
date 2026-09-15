@@ -4167,11 +4167,33 @@ class TestItAnswersItsOwnMechanics:
         "whats the fee split",
         "is it weighted by wallet size",
         "how does the lottery work",
+        # All four reached retrieval and were deflected -- the bot went
+        # silent on the plainest way anyone asks about the buyback. The
+        # qualifier leads about as often as it trails, so both orders.
+        "what percent of fees buy back $MBS",
+        "how much of the fees goes to buybacks",
+        "the buyback is what percent",
+        "what % of revenue buys back the token",
     ])
     def test_a_mechanics_question_is_answered_not_searched(self, question):
         out = pinned_answer(question, self.CA, "$MBS")
         assert out is not None, "fell through to retrieval"
         assert "round" in out or "wallet" in out
+
+    @pytest.mark.parametrize("question", [
+        "what % of revenue buys back the token",
+        "how much of your fees buys back the token",
+        "what percent of the project's fees go to holder rewards",
+    ])
+    def test_naming_the_token_does_not_turn_it_into_a_decline(self, question):
+        """asks_about_us matches "the token" and "your ... buyback", so
+        with the general decline running first the bot refused to state
+        its own fee split the moment the asker named the token. The
+        specific matcher runs first now."""
+        out = pinned_answer(question, self.CA, "$MBS")
+        assert out is not None
+        assert "i can't speak for any token" not in out, "declined its own settings"
+        assert "15%" in out
 
     def test_the_answer_states_the_configured_numbers(self):
         out = pinned_answer("whats the fee split", self.CA, "$MBS")
@@ -4208,6 +4230,15 @@ class TestItStillLeavesTheArchiveAlone:
         every archive question containing the word "odds" or "winner" --
         trading one wrong answer for a much worse one."""
         assert pinned_answer(question, self.CA, "$MBS") is None
+
+    def test_a_buyback_in_general_is_not_answered_as_ours(self):
+        """The buyback shapes require a fee or token word nearby. Without
+        that, "is a buyback good for a stock generally" would be answered
+        with this token's own fee split -- confident, exact, and about
+        something nobody asked."""
+        for q in ("is a buyback good for a stock generally",
+                  "do buybacks actually work"):
+            assert pinned_answer(q, self.CA, "$MBS") is None, q
 
     def test_price_and_roadmap_still_decline(self):
         """The narrowing is deliberate and stops here: settings are
