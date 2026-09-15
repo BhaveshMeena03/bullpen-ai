@@ -28,7 +28,7 @@ from app.x_api import (
 from app.x_bot import (BotState, MentionBot, format_reply, fingerprint,
                        is_rhetorical_praise,
                        has_a_known_intent, has_substance, is_a_mass_tag,
-                       question_from)
+                       pinned_answer, question_from)
 
 # --- reading the question --------------------------------------------------
 
@@ -4136,3 +4136,86 @@ async def test_a_post_with_no_subject_still_answers_about_the_newest(tmp_path):
     posted = " ".join(text for _id, text in client.posted)
     assert "Hunter Biden" in posted, (
         f"lost the newest-episode answer; posted {posted[:120]!r}")
+
+
+# --- questions about how the token is configured -----------------------
+#
+# asks_about_us already diverts token questions away from retrieval, but
+# every branch of _ABOUT_US needs the asker to name the project -- "your
+# token", "the project", "wen listing". Somebody replying UNDER a post
+# about the fee split says none of that, because the post established it.
+#
+# Mega asked "only one winning wallet?" under the rewards announcement.
+# It matched nothing, went to the archive, which searched for "winner"
+# and returned a Market Bubble #13 story about a viewer called Cool
+# Monkey being sent 10 SOL. Confident, cited, and about something else.
+# A second person asked the same thing two hours earlier and got silence.
+#
+# The line drawn here: CONFIGURED SETTINGS are answerable, because they
+# can be stated exactly, the way the contract address is. Price, roadmap
+# and predictions stay on _NOT_OUR_LANE, which is why the "wen listing"
+# case below still declines.
+
+class TestItAnswersItsOwnMechanics:
+    CA = "8VjFid8BVGcTPpUzf4PAWsA5nHJ5h2GQNXPEj"
+
+    @pytest.mark.parametrize("question", [
+        "only one winning wallet?",          # verbatim, from the thread
+        "how many winners per round",
+        "what are the odds",
+        "how often is the draw",
+        "whats the fee split",
+        "is it weighted by wallet size",
+        "how does the lottery work",
+    ])
+    def test_a_mechanics_question_is_answered_not_searched(self, question):
+        out = pinned_answer(question, self.CA, "$MBS")
+        assert out is not None, "fell through to retrieval"
+        assert "round" in out or "wallet" in out
+
+    def test_the_answer_states_the_configured_numbers(self):
+        out = pinned_answer("whats the fee split", self.CA, "$MBS")
+        assert "15%" in out
+        assert "SOL" in out
+
+    def test_it_does_not_claim_where_the_remainder_goes(self):
+        """The share paid to the agent wallet was wrong in an earlier
+        draft of the launch post. A figure nobody has verified does not
+        belong in an answer whose whole value is being exact."""
+        out = pinned_answer("whats the fee split", self.CA, "$MBS")
+        assert "70%" not in out
+
+    def test_equal_odds_is_stated_plainly(self):
+        """The one part of the mechanic nobody can copy by shipping a
+        token, and the thing both askers actually wanted to know."""
+        out = pinned_answer("only one winning wallet?", self.CA, "$MBS")
+        assert "same chance" in out or "equal odds" in out
+
+
+class TestItStillLeavesTheArchiveAlone:
+    CA = "8VjFid8BVGcTPpUzf4PAWsA5nHJ5h2GQNXPEj"
+
+    @pytest.mark.parametrize("question", [
+        "what did ansem say about buybacks",
+        "what did banks say about winning",
+        "who won the trading competition on the show",
+        "what did they say about odds in episode 12",
+        "summarize episode 14",
+    ])
+    def test_a_question_about_the_show_still_reaches_retrieval(self, question):
+        """_ABOUT_THE_SHOW gates the mechanics check exactly as it gates
+        asks_about_us. Without it, fixing the token answer would break
+        every archive question containing the word "odds" or "winner" --
+        trading one wrong answer for a much worse one."""
+        assert pinned_answer(question, self.CA, "$MBS") is None
+
+    def test_price_and_roadmap_still_decline(self):
+        """The narrowing is deliberate and stops here: settings are
+        facts, prices are not."""
+        for q in ("wen listing", "when moon", "what's your price target"):
+            out = pinned_answer(q, self.CA, "$MBS")
+            assert out is not None and "can't speak for any token" in out
+
+    def test_the_contract_address_branch_is_untouched(self):
+        out = pinned_answer("ca pls", self.CA, "$MBS")
+        assert self.CA in out

@@ -1176,6 +1176,91 @@ _NOT_OUR_LANE = (
     "for any token, its price or its plans. ask me something from either "
     "and i'll find the timestamp \U0001FAE1")
 
+# How the token is CONFIGURED -- not what it is worth or where it is going.
+#
+# _ABOUT_US already diverts token questions away from retrieval, but every
+# branch of it requires the asker to name the project: "your token", "the
+# project", "wen listing". Somebody replying UNDER a post about the fee
+# split does not say any of that, because the post already established it.
+# Mega asked "only one winning wallet?" and matched nothing, so it went to
+# the archive, which searched for "winner" and returned a Market Bubble #13
+# story about a viewer called Cool Monkey being sent 10 SOL. Confident,
+# cited, and about something else entirely.
+#
+# So: the same shapes, without the possessive. Gated behind
+# _ABOUT_THE_SHOW exactly as asks_about_us is, or "what did ansem say
+# about buybacks" stops reaching the archive -- which would be trading one
+# wrong answer for a worse one.
+_ASKS_OUR_MECHANICS = re.compile(
+    r"""(?ix)
+    (?: \b(?:winning|winner|wins?)\b [^.?!]{0,20} \b(?:wallet|holder|one|1)\b
+      | \b(?:wallet|holder)s?\b [^.?!]{0,20} \b(?:win|wins|winning)\b
+      | \b(?:how\s+many)\b [^.?!]{0,20} \b(?:winners?|wallets?)\b
+      | \b(?:per|each|every)\s+round\b
+      | \b(?:how\s+often|how\s+frequently)\b
+      | \b(?:the\s+)?(?:odds|chances?)\b
+      | \b(?:fee|revenue)\s+(?:split|routing|share)\b
+      | \bholder\s+rewards?\b
+      | \blottery\b
+      | \b(?:equal|weighted)\b [^.?!]{0,15} \b(?:odds|chance|wallet)\b
+    )""")
+
+# Stated exactly, because every one of these is a setting rather than a
+# forecast. The contract address is pinned for the same reason: it is a
+# fact about the project that the index has nothing to say about, and a
+# paraphrase of it would be worse than no answer.
+#
+# Deliberately silent on where the remainder goes. The share paid to the
+# agent wallet was wrong in an earlier draft of the launch post, and a
+# figure nobody has verified does not belong in an answer whose whole
+# value is that it is exact. Say what is known; do not complete the sum.
+#
+# Hardcoded rather than read from config, by choice: these move rarely and
+# a redeploy is the moment to change them. If the fee strategy changes,
+# THIS BLOCK is the thing to update.
+_MECHANICS = {
+    "buyback_pct": 15,
+    "rewards_pct": 15,
+    "reward_asset": "SOL",
+    "clawpump_share_pct": 25,
+    "clawpump_buyback_pct": 25,
+}
+
+_MECHANICS_PHRASINGS = (
+    "one wallet per round, and each fee claim funds a round — so it is one "
+    "winner every time fees come in, not one winner overall.\n\n"
+    "equal odds per wallet: holding more does not buy more tickets. paid "
+    "in {asset}. creator, agent and pool wallets are excluded from the "
+    "draw.\n\n"
+    "{rewards}% of creator fees goes to those rewards and {buyback}% buys "
+    "the token back.",
+
+    "{rewards}% of creator fees funds the holder draw and {buyback}% buys "
+    "the token back.\n\n"
+    "each fee claim funds one round with one winner. every wallet has the "
+    "same chance regardless of size, and the creator, agent and pool "
+    "wallets cannot win. prizes are paid in {asset}.",
+)
+
+
+def mechanics_answer(question: str) -> str | None:
+    """How the token is configured, when somebody asks.
+
+    Returns None unless the question is plainly about the mechanics, so
+    everything else falls through to the normal path.
+    """
+    q = question or ""
+    if _ABOUT_THE_SHOW.search(q):
+        return None
+    if not _ASKS_OUR_MECHANICS.search(q):
+        return None
+    return _pick(_MECHANICS_PHRASINGS, q).format(
+        rewards=_MECHANICS["rewards_pct"],
+        buyback=_MECHANICS["buyback_pct"],
+        asset=_MECHANICS["reward_asset"],
+    )
+
+
 # Somebody else's address is not ours to hand out, and answering "send me
 # ansem's address" with THIS project's contract address is the shape of a
 # scam even when it is an accident.
@@ -1270,6 +1355,12 @@ def pinned_answer(question: str, contract_address: str | None,
     # And never answer a request for somebody else's address with ours.
     if _SOMEONE_ELSES_ADDRESS.search(q):
         return _NOT_OUR_LANE
+    # How the token is configured is a fact, not a forecast. _NOT_OUR_LANE
+    # above still owns price, roadmap and predictions -- this only answers
+    # settings that can be stated exactly, the way the contract address is.
+    mechanics = mechanics_answer(q)
+    if mechanics:
+        return mechanics
     if not contract_address or not _ASKS_FOR_CA.search(q):
         return None
     label = token_label or "This project"
