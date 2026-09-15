@@ -23,8 +23,33 @@ def client(monkeypatch):
     async def fake_lookup(symbol, **kw):
         return FAKE_MARKET if symbol == "SOL" else None
     monkeypatch.setattr(main_module.market, "lookup", fake_lookup)
+
+    # The CoinGecko half, stubbed too. Only `lookup` was, which is the
+    # Jupiter side -- quote() tries Jupiter first and falls back to the
+    # CoinGecko table, so /v1/assets/BTC reached the real API from the
+    # test suite on every run. BTC is asset_class "crypto", which is not
+    # in _UNPRICEABLE_CLASSES, so nothing gated it.
+    #
+    # Which means "market is null for BTC" was never a property of the
+    # code -- it was the network failing. Measured: a healthy table is
+    # 977 rows, holds BTC, and quotes it at $76,765. The CI run that
+    # "broke" this had page 2 return 429, and a 429 is closer to the
+    # condition under which this test USED to pass. A working third
+    # party is what makes it fail.
+    #
+    # An empty table makes the fallback miss every ticker, which is what
+    # "a ticker we cannot vouch for" is supposed to mean, and it means
+    # the assertion now tests the code instead of the weather.
+    async def no_coingecko():
+        return {}
+    monkeypatch.setattr(main_module, "_coingecko_table", no_coingecko)
+
     with TestClient(main_module.app) as c:
         main_module.app.state._market_cache.clear()
+        # _coingecko_table keeps its own TTL cache on app.state, so a real
+        # table fetched by any earlier test would otherwise survive into
+        # this one and the stub above would never be consulted.
+        main_module.app.state._cg_table = None
         yield c
 
 
