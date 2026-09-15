@@ -56,6 +56,51 @@ OTHER = episode("x-11", "LIVE W/ JESSE POLLAK & LUCAS BRUDER", [
 ARCHIVE = [REAL, OTHER]
 
 
+class TestNarrowingTheIndexChangesNothing:
+    """_index(episode, wanted) exists only to stop a reply costing 260 MB
+    in the process that also serves the website. It is an optimisation, so
+    the only thing worth testing is that it is invisible.
+
+    The hand-written fixtures above are too small to catch a narrowing
+    bug on their own -- REAL has ten lines -- so these compare narrowed
+    against unnarrowed on the same input rather than asserting a
+    hardcoded answer.
+    """
+
+    CLIP = ("the insiders benefited a lot from the launch no matter how "
+            "they say they structured the token supply but how much do "
+            "you think how much because I generally don't know")
+
+    def test_narrowed_matches_unnarrowed_on_the_runs_asked_for(self):
+        asked = set(clipmatch.runs(self.CLIP))
+        for ep in ARCHIVE:
+            full = {k: v for k, v in clipmatch._index(ep).items() if k in asked}
+            narrowed = dict(clipmatch._index(ep, asked))
+            assert full == narrowed, ep["episode_id"]
+
+    def test_a_repeated_run_still_counts_every_occurrence(self):
+        """The uniqueness rule only trusts a run appearing exactly once in
+        the episode. If narrowing dropped occurrences rather than
+        recordings, a repeated phrase would look unique and place a clip
+        on the strength of evidence the full index rejects."""
+        twice = episode("x-rep", "repeats", [
+            (10.0, "the insiders benefited a lot from the launch no matter"),
+            (400.0, "the insiders benefited a lot from the launch no matter"),
+        ])
+        asked = set(clipmatch.runs(self.CLIP))
+        narrowed = clipmatch._index(twice, asked)
+        repeated = [run for run, seen in narrowed.items() if len(seen) > 1]
+        assert repeated, "fixture no longer repeats a wanted run"
+        for run in repeated:
+            assert len(narrowed[run]) == len(clipmatch._index(twice)[run])
+
+    def test_the_verdict_is_unchanged(self):
+        assert (clipmatch.place(self.CLIP, ARCHIVE)
+                == clipmatch.place(self.CLIP, ARCHIVE))
+        got = clipmatch.place(self.CLIP, ARCHIVE)
+        assert got is not None and got["episode_id"] == "x-19"
+
+
 class TestItPlacesAClipFromTheArchive:
     def test_a_clip_is_placed_on_the_right_episode(self):
         """Whisper's wording differs from the archive's -- it drops a

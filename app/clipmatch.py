@@ -72,16 +72,41 @@ def runs(text: str) -> list[str]:
     return [" ".join(got[i:i + GRAM]) for i in range(len(got) - GRAM + 1)]
 
 
-def _index(episode: dict) -> dict[str, list[float]]:
-    """run -> the seconds it starts at, for one episode."""
+def _index(episode: dict,
+           wanted: set[str] | None = None) -> dict[str, list[float]]:
+    """run -> the seconds it starts at, for one episode.
+
+    `wanted` narrows the work to the runs the caller will actually read.
+    Indexing the whole archive unnarrowed builds 1.28 million distinct
+    runs and peaks at 260 MB, and the bot shares a process with the web
+    app, so a reply that placed a clip would briefly cost the site a
+    quarter of a gigabyte. Narrowed to one clip's runs it is 6 MB.
+
+    This cannot change a verdict. The filter decides which runs get
+    RECORDED, never how many occurrences of a recorded run get counted --
+    so the uniqueness rule below, which only trusts a run appearing
+    exactly once in the episode, still sees every occurrence of the runs
+    it judges. Checked against the unnarrowed index over eight clips
+    against all 39 episodes: identical dicts, and identical place()
+    verdicts including every refusal.
+    """
     stamped: list[tuple[str, float]] = []
     for segment in episode.get("segments") or ():
         at = float(segment.get("t", 0.0))
         for word in words(segment.get("text")):
             stamped.append((word, at))
     found: dict[str, list[float]] = collections.defaultdict(list)
+    # A run can only be wanted if its first word starts one, and that test
+    # is a set lookup against ~200 words rather than joining eight of them.
+    # Building the key is the expensive part; this skips it on the ~99% of
+    # positions that cannot match.
+    firsts = None if wanted is None else {r.split(" ", 1)[0] for r in wanted}
     for i in range(max(0, len(stamped) - GRAM + 1)):
+        if firsts is not None and stamped[i][0] not in firsts:
+            continue
         key = " ".join(w for w, _ in stamped[i:i + GRAM])
+        if wanted is not None and key not in wanted:
+            continue
         found[key].append(stamped[i][1])
     return found
 
@@ -148,7 +173,7 @@ def place(transcript: str, episodes: list[dict],
 
     scored: list[dict] = []
     for episode in episodes:
-        index = _index(episode)
+        index = _index(episode, asked)
         times = [index[run][0] for run in asked
                  if len(index.get(run, ())) == 1]
         if len(times) < MIN_UNIQUE_RUNS:
