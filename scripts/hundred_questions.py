@@ -355,13 +355,30 @@ def quotes_hold(answer: str, episodes: dict, hits) -> str | None:
     stamps = A_STAMP.findall(answer)
     if not stamps or not hits:
         return None
-    episode = episodes.get(getattr(hits[0], "episode_id", None))
-    if not episode:
+    # EVERY episode the model was shown, not hits[0]'s. An answer routinely
+    # spans several -- "Around 4:01:17 in the July 2 episode ... Later, in
+    # the July 31 episode around 41:56" -- and the retrieved hits for one
+    # question came from six different shows. Looking a timestamp up in
+    # hits[0]'s transcript alone asks the wrong episode: the leverage
+    # answer cited 4:01:17, hits[0] ended at 2:51, and the quote was
+    # sitting at 4:01:17 in a different episode in the same hit set, on
+    # the line "Don't sleep."
+    #
+    # Nine failures on the last run were this, every one of them a correct
+    # answer. A checker that cries wolf is worse than no checker, because
+    # the next real failure gets waved through with the rest.
+    shown = []
+    for hit in hits:
+        found = episodes.get(getattr(hit, "episode_id", None))
+        if found is not None and found not in shown:
+            shown.append(found)
+    if not shown:
         return None
-    windows = [window(episode, seconds(s)) for s in stamps[:6]]
-    windows = [w for w in windows if w]
+    windows = [w for s in stamps[:6] for episode in shown
+               if (w := window(episode, seconds(s)))]
     if not windows:
-        return f"cites {stamps[0]}, which the episode has no transcript for"
+        return (f"cites {stamps[0]}, which none of the episodes shown "
+                f"has a transcript for")
     titles = {e["title"].lower() for e in episodes.values()}
     for quote in re.findall(r'"([^"]{16,160})"', answer):
         if any(quote.lower()[:40] in t for t in titles):

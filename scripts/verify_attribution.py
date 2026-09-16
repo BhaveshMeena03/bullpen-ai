@@ -61,11 +61,55 @@ def _known_names() -> list[str]:
 
 
 # "X said", "X noted", "X explained" — the shapes an attribution takes.
-ATTRIBUTION = re.compile(
-    r"\b(" + "|".join(re.escape(n) for n in _known_names()) + r")\b"
-    r"[^.!?\n]{0,40}?"
+_NAME = re.compile(
+    r"\b(" + "|".join(re.escape(n) for n in _known_names()) + r")\b")
+_CREDIT_VERB = re.compile(
     r"\b(said|says|noted|explained|argued|described|recalled|admitted"
     r"|mentioned|claimed|stated|revealed|put it)\b")
+# Subjects that name nobody. The answer is hedging on purpose here.
+_ANON_SUBJECT = re.compile(
+    r"(?:\ba\s+(?:guest|speaker|host)"
+    r"|\bone\s+of\s+(?:the\s+)?(?:hosts|guests|speakers|them)"
+    r"|\bthe\s+(?:host|hosts|guest|guests|speaker|speakers)"
+    r"|\bsomeone|\bsomebody|\bthey|\bhe|\bshe)\s*$", re.I)
+
+
+def credited_speaker(before: str) -> str | None:
+    """Who the answer credits, reading the name NEAREST the verb.
+
+    The old pattern was `NAME [up to 40 chars] VERB` and took the last
+    match. Two things went wrong at once on a sentence like:
+
+        "in the episode with Erik Voorhees and Mike Majlak, FaZe Banks
+         described ..."
+
+    Erik Voorhees sits 38 characters from "described", inside the window,
+    so it matched -- and because matching is non-overlapping, consuming
+    through "described" meant the real subject, "FaZe Banks described",
+    could never match at all. The correct name was not merely outranked,
+    it was invisible. Five of nine reported failures were this, all of
+    them the episode's own guest list being read as the speaker.
+
+    So: find each verb, look back a little, and take the LAST name before
+    it. A name mentioned earlier in a list cannot outrank the one sitting
+    against the verb.
+    """
+    claimed = None
+    for verb in _CREDIT_VERB.finditer(before):
+        head = before[:verb.start()].rstrip()
+        # "a guest explained", "one of the hosts described". These credit
+        # NOBODY, which is the right answer when the passages do not put a
+        # name on the line -- it is what attribution.correct produces on
+        # purpose. Without this the nearest name still wins, and the
+        # nearest name is whoever the episode title happens to mention:
+        # "Why Ansem Thinks Ethereum Is Done ... one of the hosts
+        # described" was read as Ansem being credited.
+        if _ANON_SUBJECT.search(head):
+            claimed = None
+            continue
+        names = _NAME.findall(head[-60:])
+        claimed = names[-1] if names else None
+    return claimed
 QUOTED = re.compile(r'"([^"]{18,140})"')
 LABELLED = re.compile(r"^\[[\d:]+\]\s*([A-Z][A-Za-z ]{2,20}):\s*(.+)$", re.M)
 
@@ -170,10 +214,12 @@ async def main() -> int:
             checked += 1
             # Who does the answer credit, nearest before the quote?
             where = answer.find(quote)
-            credits = ATTRIBUTION.findall(answer[:where])
-            if not credits:
+            claimed = credited_speaker(answer[:where])
+            if not claimed:
+                # "one of the hosts said" and "a guest explained" credit
+                # nobody, which is the correct output when the passages do
+                # not place a name on the line. Not a failure.
                 continue
-            claimed = credits[-1][0]
             claimed = "FaZe Banks" if claimed in ("Banks", "FaZe Banks") \
                 else claimed
             if claimed != best:
