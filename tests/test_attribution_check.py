@@ -19,7 +19,12 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from verify_attribution import ATTRIBUTION, LABELLED, QUOTED, words  # noqa: E402
+from verify_attribution import (  # noqa: E402
+    LABELLED,
+    QUOTED,
+    words,
+)
+from verify_attribution import credited_speaker as _credited  # noqa: E402
 
 PASSAGE = (
     "[1:37:47] FaZe Banks: You get crushed, bro.\n"
@@ -30,12 +35,15 @@ PASSAGE = (
 
 
 def credited_speaker(answer: str, quote: str) -> str | None:
-    """Who the answer credits for a quote — the checker's own logic."""
-    where = answer.find(quote)
-    credits = ATTRIBUTION.findall(answer[:where])
-    if not credits:
-        return None
-    name = credits[-1][0]
+    """Who the answer credits for a quote.
+
+    Calls the checker's real function now. It used to be a copy of it,
+    which is exactly why the checker's bug lived here undisturbed: the
+    copy and the original were wrong in the same way, so the test agreed
+    with the code and both were wrong together. Nine correct answers were
+    reported as misattributions before anyone looked.
+    """
+    name = _credited(answer[:answer.find(quote)])
     return "FaZe Banks" if name in ("Banks", "FaZe Banks") else name
 
 
@@ -91,12 +99,37 @@ def test_an_unattributed_quote_is_not_judged():
 def test_the_attribution_pattern_reads_every_verb_people_use():
     for verb in ("said", "noted", "explained", "argued", "recalled",
                  "admitted", "claimed", "stated", "revealed"):
-        assert ATTRIBUTION.search(f"Ansem {verb} that the market moved"), verb
+        assert _credited(f"Ansem {verb} that the market moved") == "Ansem", verb
 
 
 def test_a_name_far_from_the_verb_is_not_an_attribution():
     """"Banks was present, and later somebody said" is not Banks saying
-    it. The gap between name and verb is capped for that reason."""
+    it. The subject nearest the verb wins, and here it is nobody."""
     text = ("Banks was in the room for a long stretch of that conversation "
             "about several unrelated things, and then somebody said")
-    assert not ATTRIBUTION.search(text)
+    assert _credited(text) is None
+
+
+def test_the_episodes_own_guest_list_is_not_the_speaker():
+    """The failure that made nine correct answers look like lies.
+
+    "in the episode with Erik Voorhees and Mike Majlak, FaZe Banks
+    described" credits Banks. Voorhees is the episode's billing, and he
+    sits just inside the old forty-character window, so he won -- and
+    because matching is non-overlapping, "FaZe Banks described" could
+    never match at all.
+    """
+    text = ("Around 3:26:50 in the episode with Erik Voorhees and Mike "
+            "Majlak, FaZe Banks described FaZe's core problem: ")
+    assert _credited(text) == "FaZe Banks"
+
+
+def test_a_hedged_subject_credits_nobody():
+    """attribution.correct produces these on purpose when the passages
+    put no name on the line. Reading a name out of the episode title here
+    turns the bot's honesty into a reported failure."""
+    for text in ('Around 33:08 in the episode with Brian Armstrong and '
+                 'Kendrick Perkins, a guest explained ',
+                 'Around 9:37 in "Why Ansem Thinks Ethereum Is Done", one '
+                 'of the hosts described '):
+        assert _credited(text) is None, text

@@ -34,7 +34,12 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from verify_attribution import ATTRIBUTION, LABELLED, QUOTED, words  # noqa: E402
+from verify_attribution import (  # noqa: E402
+    LABELLED,
+    QUOTED,
+    credited_speaker,
+    words,
+)
 
 from app.podcast import PodcastIndex  # noqa: E402
 from app.x_bot import format_reply  # noqa: E402
@@ -184,10 +189,14 @@ async def main() -> int:
                     best, overlap = speaker, shared
             if not best or overlap < 3:
                 continue
-            credits = ATTRIBUTION.findall(result.answer[:result.answer.find(quote)])
-            if not credits:
+            # Shared with verify_attribution rather than copied. This logic
+            # existed in three places and was wrong in all three: a name
+            # up to forty characters from the verb outranked the one
+            # sitting against it, and non-overlapping matching then hid
+            # the correct name entirely.
+            claimed = credited_speaker(result.answer[:result.answer.find(quote)])
+            if not claimed:
                 continue
-            claimed = credits[-1][0]
             claimed = "FaZe Banks" if claimed in ("Banks", "FaZe Banks") else claimed
             if claimed != best:
                 problems.append(f'"{quote[:34]}" credited to {claimed}, '
