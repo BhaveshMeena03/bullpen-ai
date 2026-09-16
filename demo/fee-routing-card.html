@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<!-- Source for the "fee routing" card. 1600x880.
+
+     Two sides, kept apart on purpose. ClawPump's 25% is THEIR share and
+     the $CLAW/$ANSEM buyback comes out of it -- the docs say so twice:
+     "ClawPump keeps 25% of the trading fees. The rest is yours" and "the
+     25% comes out of ClawPump's 25% share, not out of your side of the
+     fees." Presenting that as part of $MBS's own routing would be a
+     false claim about someone else's mechanics.
+
+     Our three figures are read off the ClawPump fee-strategy screen:
+     15% buyback, 15% holder rewards, 70% agent wallet. They sum to 100
+     of the 75% creator share, not of the whole fee.
+
+     The $CLAW/$ANSEM buyback is tied to AnsemHack and the docs say
+     "extended through 20 September" -- so this card is current, not
+     permanent. RE-CHECK before reposting after that date. -->
+<html><head><meta charset="utf-8"><style>
+  @font-face{font-family:"Instrument Serif";
+    src:url("fonts/InstrumentSerif-Regular.ttf") format("truetype")}
+  @font-face{font-family:"Inter";
+    src:url("fonts/Inter-Variable.ttf") format("truetype")}
+  *{margin:0;padding:0;box-sizing:border-box}
+  /* 780. Not 880, which left ~200px of dead space above the kicker
+     because margin-top:auto pushes the footer down and the content does
+     not fill a tall card. Not 700 either -- that clipped the footer
+     clean through "search.lexthedev.com". Third card in a row to hit
+     this: the auto push only reads right when the content nearly fills
+     the height, so the height has to be measured from a render rather
+     than guessed at twice. */
+  body{width:1600px;height:720px;background:#0b0e11;color:#e6e8ea;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,sans-serif;
+    padding:58px 88px 46px;position:relative;overflow:hidden;
+    display:flex;flex-direction:column}
+  .glow{position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(820px 500px at 50% 0%, #16c78418, transparent 68%)}
+  header{display:flex;align-items:center;gap:14px;margin-bottom:22px}
+  header img{width:32px;height:32px;border-radius:8px;display:block}
+  .name{font-size:21px;font-weight:600;letter-spacing:-.01em}
+  .name b{color:#16c784;font-weight:600}
+
+  h1{font-family:"Instrument Serif",Georgia,serif;font-weight:400;
+    font-size:58px;line-height:1.04;letter-spacing:-.02em;margin-bottom:38px}
+  h1 em{color:#16c784;font-style:normal}
+
+  .side{margin-bottom:30px}
+  .who{font-size:14px;font-weight:500;color:#6b7480;letter-spacing:.06em;
+    text-transform:uppercase;margin-bottom:14px}
+  .who b{color:#e5a54e;font-weight:600}
+
+  .row{display:flex;align-items:baseline;gap:22px;padding:14px 0;
+    border-bottom:1px solid #1c222a;max-width:1300px}
+  .row:last-child{border-bottom:none}
+  .pct{font-size:32px;font-weight:700;min-width:96px;
+    font-variant-numeric:tabular-nums;color:#16c784}
+  .pct.dim{color:#6b7480}
+  .what{font-size:24px;color:#c7ccd2}
+  .what b{color:#e6e8ea;font-weight:600}
+
+  .kicker{margin-top:auto;font-size:27px;line-height:1.4;
+    border-left:3px solid #16c784;padding-left:22px;color:#e6e8ea;
+    max-width:1240px}
+
+  footer{margin-top:24px;padding-top:18px;border-top:1px solid #1c222a;
+    display:flex;align-items:baseline;justify-content:space-between}
+  .site{font-size:22px;color:#16c784;font-weight:600}
+  .note{font-size:17px;color:#6b7480}
+</style></head><body>
+  <div class="glow"></div>
+  <header>
+    <img src="logo-200.png" alt="">
+    <div class="name">Market Bubble <b>Search</b></div>
+  </header>
+
+  <h1>Every trade routes into <em>three buys</em>.</h1>
+
+  <div class="side">
+    <div class="who">ClawPump's share — <b>25% of trading fees</b></div>
+    <div class="row">
+      <span class="pct">25%</span>
+      <span class="what">of that buys <b>$CLAW</b> and <b>$ANSEM</b> on the
+        open market, 50/50</span>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="who">Our share — <b>the other 75%</b></div>
+    <div class="row">
+      <span class="pct">15%</span>
+      <span class="what">buys <b>$MBS</b> back</span>
+    </div>
+    <div class="row">
+      <span class="pct">15%</span>
+      <span class="what">to <b>holder rewards</b> — one wallet per round,
+        equal odds</span>
+    </div>
+  </div>
+
+  <div class="kicker">Three buys on every trade, and only one of them
+    is ours.</div>
+
+  <footer>
+    <div class="site">search.lexthedev.com</div>
+    <div class="note">$MBS · fee routing</div>
+  </footer>
+</body></html>

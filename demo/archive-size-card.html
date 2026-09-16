@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<!-- Source for the "archive size" card.
+
+     COUNT CANONICAL EPISODES, NOT ROWS. data/episodes.json holds 39 rows
+     for 19 Market Bubble shows: dedupe.py's header says one broadcast
+     reaches the index up to four times, as the live X post, the YouTube
+     cut, and clips of either. main.py has _canonical_ids() for exactly
+     this, and /v1/podcast/episodes reports 19.
+
+     A first version of this card read 39 episodes and 110 hours, which
+     double-counted the same evenings two and three times over. The
+     hours were the worse half: nobody disputes a count they can check,
+     but 110h against a real 68h is a claim about the work.
+
+     MCG and the Musk interviews do not have this: 634 and 11 distinct
+     ids, no systematic duplication, so those are counted as they are.
+
+     So: Market Bubble is canonical-only (19 shows, 68.3h summed from
+     the max segment timestamp of each). MCG is the `seconds` field of
+     all 634 rows (1001.7h, none unparseable). Musk is 11 rows (31.8h).
+     Total 664 and 1101.8h, computed unrounded and then rounded once,
+     never by adding the rounded labels.
+
+     Bars are to scale against that total, which is the point of drawing
+     it: MCG is 91% of the archive and has never been mentioned in a
+     post. A list of three numbers hides that; a bar does not.
+
+     Height is measured from a render and passed to make_card.mjs. No
+     margin-top:auto anywhere, for the same reason. -->
+<html><head><meta charset="utf-8"><style>
+  @font-face{font-family:"Instrument Serif";
+    src:url("fonts/InstrumentSerif-Regular.ttf") format("truetype")}
+  @font-face{font-family:"Inter";
+    src:url("fonts/Inter-Variable.ttf") format("truetype")}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{width:1600px;background:#0b0e11;color:#e6e8ea;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,sans-serif;
+    padding:58px 88px 46px;position:relative;overflow:hidden}
+  .glow{position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(900px 520px at 50% 0%, #16c78418, transparent 68%)}
+
+  header{display:flex;align-items:center;gap:14px;margin-bottom:26px}
+  header img{width:32px;height:32px;border-radius:8px;display:block}
+  .name{font-size:21px;font-weight:600;letter-spacing:-.01em}
+  .name b{color:#16c784;font-weight:600}
+
+  h1{font-family:"Instrument Serif",Georgia,serif;font-weight:400;
+    font-size:62px;line-height:1.04;letter-spacing:-.02em;margin-bottom:10px}
+  h1 em{color:#16c784;font-style:normal}
+  .sub{font-size:24px;color:#8b95a1;margin-bottom:40px}
+
+  .row{margin-bottom:26px}
+  .row:last-of-type{margin-bottom:0}
+  .line{display:flex;align-items:baseline;justify-content:space-between;
+    margin-bottom:10px}
+  .who{font-size:27px;font-weight:600;letter-spacing:-.01em}
+  .figs{font-size:22px;color:#8b95a1;font-variant-numeric:tabular-nums}
+  .figs b{color:#16c784;font-weight:700;font-size:26px}
+  .track{height:16px;background:#141a21;border-radius:3px;overflow:hidden}
+  .fill{height:100%;background:#16c784;border-radius:3px}
+  .fill.dim{background:#2f7f5c}
+
+  footer{margin-top:44px;padding-top:20px;border-top:1px solid #1c222a;
+    display:flex;align-items:baseline;justify-content:space-between}
+  .site{font-size:22px;color:#16c784;font-weight:600}
+  .note{font-size:18px;color:#6b7480;font-variant-numeric:tabular-nums}
+</style></head><body>
+  <div class="glow"></div>
+  <header>
+    <img src="logo-200.png" alt="">
+    <div class="name">Market Bubble <b>Search</b></div>
+  </header>
+
+  <h1><em>1,102 hours</em>, searchable to the second.</h1>
+  <div class="sub">664 episodes across three archives, every one transcribed.</div>
+
+  <div class="row">
+    <div class="line">
+      <span class="who">MCG Live</span>
+      <span class="figs">634 episodes &nbsp;·&nbsp; <b>1,002 h</b></span>
+    </div>
+    <div class="track"><div class="fill" style="width:90.9%"></div></div>
+  </div>
+
+  <div class="row">
+    <div class="line">
+      <span class="who">Market Bubble</span>
+      <span class="figs">19 episodes &nbsp;·&nbsp; <b>68 h</b></span>
+    </div>
+    <div class="track"><div class="fill dim" style="width:6.2%"></div></div>
+  </div>
+
+  <div class="row">
+    <div class="line">
+      <span class="who">Elon, long-form interviews</span>
+      <span class="figs">11 episodes &nbsp;·&nbsp; <b>32 h</b></span>
+    </div>
+    <div class="track"><div class="fill dim" style="width:2.9%"></div></div>
+  </div>
+
+  <footer>
+    <div class="site">search.lexthedev.com</div>
+    <div class="note">664 episodes · 1,102 hours</div>
+  </footer>
+</body></html>

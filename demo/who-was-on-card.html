@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<!-- Source for the "who was on" card.
+
+     The feature reads the show's own lower third, so the card renders the
+     answer AS lower thirds. The plates are the point: a reader who has
+     watched the stream recognises the shape before reading a word.
+
+     Roles are verbatim from screen and are NOT tidied here beyond case.
+     "The King of AR" is Cirrus's actual banner -- AR as in augmented
+     reality, not a truncation of something longer. Ep 12 was chosen over
+     18 precisely because every role on it survives the 30s crop intact;
+     ep 18 has "Leading AI Creato" and "Trader & Invest", which read as
+     bugs on a card even though they are what the screen said.
+
+     Height is NOT set here. It is measured from a render and passed to
+     make_card.mjs, because guessing it produced 200px of dead space and
+     then a clipped footer on the last three cards. There is no
+     margin-top:auto for the same reason. -->
+<html><head><meta charset="utf-8"><style>
+  @font-face{font-family:"Instrument Serif";
+    src:url("fonts/InstrumentSerif-Regular.ttf") format("truetype")}
+  @font-face{font-family:"Inter";
+    src:url("fonts/Inter-Variable.ttf") format("truetype")}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{width:1600px;background:#0b0e11;color:#e6e8ea;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,sans-serif;
+    padding:58px 88px 46px;position:relative;overflow:hidden}
+  .glow{position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(900px 520px at 50% 0%, #16c78418, transparent 68%)}
+
+  header{display:flex;align-items:center;gap:14px;margin-bottom:26px}
+  header img{width:32px;height:32px;border-radius:8px;display:block}
+  .name{font-size:21px;font-weight:600;letter-spacing:-.01em}
+  .name b{color:#16c784;font-weight:600}
+
+  h1{font-family:"Instrument Serif",Georgia,serif;font-weight:400;
+    font-size:60px;line-height:1.04;letter-spacing:-.02em;margin-bottom:30px}
+  h1 em{color:#16c784;font-style:normal}
+
+  /* The question, set as it is actually typed into a reply. */
+  .ask{font-size:25px;color:#8b95a1;margin-bottom:34px}
+  .ask span{color:#e6e8ea;background:#141a21;border:1px solid #1c222a;
+    border-radius:8px;padding:8px 16px}
+
+  /* A broadcast name plate. The bar on the left is the tell. */
+  .plate{display:flex;align-items:center;gap:26px;
+    background:linear-gradient(90deg,#141a21 0%,#10151b 62%,#0b0e11 100%);
+    border-left:5px solid #16c784;padding:20px 28px;margin-bottom:16px}
+  .plate:last-of-type{margin-bottom:0}
+  .who{flex:1;min-width:0}
+  .guest{font-size:35px;font-weight:700;letter-spacing:-.015em;
+    line-height:1.12}
+  .role{font-size:22px;color:#9aa4b0;margin-top:5px}
+  .mins{font-size:25px;font-weight:600;color:#16c784;white-space:nowrap;
+    font-variant-numeric:tabular-nums}
+
+  footer{margin-top:40px;padding-top:20px;border-top:1px solid #1c222a;
+    display:flex;align-items:baseline;justify-content:space-between}
+  .site{font-size:22px;color:#16c784;font-weight:600}
+  .note{font-size:17px;color:#6b7480}
+</style></head><body>
+  <div class="glow"></div>
+  <header>
+    <img src="logo-200.png" alt="">
+    <div class="name">Market Bubble <b>Search</b></div>
+  </header>
+
+  <h1>It reads the <em>lower third</em>.</h1>
+
+  <div class="ask"><span>who was on ep 12</span></div>
+
+  <div class="plate">
+    <div class="who">
+      <div class="guest">Cirrus</div>
+      <div class="role">The King of AR</div>
+    </div>
+    <div class="mins">34m – 54m</div>
+  </div>
+
+  <div class="plate">
+    <div class="who">
+      <div class="guest">Kendrick Perkins</div>
+      <div class="role">NBA Champion</div>
+    </div>
+    <div class="mins">66m – 111m</div>
+  </div>
+
+  <div class="plate">
+    <div class="who">
+      <div class="guest">Brian Armstrong</div>
+      <div class="role">CEO of Coinbase</div>
+    </div>
+    <div class="mins">127m – 159m</div>
+  </div>
+
+  <footer>
+    <div class="site">search.lexthedev.com</div>
+    <div class="note">market bubble · ep 12</div>
+  </footer>
+</body></html>
