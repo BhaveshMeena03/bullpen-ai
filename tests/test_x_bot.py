@@ -28,6 +28,7 @@ from app.x_api import (
 from app.x_bot import (
     BotState,
     MentionBot,
+    asks_whats_being_discussed,
     fingerprint,
     format_reply,
     has_a_known_intent,
@@ -36,6 +37,7 @@ from app.x_bot import (
     is_rhetorical_praise,
     pinned_answer,
     question_from,
+    worth_asking_about,
 )
 
 # --- reading the question --------------------------------------------------
@@ -4146,6 +4148,94 @@ async def test_a_post_with_no_subject_still_answers_about_the_newest(tmp_path):
     posted = " ".join(text for _id, text in client.posted)
     assert "Hunter Biden" in posted, (
         f"lost the newest-episode answer; posted {posted[:120]!r}")
+
+
+# --- a contentless question in a thread the bot already answered -------
+#
+# Kaiz posted a 71-second clip with a caption quoting it verbatim: "The
+# insiders benefited a lot from the launch no matter how they say they
+# structured the token supply". That is ep 19 at 5:04.
+#
+# The bot had answered in that conversation the day before, so
+# last_episode was set and the root read was skipped as redundant. It was
+# not redundant: the back-reference supplies the EPISODE, and "what are
+# they talking about" supplies nothing, so retrieval was handed a
+# contentless phrase and picked a passage inside ep 19 at random. The
+# reply cited 18:18 -- right episode, thirteen minutes from the clip, on
+# an unrelated subject, opening "makes exactly that point" about a point
+# nobody had made.
+#
+# Searching that phrase alone returns comedians, CIA documents and Solana
+# chatter. worth_asking_about already says it carries nothing; the check
+# was simply never reached on this path.
+
+KAIZ_CAPTION = (
+    "Ansem and Banks land on one of the most important edges in trading: "
+    "change your mind when the information changes\n\n"
+    "“The insiders benefited a lot from the launch no matter how they "
+    "say they structured the token supply”")
+
+
+@pytest.mark.anyio
+async def test_a_contentless_question_reads_the_root_even_in_a_known_thread(
+        tmp_path):
+    """A known episode does not excuse searching an empty phrase."""
+    client = FakeClient([
+        [mention("0")],
+        [mention("1", text="@bot what did ansem say about zcash",
+                 conversation="55")],
+        [mention("2", text="@bot what are they talking about",
+                 conversation="55")],
+    ])
+    client.roots = {"55": {"id": "55", "text": KAIZ_CAPTION}}
+    index = FakeIndex()
+    bot = MentionBot(client, index, summaries=FakeSummaries(_newest_only()),
+                     state_path=tmp_path / "s.json")
+    await bot.tick("2026-09-16")        # cold start answers nothing
+    await bot.tick("2026-09-16")        # answers, so last_episode is set
+    await bot.tick("2026-09-16")        # the follow-up under the clip
+
+    assert index.asked, "nothing was searched at all"
+    last = index.asked[-1].lower()
+    assert "insiders" in last or "token supply" in last, (
+        f"never read the root post's caption; asked {index.asked[-1]!r}")
+    assert last.strip() != "what are they talking about", (
+        "searched the contentless phrase instead of the clip's caption")
+
+
+@pytest.mark.parametrize("question", [
+    "what are they saying about zcash and privacy",
+    "what are they talking about with zcash and privacy",
+    "what is being discussed about zcash and privacy here",
+])
+def test_a_question_carrying_a_subject_never_reaches_the_root_read(question):
+    """Why dropping the last_episode check costs nothing.
+
+    The read above is unconditional now, and that is only affordable
+    because asks_whats_being_discussed is narrow: it matches the bare
+    phrasings and stops matching the moment the question names what it
+    is about. Those go straight to retrieval on their own words and
+    never reach the branch, so no read is spent on them.
+
+    An earlier version of this test drove the bot and asserted that no
+    read happened. That passed even with the gate forced permanently
+    open, because these questions never enter the branch under any
+    setting -- it was measuring nothing. The property worth pinning is
+    the predicate itself, since the fix above depends on it.
+    """
+    assert not asks_whats_being_discussed(question)
+    assert worth_asking_about(question), (
+        "carries a subject, so retrieval has something to work with")
+
+
+def test_the_bare_phrasings_carry_nothing_to_search():
+    """The other half of the same assumption."""
+    for bare in ("what are they talking about",
+                 "what are they talking about?"):
+        assert asks_whats_being_discussed(bare)
+        assert not worth_asking_about(bare), (
+            "if this ever carries enough to search, the unconditional "
+            "read above is spending money for nothing")
 
 
 # --- questions about how the token is configured -----------------------

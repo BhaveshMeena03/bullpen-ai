@@ -3739,6 +3739,13 @@ class MentionBot:
         on a real question rather than from a test.
         """
         question = question_from(mention.text)
+        # What the asker actually typed, kept because `question` is a search
+        # string from here on and the branches below may replace it with the
+        # root post's words. Guards that judge "did somebody ask something"
+        # have to read this; judging the substituted text asks whether the
+        # ROOT POST is a question, which it usually is not -- a clip caption
+        # is a statement, so a real question under it went unanswered.
+        asked = question
         # A bare tag with nothing attached gets nothing back. Anything else
         # falls through: the length check exists to keep retrieval from
         # running on nothing, not to decide who deserves a reply, and it was
@@ -3788,13 +3795,31 @@ class MentionBot:
         # Episode 1, because summary_request() resolves a NUMBER and there
         # was none to find.
         #
-        # Only when the thread has no episode already: a follow-up in a
-        # conversation this account has answered in is handled by the
-        # back-reference above, and re-reading the root would spend a read
-        # to learn something already known.
-        if (asks_whats_being_discussed(question)
-                and not self.state.last_episode.get(
-                    str(mention.conversation_id))):
+        # Skipping the root read when the thread already has an episode is
+        # only safe if the question carries something of its own to search
+        # on. "what are they talking about" carries nothing --
+        # worth_asking_about says so -- so the back-reference pinned the
+        # right episode and then retrieval was handed a contentless phrase
+        # and picked a passage at random inside it.
+        #
+        # That is the shape of the Kaiz thread on 15 Sep. The clip was ep
+        # 19 at 5:04 and the caption quoted it verbatim; the bot had
+        # already answered in that conversation the day before, so this
+        # branch was skipped, the caption never read, and the reply cited
+        # 18:18 -- right episode, thirteen minutes from the clip, and
+        # "makes exactly that point" about a point nobody had made.
+        #
+        # So the last_episode check is gone rather than narrowed. Narrowing
+        # it to "skip only when the question has its own subject" looked
+        # right and was dead code: asks_whats_being_discussed matches ONLY
+        # the contentless phrasings, and the moment a subject appears
+        # ("what are they saying about zcash") it returns False and never
+        # reaches here at all. The saving it protected could not apply to
+        # any question that gets this far, so the condition never fired.
+        #
+        # The read is therefore always worth its $0.001 here: every
+        # question reaching this line has nothing of its own to search.
+        if asks_whats_being_discussed(question):
             if self._summaries is not None and self._summary_cache is None:
                 self._summary_cache = await self._summaries.list_all()
             root = await self._client.post_by_id(str(mention.conversation_id))
@@ -3914,9 +3939,9 @@ class MentionBot:
         # ask for a real question shape, and say nothing otherwise.
         conversation = str(mention.conversation_id or mention.id)
         if (self.state.conversation_replies.get(conversation, 0) > 0
-                and not asks_something(question)
-                and summary_request(question) is None
-                and not asks_for_the_latest(question)):
+                and not asks_something(asked)
+                and summary_request(asked) is None
+                and not asks_for_the_latest(asked)):
             logger.info("%s: no question in a thread already answered "
                         "(%r) — staying quiet", mention.id, question[:60])
             return None
