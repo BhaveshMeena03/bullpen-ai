@@ -11,7 +11,8 @@ the right order.
 
 What it does:
 
-    transcribe   locally, on this machine, with MLX Whisper
+    transcribe   locally with MLX Whisper, or --engine groq to run it
+                 hosted and not need this machine awake at all
     ingest       appends to the index — does NOT clear and rebuild
     summarize    so the episode appears when browsing, not only in search
     verify       drops summary timestamps that point at the wrong moment
@@ -156,6 +157,17 @@ async def main() -> int:
     ap.add_argument("url", help="the x.com broadcast or clip URL")
     ap.add_argument("--date", help="YYYY-MM-DD if X reports the wrong one")
     ap.add_argument("--model", default="turbo", choices=["turbo", "large-v3"])
+    # transcribe_x_broadcast has had a hosted engine the whole time; this
+    # never passed the flag, so every broadcast went through MLX Whisper
+    # and every broadcast therefore needed this machine, awake, for about
+    # twenty minutes. Four shows are missing their guest windows for no
+    # better reason than that.
+    #
+    # local stays the default: it costs nothing, has the lower word error
+    # rate, and is not rationed by somebody else's free tier.
+    ap.add_argument("--engine", choices=["local", "groq"], default="local",
+                    help="local needs Apple silicon; groq needs GROQ_API_KEY "
+                         "and runs anywhere")
     ap.add_argument("--skip-highlights", action="store_true",
                     help="leave the unprompted-answer pool as it is")
     ap.add_argument("--force", action="store_true",
@@ -176,9 +188,11 @@ async def main() -> int:
     before = {e["episode_id"] for e in load(EPISODES)}
 
     # 1 — transcribe ---------------------------------------------------------
-    step(1, 10, "transcribing (local, no API — this is the slow part)")
+    step(1, 10, f"transcribing ({args.engine}"
+         + (", no API — this is the slow part)" if args.engine == "local"
+            else ", hosted)"))
     cmd = [sys.executable, "scripts/transcribe_x_broadcast.py", args.url,
-           "--model", args.model, "--keep-audio"]
+           "--model", args.model, "--engine", args.engine, "--keep-audio"]
     if args.date:
         cmd += ["--date", args.date]
     if subprocess.run(cmd, cwd=ROOT).returncode != 0:
