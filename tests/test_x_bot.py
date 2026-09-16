@@ -35,6 +35,7 @@ from app.x_bot import (
     has_substance,
     is_a_mass_tag,
     is_rhetorical_praise,
+    mentions_rather_than_asks,
     pinned_answer,
     question_from,
     worth_asking_about,
@@ -4236,6 +4237,89 @@ def test_the_bare_phrasings_carry_nothing_to_search():
         assert not worth_asking_about(bare), (
             "if this ever carries enough to search, the unconditional "
             "read above is spending money for nothing")
+
+
+# --- named while talking to somebody else ------------------------------
+#
+# Both of these got a fluent, accurate passage from the archive posted
+# underneath them, answering nothing anybody had asked. The first replied
+# to a post about having fun with a passage about Mizkif pivoting into
+# finance content; the second, to a post about adding the account to
+# something, with the Ansem launchpad tiers. Every fact in both was
+# right, which is what made them worse: a confident non-sequitur under a
+# recommendation reads as the tool interrupting its own pitch.
+
+DESCRIBES_THE_TOOL = [
+    "@vibhu That's why I made @mbubbleSearch because I was having too "
+    "much fun \U0001F60D And it is kinda impressive ngl I cooked",
+    "@ImPushingSOL soon you gotta add @mbubbleSearch in that\n"
+    "cooking something up for the Ansem army \U0001F440",
+]
+
+STILL_DESERVES_AN_ANSWER = [
+    "@Clive_99 Yoo @mbubbleSearch introduce yourself",
+    "@OnlyLJC yoo LJC if you watch marketbubble or MCGlive you gonna "
+    "love this @mbubbleSearch introduce yourself",
+    "@grok is wrong, @mbubbleSearch what did he say about zcash",
+    "@mbubbleSearch what did ansem say about zcash",
+    "@Lexx_eth @Kaiz_294 @mbubbleSearch what are they talking about",
+]
+
+
+def _quiet_bot(tmp_path, name, text):
+    client = FakeClient([[]])
+    client.roots = {"c": {"id": "c", "text": text}}
+    index = FakeIndex()
+    bot = MentionBot(client, index, summaries=FakeSummaries(_newest_only()),
+                     state_path=tmp_path / f"{name}.json")
+    return bot, index
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("text", DESCRIBES_THE_TOOL)
+async def test_being_named_in_somebody_elses_post_is_not_a_question(
+        text, tmp_path):
+    bot, index = _quiet_bot(tmp_path, "a", text)
+    out = await bot.compose(mention("1", text=text, conversation="c"))
+    assert out is None, f"answered a post that asked nothing: {out!r}"
+    assert not index.asked, (
+        f"searched the archive on somebody's aside: {index.asked!r}")
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("text", STILL_DESERVES_AN_ANSWER)
+async def test_a_real_request_is_still_answered(text, tmp_path):
+    """The silence must cost nothing that was actually asked for.
+
+    "introduce yourself" names the account mid-sentence exactly like the
+    two above; what separates it is that it wants something, and the
+    intent check is what notices.
+    """
+    bot, _index = _quiet_bot(tmp_path, "b", text)
+    out = await bot.compose(mention("1", text=text, conversation="c"))
+    assert out is not None, "went quiet on a real request"
+
+
+def test_a_bare_ticker_was_already_quiet_and_still_is():
+    """Not this change's doing, and worth saying so.
+
+    "@mbubbleSearch zcash" is refused by the older "is not a question"
+    gate, and its handle sits in the leading run so the new check cannot
+    reach it either way. Written down because it looks like collateral
+    damage from the rule above and is not.
+    """
+    assert not mentions_rather_than_asks("@mbubbleSearch zcash")
+
+
+def test_a_handle_in_the_leading_run_is_not_being_talked_about():
+    """X puts the reply chain at the front, so who is in that run says
+    nothing about who is being addressed. Only a handle the person typed
+    into their own sentence counts."""
+    assert not mentions_rather_than_asks("@mbubbleSearch zcash")
+    assert not mentions_rather_than_asks(
+        "@Lexx_eth @Kaiz_294 @mbubbleSearch what are they talking about")
+    assert mentions_rather_than_asks(
+        "@vibhu That's why I made @mbubbleSearch because it was fun")
 
 
 # --- questions about how the token is configured -----------------------

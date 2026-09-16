@@ -1462,6 +1462,34 @@ def addressed_to_another_bot(text: str, handle: str = "mbubbleSearch") -> bool:
     body = _LEADING_HANDLES.sub("", raw).strip()
     return f"@{handle}".lower() not in body.lower()
 
+
+def mentions_rather_than_asks(text: str,
+                              handle: str = "mbubbleSearch") -> bool:
+    """Whether the post names this account instead of addressing it.
+
+    X puts the reply chain's handles at the front, so a handle in that
+    leading run says nothing about who is being spoken to -- it is just
+    who the thread carries. A handle typed mid-sentence is different: the
+    person is naming the tool while talking to somebody else.
+
+        "@vibhu That's why I made @mbubbleSearch because I was having
+         too much fun"
+        "@ImPushingSOL soon you gotta add @mbubbleSearch in that"
+
+    Both got a confident passage from the archive posted under them,
+    answering a question nobody had asked. asks_something's docstring
+    already describes this exact landing, "under a description of the
+    tool" -- but that check was only reached in a thread this account had
+    already replied in, and both of these were first replies.
+
+    Not sufficient alone, which is why the call site requires that
+    nothing was asked and no intent was recognised. "Yoo @mbubbleSearch
+    introduce yourself" also names the account mid-sentence, and is a
+    request that deserves its answer.
+    """
+    body = _LEADING_HANDLES.sub("", text or "").strip()
+    return f"@{handle}".lower() in body.lower()
+
 # A real question wrapped in bait is still bait. The blocklist above only
 # gated the unprompted-fact path, so a post reading "what did ansem say
 # about zcash? vote to list MBS <link>" got a full answer — posted directly
@@ -3752,6 +3780,21 @@ class MentionBot:
         # silencing "lfg" and "gm" before the highlight path was reached.
         if not question:
             logger.info("%s is a bare tag — skipping", mention.id)
+            return None
+        # Named mid-sentence in a post aimed at somebody else, asking
+        # nothing and wanting nothing: they are describing this account,
+        # not using it. Answering reads as the tool interrupting its own
+        # recommendation, and it did -- twice, with passages that were
+        # accurate and had nothing to do with the conversation.
+        #
+        # The intent check keeps every deliberate request: "introduce
+        # yourself" names the account mid-sentence too, and summons,
+        # summaries, the contract address and the rest all register.
+        if (mentions_rather_than_asks(mention.text)
+                and not asks_something(asked)
+                and not has_a_known_intent(asked)):
+            logger.info("%s named this account while talking to somebody "
+                        "else and asked nothing — staying quiet", mention.id)
             return None
         # Pinned answers come first, ahead of the question gate: "ca pls" is
         # a request even though it is not shaped like a question, and the
