@@ -238,8 +238,14 @@ def would_render_a_card(text: str, allow: str = "") -> str | None:
             while back > 0 and (body[back - 1].isalnum() or body[back - 1] == "-"):
                 back -= 1
             start = back
-        host = body[start:found.end()].lower()
-        if host in permitted:
+        # Lowercased to COMPARE, returned exactly as written. The caller
+        # does text.replace(card, ...), which is case-sensitive, so
+        # returning "long.xyz" for a post that says "long.XYZ" replaced
+        # nothing and the guard silently did nothing. That is how a
+        # long.XYZ link card went out under somebody else's post: the
+        # check fired, found the domain, and its repair was a no-op.
+        host = body[start:found.end()]
+        if host.lower() in permitted:
             continue
         return host
     return None

@@ -4068,6 +4068,28 @@ def test_a_trimmed_summary_stops_at_the_end_of_a_topic():
     assert len(kept) < len(lines), "nothing was trimmed, so nothing is proven"
 
 
+def test_the_domain_comes_back_spelled_the_way_the_post_spells_it():
+    """The caller does text.replace(card, ...), which is case-sensitive.
+
+    This returned host.lower(), so a reply saying "long.XYZ" was handed
+    "long.xyz", replace() matched nothing, and the guard silently did
+    nothing. A long.XYZ card went out under somebody else's post with
+    the check working perfectly and repairing nothing.
+
+    The test that covered this called .lower() on the result before
+    comparing, so it could not see the bug it was standing on.
+    """
+    from app.x_api import would_render_a_card
+
+    for text, want in (("a long.XYZ stock pair", "long.XYZ"),
+                       ("a long.xyz stock pair", "long.xyz"),
+                       ("Pump.Fun competition", "Pump.Fun")):
+        got = would_render_a_card(text, "")
+        assert got == want, f"{got!r} is not how the post spells it"
+        # The repair the caller actually performs has to land.
+        assert "." not in text.replace(got, got.replace(".", "")).split()[1]
+
+
 def test_a_bare_domain_is_caught_even_beside_a_real_link():
     """The summary carried "Anthem.io updates" AND the episode link. The
     guard stood down on the whole post at the first real URL, so the bare
