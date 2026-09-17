@@ -2075,6 +2075,43 @@ _UNSURE = re.compile(
       | \bunidentified\b""")
 
 
+def _aired(row: dict) -> datetime | None:
+    stamp = str(row.get("published_at") or "")[:10]
+    try:
+        return datetime.strptime(stamp, "%Y-%m-%d")
+    except ValueError:
+        return None
+
+
+def _broadcast_near(row: dict, rows: list, days: int = 3) -> dict | None:
+    """The live broadcast of the same show as `row`, found by date.
+
+    Only for when the broadcast's title does not carry the episode
+    number, which is most of the interesting ones: ep 9 aired as "Market
+    Bubble: The Ansem Edition" and ep 17 as "$100K POLYMARKET FANTASY
+    FOOTBALL DRAFT NIGHT".
+
+    Nearest within three days, because the show is weekly and a wider
+    window would start matching the week beside it. dedupe allows six for
+    the same pairing, but dedupe also compares the words; this has only
+    the calendar.
+    """
+    when = _aired(row)
+    if when is None:
+        return None
+    best, closest = None, None
+    for other in rows or ():
+        if not str(other.get("episode_id", "")).startswith("x-"):
+            continue
+        aired = _aired(other)
+        if aired is None:
+            continue
+        gap = abs((aired - when).days)
+        if gap <= days and (closest is None or gap < closest):
+            best, closest = other, gap
+    return best
+
+
 def load_guest_windows(path: Path = GUEST_WINDOWS) -> dict:
     """Who was on screen and when, per episode.
 
@@ -3784,7 +3821,22 @@ class MentionBot:
             return None
         live = [s for s in matches
                 if str(s.get("episode_id", "")).startswith("x-")]
-        return (live or matches)[0]
+        if live:
+            return live[0]
+        # The broadcast does not always carry the number. Ep 9 went out as
+        # "Market Bubble: The Ansem Edition" and ep 17 as "$100K POLYMARKET
+        # FANTASY FOOTBALL DRAFT NIGHT", so matching on the title alone
+        # found only the YouTube cut and the bot said it had not read the
+        # episode -- while the windows for both were sitting in the file,
+        # read off those very broadcasts.
+        #
+        # So fall back to the date. A cut lands a day or two after the
+        # show; dedupe allows six days for the same pairing, but it also
+        # compares the words, and this has only the calendar to go on.
+        # Three days and the nearest one keeps a weekly show from matching
+        # the week beside it.
+        nearest = _broadcast_near(matches[0], self._summary_cache)
+        return nearest or matches[0]
 
     async def _summary_for(self, number: int) -> dict | None:
         """The stored summary for an episode number, if there is one.

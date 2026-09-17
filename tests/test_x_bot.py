@@ -4261,6 +4261,51 @@ def test_the_bare_phrasings_carry_nothing_to_search():
             "read above is spending money for nothing")
 
 
+# --- the broadcast does not always carry the number --------------------
+
+def test_a_broadcast_is_found_by_date_when_its_title_has_no_number():
+    """Ep 9 went out as "Market Bubble: The Ansem Edition" and ep 17 as
+    "$100K POLYMARKET FANTASY FOOTBALL DRAFT NIGHT". Matching the title
+    found only the YouTube cut, so the bot said it had not read the
+    episode while the windows -- read off those very broadcasts -- sat in
+    the file."""
+    from app.x_bot import _broadcast_near
+
+    rows = [
+        {"episode_id": "yt-9", "title": "Ep 9 | Market Bubble",
+         "published_at": "2026-07-03"},
+        {"episode_id": "x-9", "title": "Market Bubble: The Ansem Edition",
+         "published_at": "2026-07-02"},
+        {"episode_id": "x-8", "title": "LIVE W/ TJR: Market Bubble EP 8",
+         "published_at": "2026-06-25"},
+    ]
+    found = _broadcast_near(rows[0], rows)
+    assert found is not None and found["episode_id"] == "x-9"
+
+
+def test_a_weekly_show_does_not_match_the_week_beside_it():
+    """Three days, not six. dedupe allows six for the same pairing, but
+    dedupe also compares the words; this has only the calendar."""
+    from app.x_bot import _broadcast_near
+
+    rows = [
+        {"episode_id": "yt-9", "title": "Ep 9", "published_at": "2026-07-03"},
+        {"episode_id": "x-8", "title": "EP 8", "published_at": "2026-06-25"},
+    ]
+    assert _broadcast_near(rows[0], rows) is None
+
+
+def test_the_nearest_broadcast_wins():
+    from app.x_bot import _broadcast_near
+
+    rows = [
+        {"episode_id": "yt", "title": "Ep 9", "published_at": "2026-07-03"},
+        {"episode_id": "x-far", "title": "a", "published_at": "2026-07-01"},
+        {"episode_id": "x-near", "title": "b", "published_at": "2026-07-02"},
+    ]
+    assert _broadcast_near(rows[0], rows)["episode_id"] == "x-near"
+
+
 # --- a clip posted with no caption -------------------------------------
 
 @pytest.mark.anyio
