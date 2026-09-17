@@ -54,6 +54,27 @@ logging.basicConfig(
 log = logging.getLogger("x_bot")
 
 
+# The Musk archive's namespace. app/main.py holds the same constant;
+# importing it from there would pull in the web application.
+ELON_NAMESPACE = "elon"
+
+
+def _second_archive(label: str, **kwargs):
+    """A PodcastIndex for another corpus, or None if it will not start.
+
+    None is a working state, not a failure: MentionBot treats a missing
+    archive as "answer from the broadcast", which is what this script did
+    for every question before these were passed at all. So a corpus that
+    cannot be reached degrades to the old behaviour rather than stopping
+    the bot from replying to anything.
+    """
+    try:
+        return PodcastIndex(**kwargs)
+    except Exception as exc:                                    # noqa: BLE001
+        log.warning("the %s archive did not start: %s", label, exc)
+        return None
+
+
 def build(dry_run: bool, cap: int | None, links: bool | None):
     settings = get_settings()
     missing = [
@@ -77,6 +98,20 @@ def build(dry_run: bool, cap: int | None, links: bool | None):
     )
     bot = MentionBot(
         client, PodcastIndex(),
+        # The other two archives, exactly as app/main.py hands them over.
+        # Without these the standalone runner answered every Musk and MCG
+        # question from the broadcast alone, while the bot the web app
+        # starts answered them properly -- the same code behaving
+        # differently depending on which process launched it. That is the
+        # hazard the guest_windows note below already warns about; this
+        # file was doing it twice more without saying so.
+        #
+        # Built here rather than imported from app.main, which would drag
+        # the whole FastAPI app in to read two settings.
+        elon_index=_second_archive("elon", namespace=ELON_NAMESPACE),
+        mcg_index=_second_archive(
+            "MCG", namespace=settings.mcg_namespace,
+            index_name=settings.mcg_pinecone_index),
         daily_reply_cap=cap if cap is not None else settings.x_bot_daily_reply_cap,
         include_links=(links if links is not None
                        else settings.x_bot_include_links),

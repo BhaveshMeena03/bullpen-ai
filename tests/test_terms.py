@@ -57,11 +57,24 @@ def test_a_missing_index_is_not_an_error(tmp_path):
 
 def test_a_bare_number_is_not_indexed_but_a_phrase_is():
     """"54" is in dozens of windows and says nothing; "54 million" is in
-    one and is the whole question."""
+    a handful and is the whole question.
+
+    The count is a band rather than an exact number. This asserted
+    exactly one window and went red the day four more broadcasts were
+    indexed and another episode happened to say "54 million" -- a true
+    fact about a growing archive failing a test about the indexer. What
+    the indexer promises is that a bare number is dropped and a phrase
+    is kept and stays selective; how many windows say a given phrase is
+    the corpus's business, not this file's.
+    """
     raw = json.loads(INDEX.read_text())
-    assert "54" not in raw["terms"]
-    assert "54 million" in raw["terms"]
-    assert len(raw["terms"]["54 million"]) == 1
+    assert "54" not in raw["terms"], "a bare number carries no question"
+    assert "54 million" in raw["terms"], "the phrase is the whole question"
+    windows = raw["terms"]["54 million"]
+    assert 1 <= len(windows) <= 20, (
+        f"{len(windows)} windows: selective enough to be worth a lookup, "
+        "and if this ever grows past the cap the phrase has stopped "
+        "identifying a moment")
 
 
 def test_lookups_are_capped():
