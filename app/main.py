@@ -252,6 +252,10 @@ async def _run_x_bot(app: FastAPI, settings) -> None:
         # highlights pool is. Absent or unreadable means the bot says the
         # episode has not been read, never that nobody was on it.
         guest_windows=load_guest_windows(),
+        # Hosted transcription, so a clip posted with no caption can be
+        # placed by what is said in it. None means that one path declines
+        # and everything else is unchanged.
+        groq_api_key=settings.groq_api_key,
         questions=QuestionLog(),
         priority_authors=settings.priority_author_ids,
         site=settings.x_bot_site,

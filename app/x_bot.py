@@ -26,6 +26,7 @@ it twice.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -37,7 +38,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from app import attribution, hedging, names
+from app import attribution, clipmatch, clipread, episode_store, hedging, names
 from app.podcast import NOT_FOUND_ANSWER, _broadcast_players
 from app.x_api import (
     _URL_SHAPED,
@@ -3319,6 +3320,11 @@ class MentionBot:
                  post_limit: int = POST_LIMIT,
                  summaries=None, summary_limit: int = 4000,
                  guest_windows: dict | None = None,
+                 # Hosted transcription, for a clip posted with no caption
+                 # to search on. Optional like the other two archives: a
+                 # deploy without it answers exactly as it did before,
+                 # because reading a clip is the only thing it unlocks.
+                 groq_api_key: str | None = None,
                  highlights: list | None = None,
                  questions: object | None = None,
                  priority_authors: set | None = None,
@@ -3354,9 +3360,15 @@ class MentionBot:
         # path owns no file dependency, and a deploy without it answers
         # exactly as before because guest_list_answer returns None.
         self._guest_windows = guest_windows or {}
+        self._groq_api_key = groq_api_key
         # Fetched once and kept: 32 summaries change only when an
         # episode is added, and a lookup should not cost a round trip.
         self._summary_cache: list | None = None
+        # Loaded the first time a clip actually needs placing, and never
+        # otherwise. episodes.json is 8.8MB and most replies never touch
+        # it; a bot that read it at startup would pay for a feature that
+        # fires on a small minority of mentions.
+        self._episode_cache: list | None = None
         # Injected rather than loaded here, so a caller — a test, or a
         # future surface with its own pool — can supply its own.
         self._highlights = (load_highlights() if highlights is None
@@ -3792,6 +3804,50 @@ class MentionBot:
             return None
         return max(matches, key=lambda s: len(s.get("summary", "")))
 
+    async def _place_the_clip(self, root: dict, mention) -> str | None:
+        """Which episode a posted clip came from, by listening to it.
+
+        None on anything at all -- no key, no ffmpeg, a download that
+        will not finish, a transcript too thin to place, a clip from a
+        show that was never indexed. The caller then answers the way it
+        did before, so the worst case here is the behaviour of yesterday
+        plus a few seconds.
+
+        That last refusal is the one that matters. clipmatch.place
+        returns None rather than naming the nearest episode, because a
+        clip from somebody else's podcast confidently placed in this
+        archive is a worse answer than silence.
+        """
+        video = (root or {}).get("video") or {}
+        url = video.get("url")
+        if not url or not clipread.usable(self._groq_api_key):
+            return None
+        ms = video.get("duration_ms") or 0
+        seconds = (ms / 1000) or None
+
+        said = await clipread.read(url, self._groq_api_key)
+        if not said:
+            return None
+        if self._episode_cache is None:
+            # Off the loop: 8.8MB of JSON parsed inline would stall every
+            # other reply the bot is composing.
+            self._episode_cache = await asyncio.to_thread(episode_store.load)
+        found = clipmatch.place(said, self._episode_cache, seconds)
+        if not found:
+            logger.info("%s: read the clip but could not place it in the "
+                        "archive — saying nothing about it", mention.id)
+            return None
+
+        start = int(found.get("start", 0))
+        logger.info("%s: placed the clip in %s at %ds (%d runs, runner-up %d)",
+                    mention.id, found.get("episode_id", "?"), start,
+                    found.get("matches", 0), found.get("runner_up", 0))
+        where = (f"{start // 3600}:{start % 3600 // 60:02d}:{start % 60:02d}"
+                 if start >= 3600 else f"{start // 60}:{start % 60:02d}")
+        return (f"that clip is {found.get('title', 'an episode')}, "
+                f"around {where}.\n\n"
+                "i matched it by what is said in it, not the caption.")
+
     async def compose(self, mention: Mention) -> str | None:
         # Cleared per mention: a thread that gets no answer must not
         # inherit the episode from whatever was answered before it.
@@ -3913,6 +3969,23 @@ class MentionBot:
             # worth_asking_about. Tiers 1 and 2 are evidence, not guesses,
             # and still answer directly.
             guessed = why.startswith("nothing named it")
+            # A clip with no caption, which is the case this whole branch
+            # kept getting wrong: nothing names an episode, the post's own
+            # words are not worth searching, and the newest episode is a
+            # guess that reads as a confident answer. Listening to it is
+            # the only way to know.
+            #
+            # Deliberately last of the three: a caption that says
+            # something is cheaper and better evidence than the audio, and
+            # tiers 1 and 2 are evidence rather than guesses. So this only
+            # runs when a reply would otherwise be a guess, and only on a
+            # post carrying video. Every other mention is untouched and
+            # costs exactly what it did before.
+            if (guessed and not worth_asking_about(root_text)
+                    and (root or {}).get("video")):
+                placed = await self._place_the_clip(root, mention)
+                if placed:
+                    return placed
             if guessed and worth_asking_about(root_text):
                 logger.info("%s asked what is being discussed, but nothing "
                             "named an episode — searching the root post's "

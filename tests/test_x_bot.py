@@ -4261,6 +4261,91 @@ def test_the_bare_phrasings_carry_nothing_to_search():
             "read above is spending money for nothing")
 
 
+# --- a clip posted with no caption -------------------------------------
+
+@pytest.mark.anyio
+async def test_a_captionless_clip_is_placed_by_what_is_said_in_it(
+        tmp_path, monkeypatch):
+    """The case this branch kept getting wrong: nothing names an episode,
+    the post's own words are not worth searching, and the newest episode
+    is a guess that reads as a confident answer."""
+    from app import clipmatch, clipread, episode_store
+
+    monkeypatch.setattr(clipread, "usable", lambda key: True)
+
+    async def fake_read(url, key, **kw):
+        return "the insiders benefited a lot from the launch"
+    monkeypatch.setattr(clipread, "read", fake_read)
+    monkeypatch.setattr(episode_store, "load", lambda *a, **kw: [])
+    monkeypatch.setattr(clipmatch, "place", lambda *a, **kw: {
+        "episode_id": "x-19", "title": "Market Bubble Episode 19",
+        "start": 304, "matches": 140, "runner_up": 0})
+
+    client = FakeClient([[mention("0")],
+                         [mention("1", text="@bot what are they talking about",
+                                  conversation="v1")]])
+    client.roots = {"v1": {"id": "v1", "text": "must watch",
+                           "video": {"url": "https://x/v.mp4",
+                                     "duration_ms": 71559}}}
+    bot = MentionBot(client, FakeIndex(), summaries=FakeSummaries(_newest_only()),
+                     groq_api_key="a-key", state_path=tmp_path / "s.json")
+    await bot.tick("2026-09-17")
+    await bot.tick("2026-09-17")
+
+    posted = " ".join(t for _id, t in client.posted)
+    assert "Episode 19" in posted, posted
+    assert "5:04" in posted, f"should cite where the clip starts: {posted!r}"
+    assert "Hunter Biden" not in posted, "guessed at the newest episode"
+
+
+@pytest.mark.anyio
+async def test_a_clip_that_cannot_be_placed_says_nothing_about_it(
+        tmp_path, monkeypatch):
+    """A clip from a show that was never indexed matches almost nothing.
+    Naming the nearest episode would be the bug this exists to remove."""
+    from app import clipmatch, clipread, episode_store
+
+    monkeypatch.setattr(clipread, "usable", lambda key: True)
+
+    async def fake_read(url, key, **kw):
+        return "words from somebody else's podcast entirely"
+    monkeypatch.setattr(clipread, "read", fake_read)
+    monkeypatch.setattr(episode_store, "load", lambda *a, **kw: [])
+    monkeypatch.setattr(clipmatch, "place", lambda *a, **kw: None)
+
+    client = FakeClient([[mention("0")],
+                         [mention("1", text="@bot what are they talking about",
+                                  conversation="v2")]])
+    client.roots = {"v2": {"id": "v2", "text": "must watch",
+                           "video": {"url": "https://x/v.mp4"}}}
+    bot = MentionBot(client, FakeIndex(), summaries=FakeSummaries(_newest_only()),
+                     groq_api_key="a-key", state_path=tmp_path / "s.json")
+    await bot.tick("2026-09-17")
+    await bot.tick("2026-09-17")
+
+    posted = " ".join(t for _id, t in client.posted)
+    assert "Episode 19" not in posted or "Hunter" not in posted, (
+        f"placed a clip it could not place: {posted!r}")
+
+
+@pytest.mark.anyio
+async def test_without_a_key_the_clip_path_changes_nothing(tmp_path):
+    """Every deploy without GROQ_API_KEY answers exactly as before."""
+    client = FakeClient([[mention("0")],
+                         [mention("1", text="@bot what are they talking about",
+                                  conversation="v3")]])
+    client.roots = {"v3": {"id": "v3", "text": "must watch",
+                           "video": {"url": "https://x/v.mp4"}}}
+    bot = MentionBot(client, FakeIndex(), summaries=FakeSummaries(_newest_only()),
+                     state_path=tmp_path / "s.json")
+    await bot.tick("2026-09-17")
+    await bot.tick("2026-09-17")
+
+    posted = " ".join(t for _id, t in client.posted)
+    assert "Hunter Biden" in posted, (
+        "with no key this must fall back to the old answer, not go quiet")
+
+
 # --- the guest's name, as a person would write it ----------------------
 
 def test_a_returning_guest_is_not_a_different_person():

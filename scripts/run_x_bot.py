@@ -129,6 +129,7 @@ def build(dry_run: bool, cap: int | None, links: bool | None):
         # builds answered them -- the same code behaving differently
         # depending on which process started it.
         guest_windows=load_guest_windows(),
+        groq_api_key=settings.groq_api_key,
         questions=QuestionLog(),
         priority_authors=settings.priority_author_ids,
         site=settings.x_bot_site,
