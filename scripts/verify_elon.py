@@ -113,6 +113,24 @@ def window(episode: dict, at: int, reach: int = 150) -> str:
 # Shows and years the answer claims to be quoting.
 _CLAIMS_SHOW = re.compile(r"(?i)\b(joe\s+rogan|rogan|lex\s+fridman|lex)\b")
 _CLAIMS_YEAR = re.compile(r"\b(20[0-2]\d)\b")
+# A year and a show named together: "the 2021 Lex Fridman episode", or
+# "the Joe Rogan episode from 2018". Checking the two separately passes
+# an answer that names a year it was given and a show it was given and
+# pairs them with each other, which is a different recording. It did
+# exactly that on Mars: shown 2021 Joe Rogan and 2019 Lex Fridman, it
+# cited "the 2021 Lex Fridman episode", which does not exist here.
+_SHOW = r"joe\s+rogan|rogan|lex\s+fridman|lex"
+_PAIR_YEAR_FIRST = re.compile(rf"(?i)\b(20[0-2]\d)\s+({_SHOW})\b")
+_PAIR_SHOW_FIRST = re.compile(
+    rf"(?i)\b({_SHOW})\s+(?:episode|conversation|podcast|interview)?\s*"
+    rf"(?:from|in)\s+(20[0-2]\d)\b")
+
+
+def _pairs(answer: str) -> set[tuple[str, str]]:
+    """(year, show) the answer names together, either way round."""
+    out = {(y, s) for y, s in _PAIR_YEAR_FIRST.findall(answer)}
+    out |= {(y, s) for s, y in _PAIR_SHOW_FIRST.findall(answer)}
+    return {(y, "rogan" if "rogan" in s.lower() else "lex") for y, s in out}
 
 
 def source_holds(answer: str, episodes: dict, hits) -> str | None:
@@ -136,6 +154,14 @@ def source_holds(answer: str, episodes: dict, hits) -> str | None:
         return None
     blob = " ".join(labels).lower()
 
+    # The pairing first, because it is the specific claim and gives the
+    # clearer message. "2021 Lex Fridman" names a year that came back and
+    # a show that came back, so the loose checks below both pass it.
+    for year, key in _pairs(answer):
+        if not any(year in l and key in l.lower() for l in labels):
+            return (f"names the {year} "
+                    f"{'Joe Rogan' if key == 'rogan' else 'Lex Fridman'} "
+                    f"recording, and no returned recording is that one")
     for year in set(_CLAIMS_YEAR.findall(answer)):
         if year not in blob:
             return f"names {year}, and no returned recording is from it"
