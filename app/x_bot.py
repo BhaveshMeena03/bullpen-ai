@@ -38,7 +38,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from app import attribution, clipmatch, clipread, episode_store, hedging, names
+from app import (attribution, clipmatch, clipread, episode_store, hedging,
+                 names, sources)
 from app.podcast import NOT_FOUND_ANSWER, _broadcast_players
 from app.x_api import (
     _URL_SHAPED,
@@ -4328,6 +4329,19 @@ class MentionBot:
             logger.warning("%s: attribution corrected — %s",
                            mention.id, "; ".join(demoted))
             result = result.model_copy(update={"answer": fixed})
+
+        # The mirror of the block above, scoped the opposite way. The
+        # Musk archive is the one the model already knows, so it names a
+        # recording from memory that the search never returned: shown
+        # only 2024 Lex Fridman #438, an answer about working hours cited
+        # "the 2021 Joe Rogan episode". Podcast and MCG cannot fail this
+        # way, having no Rogan or Lex recordings to confuse.
+        if corpus == "elon":
+            fixed, relabelled = sources.correct(result.answer, result.hits)
+            if relabelled:
+                logger.warning("%s: source corrected — %s",
+                               mention.id, "; ".join(relabelled))
+                result = result.model_copy(update={"answer": fixed})
 
         # Whether there is a real, cited answer hiding behind the hedging.
         # Computed before the gates below, because they judge the whole

@@ -41,6 +41,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from app import sources  # noqa: E402
 from app.citations import readings  # noqa: E402
 from app.podcast import PodcastIndex, source_label  # noqa: E402
 
@@ -237,7 +238,14 @@ async def main() -> int:
                 print(f"   {i:3}. ERROR   {question[:52]} — {exc}")
                 rows.append({"set": name, "q": question, "verdict": "ERROR"})
                 continue
-            answer = result.answer or ""
+            # What a reader actually gets, not what the index returned.
+            # The source guard runs on the endpoint and on the bot, so a
+            # harness checking index.search alone measures a string that
+            # is never served and reports failures already fixed.
+            answer, relabelled = sources.correct(result.answer or "",
+                                                 result.hits)
+            if relabelled:
+                print(f"        source guard: {'; '.join(relabelled)}")
             # A cited answer is not a refusal, whatever phrases it also
             # contains. Matching the wording anywhere called the Mars
             # answer a miss -- "around 28:08 he frames Mars as insurance

@@ -38,7 +38,7 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 from voyageai import error as voyage_error
 
-from . import attribution, market, og_card, quotes
+from . import attribution, market, og_card, quotes, sources
 from .agent import REFUSAL_MESSAGE, ConciergeAgent
 from .answer_cache import AnswerCache, make_key
 from .assets import aggregate as aggregate_assets
@@ -1579,6 +1579,17 @@ async def elon_search(
                      type(exc).__name__)
         raise HTTPException(status_code=502,
                             detail="Model provider error.") from exc
+    # The mirror of the attribution guard on the podcast endpoint, for
+    # the archive that fails the other way round. This is the corpus the
+    # model has heard before, so it names a plausible recording from
+    # memory: shown only 2024 Lex Fridman #438, it cited "the 2021 Joe
+    # Rogan episode". Corrected before caching, so a shared link cannot
+    # serve the invented source to everyone who follows it.
+    fixed, relabelled = sources.correct(result.answer, result.hits)
+    if relabelled:
+        logger.warning("source corrected on the Musk archive — %s",
+                       "; ".join(relabelled))
+        result = result.model_copy(update={"answer": fixed})
     answers.put(key, result)
     return _elon_payload(body.query, result)
 
@@ -1739,7 +1750,22 @@ def _archive_stream(index, query: str, top_k, lengths: dict,
             # Complete answers only: a stream that died halfway would
             # otherwise be replayed instantly, forever, to everyone.
             if whole and answers and answers.enabled:
-                answers.put(key, {"answer": "".join(whole), "hits": enriched})
+                answer = "".join(whole)
+                # Same reasoning as the podcast stream: the text has
+                # already reached this viewer and cannot be recalled,
+                # but the replay can. A shared link serves the stored
+                # answer as one frame, so an invented recording would
+                # otherwise be handed to every reader who follows it.
+                # Only the Musk archive: the show names this knows are
+                # Rogan and Lex, and MCG has neither.
+                if surface.startswith("elon"):
+                    fixed, relabelled = sources.correct(answer, hits)
+                    if relabelled:
+                        logger.warning("source corrected before caching a "
+                                       "streamed answer — %s",
+                                       "; ".join(relabelled))
+                        answer = fixed
+                answers.put(key, {"answer": answer, "hits": enriched})
             yield "event: done\ndata: {}\n\n"
         except asyncio.CancelledError:
             raise
