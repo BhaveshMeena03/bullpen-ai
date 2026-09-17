@@ -4261,6 +4261,37 @@ def test_the_bare_phrasings_carry_nothing_to_search():
             "read above is spending money for nothing")
 
 
+# --- the guest's name, as a person would write it ----------------------
+
+def test_a_returning_guest_is_not_a_different_person():
+    """Ep 3's banner reads "MIZKIF AGAIN" when he comes back on air, and
+    the reply named a person who does not exist. _tidy_role already drops
+    a bare "AGAIN" from the subtitle; nothing caught it in the name."""
+    from app.x_bot import _tidy_name
+
+    assert _tidy_name("MIZKIF AGAIN") == "Mizkif"
+    assert _tidy_name("MIZKIF BACK") == "Mizkif"
+    assert _tidy_name("TJR RETURNS") == "TJR"
+
+
+def test_a_guest_actually_called_back_survives():
+    """Stripping from the end only, and never the whole name."""
+    from app.x_bot import _tidy_name
+
+    assert _tidy_name("BACK") == "Back"
+
+
+def test_an_acronym_name_keeps_its_capitals():
+    """.title() printed TJR as "Tjr". An all-caps word with no vowels is
+    an acronym, not a surname."""
+    from app.x_bot import _tidy_name
+
+    assert _tidy_name("TJR") == "TJR"
+    assert _tidy_name("GPT LIVE") == "GPT Live"
+    assert _tidy_name("MIZKIF") == "Mizkif"
+    assert _tidy_name("TRISTAN THOMPSON") == "Tristan Thompson"
+
+
 # --- named while talking to somebody else ------------------------------
 #
 # Both of these got a fluent, accurate passage from the archive posted

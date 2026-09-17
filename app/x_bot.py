@@ -534,6 +534,42 @@ _KEEPS_ITS_CAPS = frozenset(("CEO", "CTO", "CFO", "COO", "AI", "AR", "VR",
                              "NBA", "NFL", "MMA", "UFC", "DJ", "VC"))
 
 
+# The show's own re-entry markers, which land in the NAME rather than the
+# role when a guest comes back: ep 3's banner reads "MIZKIF AGAIN".
+_RETURNING = ("AGAIN", "BACK", "RETURNS", "RETURN")
+
+
+def _tidy_name(raw: str) -> str:
+    """The guest's name as a person would write it.
+
+    Two things .title() alone got wrong, both visible in the reply for
+    ep 3: it printed "Tjr" for TJR, and "Mizkif Again" for a guest who
+    came back on air.
+
+    _tidy_role already drops a bare "AGAIN" when the SHOW puts it in the
+    subtitle. When it lands in the name instead there was nothing to
+    catch it, and the reply named a person who does not exist.
+    """
+    words = " ".join((raw or "").split()).split()
+    # Only from the end, and never the whole name: a guest called "Back"
+    # would otherwise vanish entirely.
+    while len(words) > 1 and words[-1].upper().strip(".,") in _RETURNING:
+        words.pop()
+    out = []
+    for word in words:
+        bare = word.strip(".,'")
+        # An all-caps word with no vowels is an acronym, not a surname.
+        # TJR, TJDV, MNM stay as written; MIZKIF does not.
+        if (2 <= len(bare) <= 5 and bare.isalpha() and bare.isupper()
+                and not set(bare) & set("AEIOU")):
+            out.append(word.upper())
+        elif bare.upper() in _KEEPS_ITS_CAPS:
+            out.append(word.upper())
+        else:
+            out.append(word.title())
+    return " ".join(out)
+
+
 def _tidy_role(subtitle: str) -> str:
     """The banner shouts. This stops it shouting, and changes nothing else.
 
@@ -597,7 +633,7 @@ def guest_list_answer(number: int, episode_id: str | None,
     # The header counts people, so the rows have to as well.
     people: dict[str, dict] = {}
     for w in sorted(found, key=lambda x: x.get("start", 0)):
-        name = " ".join(str(w.get("name", "")).split()).title()
+        name = _tidy_name(str(w.get("name", "")))
         if not name:
             continue
         start, end = int(w.get("start", 0)), int(w.get("end", 0))
