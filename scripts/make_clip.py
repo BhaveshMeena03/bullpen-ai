@@ -37,6 +37,7 @@ sys.path.insert(0, str(ROOT))
 
 from app.clipper import (  # noqa: E402
     CLIP_HEIGHT,
+    _ytdlp_binary,
     build_captions,
     fetch_section,
     ffmpeg_available,
@@ -72,7 +73,13 @@ def youtube_segments(url: str) -> list[dict]:
     """[{t, text}] from YouTube's auto-caption track."""
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp) / "sub"
-        run = ["yt-dlp", "--skip-download", "--write-auto-sub",
+        # The venv's binary, not whatever is on PATH. clipper's
+        # _ytdlp_binary already says why: run under a different
+        # interpreter a bare "yt-dlp" raises FileNotFoundError, and it
+        # did -- --youtube was broken for every video, which is every MCG
+        # episode and every one of the Musk interviews, since those are
+        # the sources that are not transcribed here.
+        run = [_ytdlp_binary(), "--skip-download", "--write-auto-sub",
                "--sub-lang", "en", "--sub-format", "vtt",
                "-o", str(out) + ".%(ext)s", url]
         subprocess.run(run, capture_output=True, text=True, timeout=180)
