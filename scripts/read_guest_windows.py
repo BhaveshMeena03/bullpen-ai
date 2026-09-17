@@ -42,6 +42,7 @@ Nothing here touches an embedding or a transcript.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -54,6 +55,8 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+
+from app.episode_store import _exclusive  # noqa: E402
 
 EPISODES = ROOT / "data" / "episodes.json"
 BROADCASTS = ROOT / "data" / "broadcast_links.json"
@@ -571,6 +574,37 @@ def windows_from(reads: list[tuple[int, tuple[str, str] | None]]) -> list[dict]:
     return out
 
 
+def _save(eid: str, found: list[dict], done: dict) -> None:
+    """Write one episode's windows without discarding anybody else's.
+
+    `done` is read once at startup and an episode takes minutes to read,
+    so writing it back whole reverts whatever finished in between. That
+    is not theoretical: ep 14 and ep 7 were read at the same time, ep 7
+    finished second, and ep 14's windows were gone from the file with
+    both runs reporting success.
+
+    app/episode_store.py already carries this scar for episodes.json and
+    its docstring describes the same failure -- "an X clip fetched
+    successfully in the middle of a long transcription simply vanished".
+    Its lock is reused here rather than inventing a second one: take it,
+    re-read INSIDE it, set this one episode, replace atomically. The
+    re-read is the part that matters, because the snapshot in memory is
+    stale by definition.
+    """
+    with _exclusive(OUT):
+        fresh = {}
+        if OUT.exists():
+            try:
+                fresh = json.loads(OUT.read_text())
+            except Exception:                               # noqa: BLE001
+                fresh = {}
+        fresh[eid] = found
+        done.update(fresh)
+        tmp = OUT.with_suffix(OUT.suffix + ".tmp")
+        tmp.write_text(json.dumps(fresh, indent=1, ensure_ascii=False))
+        os.replace(tmp, OUT)
+
+
 def main(argv: list[str]) -> int:
     keep = "--keep" in argv
     height = 720
@@ -635,7 +669,7 @@ def main(argv: list[str]) -> int:
             done[eid] = found
             # Save per episode: a run over the archive must not lose an
             # hour of work to one bad download at the end.
-            OUT.write_text(json.dumps(done, indent=1, ensure_ascii=False))
+            _save(eid, found, done)
             for w in found:
                 a, b = w["start"], w["end"]
                 log(f"    {a//3600}:{a%3600//60:02d}:{a%60:02d}"
