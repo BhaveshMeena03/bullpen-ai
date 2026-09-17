@@ -41,6 +41,7 @@ from verify_attribution import (  # noqa: E402
     words,
 )
 
+from app.citations import readings  # noqa: E402
 from app.podcast import PodcastIndex  # noqa: E402
 from app.x_bot import format_reply  # noqa: E402
 
@@ -94,12 +95,6 @@ MORE = [
     "what did they say about michael saylor",
     "what did tjr say about attention",
 ]
-
-
-def seconds(stamp: str) -> int:
-    parts = [int(p) for p in stamp.split(":")]
-    return (parts[0] * 3600 + parts[1] * 60 + parts[2] if len(parts) == 3
-            else parts[0] * 60 + parts[1])
 
 
 def window(episode: dict, at: int, reach: int = 120) -> str:
@@ -160,9 +155,18 @@ async def main() -> int:
         cited = CITED.findall(reply)
         if episode and cited:
             checked += 1
-            moment = seconds(cited[0])
             # The link's own second, when it carries one.
             param = T_PARAM.search(url or "")
+            # "1:49" is 1m49s or 1h49m and the reply does not say which.
+            # The transcript cannot settle it, because both readings sit
+            # inside a three-hour episode and asking which one it covers
+            # always answers the first. The link can: format_reply builds
+            # ?t= from the same second it wrote the stamp for, so the
+            # nearest reading is the one the reply meant. Without a link
+            # there is nothing to go on, and m:ss is the commoner shape.
+            moments = readings(cited[0])
+            moment = (min(moments, key=lambda m: abs(int(param.group(1)) - m))
+                      if param else moments[0])
             if param and abs(int(param.group(1)) - moment) > 3:
                 problems.append(
                     f"link jumps to {int(param.group(1))}s, reply says "

@@ -41,6 +41,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from app.citations import readings  # noqa: E402
 from app.podcast import PodcastIndex, source_label  # noqa: E402
 
 EPISODES = ROOT / "data" / "elon_episodes.json"
@@ -104,12 +105,6 @@ COMPLIED = re.compile(
 A_STAMP = re.compile(r"\b(\d{1,2}:\d{2}(?::\d{2})?)\b")
 
 
-def seconds(stamp: str) -> int:
-    parts = [int(p) for p in stamp.split(":")]
-    return (parts[0] * 3600 + parts[1] * 60 + parts[2] if len(parts) == 3
-            else parts[0] * 60 + parts[1])
-
-
 def window(episode: dict, at: int, reach: int = 150) -> str:
     return " ".join(s.get("text", "") for s in episode["segments"]
                     if abs(s.get("t", 0) - at) <= reach).lower()
@@ -166,7 +161,7 @@ def quotes_hold(answer: str, episodes: dict, hits) -> str | None:
                   {getattr(h, "episode_id", None) for h in hits[:6]}
                   if e in episodes]
     windows = [w for ep in candidates for st in stamps[:6]
-               if (w := window(ep, seconds(st)))]
+               for at in readings(st) if (w := window(ep, at))]
     if not windows:
         return f"cites {stamps[0]}, which no returned recording covers"
     titles = {e["title"].lower() for e in episodes.values()}

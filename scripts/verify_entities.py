@@ -46,6 +46,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from app.citations import readings  # noqa: E402
 from app.podcast import PodcastIndex  # noqa: E402
 
 # asset -> the spellings that genuinely vouch for it in a transcript.
@@ -153,7 +154,11 @@ def unsupported(answer: str, hits) -> list[str]:
     stamps = _STAMP.findall(answer or "")
     if not stamps:
         return []
-    here = " ".join(_lines_near(hits, _seconds(s)) for s in stamps[:4])
+    # Both readings of each stamp: "1:49" is 1h49m on a long show, and
+    # reading it as 1m49s gathers nothing, which reads as an unstamped
+    # answer and silently checks no entities at all.
+    here = " ".join(_lines_near(hits, at)
+                    for s in stamps[:4] for at in readings(s))
     if not here.strip():
         return []                      # unstamped passages: nothing to check
     words = set(re.findall(r"[a-z0-9$']+", here))

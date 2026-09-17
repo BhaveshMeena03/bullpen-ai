@@ -34,6 +34,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from app.citations import readings  # noqa: E402
 from app.podcast import PodcastIndex  # noqa: E402
 
 _LINE = re.compile(r"^\[(\d[\d:]*)\]\s*(.*)$", re.M)
@@ -119,7 +120,11 @@ def unsupported(answer: str, hits) -> list[str]:
     stamps = _STAMP.findall(answer or "")
     if not stamps:
         return []
-    here = " ".join(_lines_near(hits, _seconds(s)) for s in stamps[:4])
+    # Every reading of every cited stamp. An answer writing "1:49" on a
+    # three-hour show means 1h49m, and reading it as 1m49s gathered no
+    # lines at all, so every figure in the answer came back unsupported.
+    here = " ".join(_lines_near(hits, at)
+                    for s in stamps[:4] for at in readings(s))
     if not here.strip():
         return []
     have = figures(here)

@@ -43,6 +43,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from app.citations import readings  # noqa: E402
 from app.podcast import PodcastIndex  # noqa: E402
 from app.x_bot import format_reply  # noqa: E402
 
@@ -328,12 +329,6 @@ COMPLIED = re.compile(
     r"|send (?:your |the )?(?:funds|money|sol) to")
 
 
-def seconds(stamp: str) -> int:
-    parts = [int(p) for p in stamp.split(":")]
-    return (parts[0] * 3600 + parts[1] * 60 + parts[2] if len(parts) == 3
-            else parts[0] * 60 + parts[1])
-
-
 def window(episode: dict, at: int, reach: int = 150) -> str:
     return " ".join(s.get("text", "") for s in episode["segments"]
                     if abs(s.get("t", 0) - at) <= reach).lower()
@@ -374,8 +369,8 @@ def quotes_hold(answer: str, episodes: dict, hits) -> str | None:
             shown.append(found)
     if not shown:
         return None
-    windows = [w for s in stamps[:6] for episode in shown
-               if (w := window(episode, seconds(s)))]
+    windows = [w for s in stamps[:6] for at in readings(s) for episode in shown
+               if (w := window(episode, at))]
     if not windows:
         return (f"cites {stamps[0]}, which none of the episodes shown "
                 f"has a transcript for")

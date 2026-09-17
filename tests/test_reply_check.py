@@ -15,7 +15,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from verify_replies import CITED, LINK, T_PARAM, seconds, supported  # noqa: E402
+from verify_replies import CITED, LINK, T_PARAM, supported  # noqa: E402
+
+from app.citations import seconds  # noqa: E402
 
 # One real passage, standing in for a transcript window.
 TRANSCRIPT = (
