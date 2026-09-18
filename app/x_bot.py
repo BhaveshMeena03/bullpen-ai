@@ -3266,6 +3266,8 @@ _TOO_ORDINARY = {
     'motion',
     'netnet capital',
     'node',
+    # Added with ep 20, which says "OG protocol on" six minutes in.
+    'og protocol',
     'opus',
     'pantheon',
     'paragon',
