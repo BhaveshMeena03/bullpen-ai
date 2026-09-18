@@ -21,6 +21,7 @@ from app.schemas import Episode  # noqa: E402
 from app.summaries import SummaryStore  # noqa: E402
 
 DATA = Path(__file__).resolve().parent.parent / "data" / "episodes.json"
+SPEAKER_MAP = DATA.parent / "speaker_map.json"
 
 
 def log(msg: str) -> None:
@@ -41,6 +42,11 @@ async def main(argv: list[str]) -> int:
         episodes = [e for e in episodes if e.episode_id in only_ids]
 
     store = SummaryStore()
+    # The names, which every other caller passes and this one did not.
+    # Without them the prompt's own rule leaves "one of the hosts" as the
+    # only honest wording, and a re-run here would quietly strip every
+    # name the labelled summaries earned.
+    speaker_map = json.loads(SPEAKER_MAP.read_text()) if SPEAKER_MAP.exists() else {}
     done = 0
     for episode in episodes:
         if limit is not None and done >= limit:
@@ -51,7 +57,8 @@ async def main(argv: list[str]) -> int:
         started = time.monotonic()
         log(f"  … summarizing {episode.episode_id} "
             f"({len(episode.segments)} segments) — {episode.title[:55]}")
-        summary = await store.summarize(episode)
+        summary = await store.summarize(
+            episode, speakers=speaker_map.get(episode.episode_id))
         await store.store(episode, summary)
         log(f"  ✓ {episode.episode_id} stored "
             f"({len(summary)} chars, {int(time.monotonic() - started)}s)")

@@ -76,8 +76,11 @@ exchanges, each with its timestamp.
 Rules:
 1. Only state what the transcript supports — never invent quotes or \
 attribute specific wording to a host; paraphrase.
-2. These are auto-generated captions without speaker labels, so refer to \
-"the hosts" or "a guest" unless identity is unambiguous from context.
+2. Name a host only for something said on a line carrying that host's \
+prefix. For anything on unprefixed lines, write "one of the hosts" or "a \
+guest". Who is famous for trading, whose name comes up nearby, or who \
+"would" have done it is not evidence of who is speaking -- that reasoning \
+is how a live trade by Banks was summarized as Ansem's.
 3. This is an informational summary, not financial advice. Report opinions \
 as opinions ("the hosts argue that...") and never add recommendations.
 4. Keep the whole summary under 650 words."""

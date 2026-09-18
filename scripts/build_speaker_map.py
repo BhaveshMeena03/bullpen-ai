@@ -43,8 +43,19 @@ FINGERPRINTS = ROOT / "data" / "speakers"
 OUT = ROOT / "data" / "speaker_map.json"
 
 # Identified by ear, 2026-08-28, from stitched cluster-only clips.
-# Ordered by how many other episodes each voice appears in.
 HOSTS = ["FaZe Banks", "Ansem"]
+
+# One line whose speaker is known by ear, used to decide which of the two
+# recurring voices is which. The names used to follow rank: whichever
+# voice recurred in more episodes was Banks. Both hosts are in every show,
+# so the counts converge, and once they tied at 37 the order became an
+# accident of the sort -- adding ep 20 flipped it and every one of 40,263
+# labels in the archive changed hands. Eps 1, 13 and 20 were written in
+# that state and went live with Banks's lines under Ansem's name, which
+# the summary then repeated as "Ansem live-trades Dividend Hounds".
+ANCHOR_EPISODE = "x-2093074127011909791"
+ANCHOR_WORDS = "i put close to seven figures in hyperliquid"
+ANCHOR_SPEAKER = "FaZe Banks"
 
 # How close a cluster must sit to a host's reference voice. Measured on
 # this archive: two different people in the same episode never exceed
@@ -162,8 +173,43 @@ def host_references(clusters):
         picked.append(int(i))
         if len(picked) == len(HOSTS):
             break
-    return [(HOSTS[n], clusters[i][2], spread[i])
-            for n, i in enumerate(picked)]
+    return name_by_anchor([(clusters[i][2], spread[i]) for i in picked],
+                          anchor_voice())
+
+
+def anchor_voice() -> np.ndarray:
+    """The fingerprint of the one line whose speaker is known by ear."""
+    episode = next(e for e in json.loads(EPISODES.read_text())
+                   if e["episode_id"] == ANCHOR_EPISODE)
+    # Numbered the way the fingerprints are: non-empty lines, in order.
+    spoken = [s for s in episode["segments"] if (s.get("text") or "").strip()]
+    index = next(i for i, s in enumerate(spoken)
+                 if ANCHOR_WORDS in s["text"].lower())
+    data = np.load(FINGERPRINTS / f"{ANCHOR_EPISODE}.npz")
+    row = int(np.where(data["kept"] == index)[0][0])
+    vector = data["vectors"][row]
+    return vector / (np.linalg.norm(vector) + 1e-9)
+
+
+def name_by_anchor(voices, anchor) -> list[tuple[str, np.ndarray, int]]:
+    """Name the two recurring voices by which one the anchor line is.
+
+    Refuses rather than guesses. Two unnamed voices are worth nothing, and
+    two voices named the wrong way round are worth less than nothing: every
+    line in the archive becomes a confident false claim about a real person.
+    """
+    if len(voices) != len(HOSTS):
+        raise SystemExit(f"  found {len(voices)} recurring voices, need "
+                         f"{len(HOSTS)} -- writing nothing")
+    scores = [float(centroid @ anchor) for centroid, _ in voices]
+    near = int(np.argmax(scores))
+    if scores[near] - scores[1 - near] < MIN_MARGIN:
+        raise SystemExit(f"  the anchor line does not clearly match either "
+                         f"voice ({scores[0]:.2f} vs {scores[1]:.2f}) -- "
+                         f"writing nothing rather than guessing the names")
+    other = next(h for h in HOSTS if h != ANCHOR_SPEAKER)
+    named = {near: ANCHOR_SPEAKER, 1 - near: other}
+    return [(named[n], voices[n][0], voices[n][1]) for n in range(len(voices))]
 
 
 def main() -> int:
