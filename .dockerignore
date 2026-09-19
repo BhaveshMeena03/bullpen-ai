@@ -26,5 +26,13 @@ data/
 # X renders as an unclickable card. The deploy looks fine; the timestamps
 # just stop working.
 !data/broadcast_links.json
+# Read at runtime too, and each one failed safe and silently without it:
+# the YouTube map (every citation stayed on X), the guest windows (the bot
+# answered "who was on" with "not read yet" for every episode), and the
+# speaker map (clips lost their names). tests/test_docker_build_context.py
+# now checks every data file the app opens is here.
+!data/youtube_map.json
+!data/guest_windows.json
+!data/speaker_map.json
 redteam_report.md
 PITCH_PREP.md

@@ -78,6 +78,9 @@ COPY data/term_index.json ./data/term_index.json
 # broadcast falls back to its status url, which X renders as a card that
 # cannot seek — the deploy succeeds and the timestamps quietly stop working.
 COPY data/broadcast_links.json ./data/broadcast_links.json
+COPY data/youtube_map.json ./data/youtube_map.json
+COPY data/guest_windows.json ./data/guest_windows.json
+COPY data/speaker_map.json ./data/speaker_map.json
 COPY widget ./widget
 COPY demo ./demo
 

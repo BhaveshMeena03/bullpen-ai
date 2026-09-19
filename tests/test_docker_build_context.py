@@ -131,3 +131,37 @@ def test_the_highlight_pool_is_shipped():
         "the Dockerfile no longer ships the highlight pool")
     assert not is_excluded("data/highlights.json",
                            patterns(DOCKERIGNORE.read_text()))
+
+
+# Opened by the app but deliberately not shipped, each with the reason.
+_NOT_SHIPPED = {
+    ".usage.json": "written at runtime, not read from the repo",
+    "assets.json": "fallback only; the live asset store is read first",
+    "episodes.json": "shipped gzipped as episodes.json.gz",
+    "elon_episodes.json": "shipped gzipped as elon_episodes.json.gz",
+}
+
+
+@pytest.mark.skipif(not DOCKERFILE.exists(), reason="no Dockerfile")
+def test_every_data_file_the_app_opens_is_in_the_image():
+    """The other half of the check above, and the half that was missing.
+
+    That test catches a COPY the build context cannot satisfy, which fails
+    the build. It cannot catch a file nobody COPYed at all, which fails
+    nothing: every reader here falls back quietly when its file is absent.
+    Three shipped that way -- the YouTube map, so every citation stayed on
+    X; the guest windows, so the bot told everyone asking "who was on" that
+    the episode had not been read; the speaker map, so clips lost names --
+    each working locally, where data/ is simply there.
+    """
+    opened = set()
+    for path in (ROOT / "app").glob("*.py"):
+        opened |= set(re.findall(r'"data"\s*/\s*"([A-Za-z0-9_.-]+)"',
+                                 path.read_text()))
+    copied = {Path(s).name for s in copy_sources(DOCKERFILE.read_text())}
+    missing = sorted(name for name in opened
+                     if name not in copied and name not in _NOT_SHIPPED)
+    assert not missing, (
+        f"the app opens these data files but the image never gets them: "
+        f"{missing}. COPY them in the Dockerfile and allow them in "
+        f".dockerignore, or add them to _NOT_SHIPPED with the reason.")
