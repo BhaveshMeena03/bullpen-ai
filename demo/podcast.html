@@ -732,18 +732,26 @@
   // it. An X broadcast keeps the outbound link, because X still cannot
   // jump to a timestamp and a button that opened it at 0:00 would be a
   // worse promise than a plain link.
-  function linkifyTimestamps(html, url){
+  function linkifyTimestamps(html, url, onYoutube){
     var seekable = canSeek(url);
     return html.replace(/\[(?:(\d+):)?(\d{1,2}):(\d{2})\]/g,
       function(m, h, mm, ss){
         var sec=(parseInt(h||0,10)*3600)+(parseInt(mm,10)*60)+parseInt(ss,10);
+        // The summary was written from the live broadcast. Where that moment
+        // is also in the YouTube upload, play it here, at YouTube's second.
+        var yt = onYoutube && onYoutube[String(sec)];
+        if(yt){
+          return '<button class="cite ep-cite" data-sec="'+yt[1]+'" '+
+                 'data-ep="https://www.youtube.com/watch?v='+escAttr(yt[0])+'" '+
+                 'title="play this moment">'+m.slice(1,-1)+'</button>';
+        }
         var link=url+(url.indexOf("?")>-1?"&":"?")+"t="+sec+"s";
         if(!seekable){
           return '<a class="ts" href="'+escAttr(safeUrl(link))+'" target="_blank" '+
                  'rel="noopener">'+m+'</a>';
         }
         return '<button class="cite ep-cite" data-sec="'+sec+'" '+
-               'data-ep="'+escAttr(url)+'" title="play this moment">'+m+'</button>';
+               'data-ep="'+escAttr(url)+'" title="play this moment">'+m.slice(1,-1)+'</button>';
       });
   }
 
@@ -776,7 +784,7 @@
         eps.forEach(function(ep){
           var d=document.createElement("details");
           d.className="epcard";
-          var bodyHtml=linkifyTimestamps(md(ep.summary||""), ep.url||"");
+          var bodyHtml=linkifyTimestamps(md(ep.summary||""), ep.url||"", ep.youtube_at);
           // Both cuts of an episode are listed: the YouTube upload and the
           // full live broadcast, which runs roughly twice as long because
           // the upload is edited down. They sit next to each other in the
@@ -1359,6 +1367,16 @@ function airedLabel(iso){
   // near it stays plain text.
   var CITE_WINDOW = 420;   // a passage is minutes long; this is its reach
 
+
+  // The model cites like a paper, "[12:02]" or "[25:18-25:26]". Once the
+  // time is a link the brackets are just noise around it, and inside a
+  // sentence they read as "[ 12:02 ]" with the control floating between.
+  function unbracket(html){
+    return html.replace(
+      /\[\s*(<(a|button)\b[^>]*\bcite\b[^>]*>[^<]*<\/\2>(?:\s*[–-]\s*(?:<(a|button)\b[^>]*\bcite\b[^>]*>[^<]*<\/\3>|\d{1,2}:\d{2}(?::\d{2})?))?)\s*\]/g,
+      "$1");
+  }
+
   function citeTimestamps(){
     if(!body || !lastHits || !lastHits.length) return;
     var seekable = lastHits.filter(function(h){ return canSeek(h.deep_link); });
@@ -1375,10 +1393,13 @@ function airedLabel(iso){
         if(sec === null) return all;
         var hit = nearestHit(seekable, sec);
         if(!hit) return all;
-        return before + '<button class="cite" data-sec="' + sec
+        // A passage the server pointed at YouTube carries the offset from
+        // the broadcast's clock, which is the one the answer quotes.
+        return before + '<button class="cite" data-sec="' + (sec + (hit.youtube_offset || 0))
              + '" data-ep="' + escAttr(hit.deep_link) + '" title="play this moment">'
              + esc(stamp) + '</button>';
       });
+    body.innerHTML = unbracket(body.innerHTML);
   }
 
   function stampSeconds(stamp){

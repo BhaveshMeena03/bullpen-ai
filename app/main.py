@@ -39,6 +39,7 @@ from fastapi.staticfiles import StaticFiles
 from voyageai import error as voyage_error
 
 from . import attribution, market, og_card, quotes, sources
+from .youtube_map import summary_moments, youtube_first
 from .agent import REFUSAL_MESSAGE, ConciergeAgent
 from .answer_cache import AnswerCache, make_key
 from .assets import aggregate as aggregate_assets
@@ -1025,7 +1026,11 @@ async def podcast_search_stream(
             else await podcast.retrieve(body.query, body.top_k))
 
     async def event_source():
-        payload = json.dumps([h.model_dump() for h in hits])
+        # A moment that is in the YouTube cut plays there, inside the
+        # page, instead of sending the reader to X. Only here, for the
+        # page: the bot relinks to the answer's broadcast-clock second, so
+        # it keeps the X link, which is correct for that clock.
+        payload = json.dumps([youtube_first(h.model_dump()) for h in hits])
         yield f"event: hits\ndata: {payload}\n\n"
         if cached:
             yield f"data: {json.dumps({'text': cached['answer']})}\n\n"
@@ -1413,7 +1418,14 @@ async def podcast_episodes(
     searchable; they simply do not each get a card.
     """
     _track("episode_summary_views")
-    return _listed(await summaries.list_all())
+    rows = _listed(await summaries.list_all())
+    # Where each summary timestamp plays on YouTube, for the live
+    # broadcasts that have an upload. The summary was written from the
+    # broadcast, so its times are the broadcast's; this gives the page
+    # the matching second on YouTube wherever that moment survived the cut.
+    return [{**r, "youtube_at": summary_moments(r.get("episode_id") or "",
+                                                r.get("summary") or "")}
+            for r in rows]
 
 
 

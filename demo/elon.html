@@ -481,6 +481,15 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
     return gap <= CITE_REACH ? best : null;
   }
 
+  // The model cites like a paper, "[12:02]" or "[25:18-25:26]". Once the
+  // time is a link the brackets are just noise around it, and inside a
+  // sentence they read as "[ 12:02 ]" with the control floating between.
+  function unbracket(html){
+    return html.replace(
+      /\[\s*(<(a|button)\b[^>]*\bcite\b[^>]*>[^<]*<\/\2>(?:\s*[–-]\s*(?:<(a|button)\b[^>]*\bcite\b[^>]*>[^<]*<\/\3>|\d{1,2}:\d{2}(?::\d{2})?))?)\s*\]/g,
+      "$1");
+  }
+
   // Make the moments named inside the answer clickable.
   //
   // Without this the page half-keeps its promise: the answer says "around
@@ -492,6 +501,7 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
   // A timestamp only becomes a link when a returned hit covers it. A
   // number welded to whichever recording happened to rank first is a link
   // that looks checkable and is not, which is worse than plain text.
+
   function citeTimestamps(hits){
     var body = $("answer-body");
     if (!body || !hits || !hits.length) return;
@@ -512,6 +522,7 @@ searchable by meaning. Ask a question, get the moment he said it, down to the se
         return before + '<a class="cite" target="_blank" rel="noopener" href="'
              + esc(url) + '" title="open this moment">' + esc(stamp) + "</a>";
       });
+    body.innerHTML = unbracket(body.innerHTML);
   }
 
   // Same as the MCG page: the model writes markdown regardless, and

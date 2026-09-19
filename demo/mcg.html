@@ -247,6 +247,15 @@ moment.">
     color:var(--blue);font-family:"IBM Plex Mono",monospace;font-size:11.5px;
     padding:5px 10px;cursor:pointer;margin-left:10px}
   .play:hover{border-color:var(--blue)}
+  /* Inside the answer a timestamp is the same control as the one on the
+     card below it -- mint, boxed, mono, ▶ then ■ while it plays -- sized
+     down to sit in a line of text. It was white and bracketed, which made
+     the two read as different things. */
+  .answer .body a.play.cite{color:var(--blue);border:1px solid var(--rule-dark);
+    padding:1px 7px;margin:0 2px;background:transparent;
+    font-family:"IBM Plex Mono",monospace;font-size:.8em;
+    font-variant-numeric:tabular-nums;white-space:nowrap}
+  .answer .body a.play.cite:hover{border-color:var(--blue)}
   .player{margin:12px 0 0}
   .player iframe{width:100%;aspect-ratio:16/9;border:1px solid var(--rule-dark);
     display:block;background:#000}
@@ -547,6 +556,16 @@ moment.">
   // returned passage actually covers that second: a number welded to
   // whichever episode ranked first is a link that looks checkable and is
   // not, which is worse than plain text.
+
+  // The model cites like a paper, "[12:02]" or "[25:18-25:26]". Once the
+  // time is a link the brackets are just noise around it, and inside a
+  // sentence they read as "[ 12:02 ]" with the control floating between.
+  function unbracket(html){
+    return html.replace(
+      /\[\s*(<(a|button)\b[^>]*\bcite\b[^>]*>[^<]*<\/\2>(?:\s*[–-]\s*(?:<(a|button)\b[^>]*\bcite\b[^>]*>[^<]*<\/\3>|\d{1,2}:\d{2}(?::\d{2})?))?)\s*\]/g,
+      "$1");
+  }
+
   function citeTimestamps(hits){
     var body = $("answer-body");
     if (!body || !hits || !hits.length) return;
@@ -572,9 +591,10 @@ moment.">
         // <a> with a real href, so copy-link and cmd-click still work.
         return before + '<a class="at play cite" data-url="' + esc(url)
              + '" data-time="' + esc(stamp) + '" href="' + esc(url)
-             + '" target="_blank" rel="noopener" title="play this moment">'
+             + '" target="_blank" rel="noopener" title="play this moment">\u25B6 '
              + esc(stamp) + "</a>";
       });
+    body.innerHTML = unbracket(body.innerHTML);
   }
 
   // The model writes markdown whether or not it is asked to, and this
