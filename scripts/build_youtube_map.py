@@ -115,7 +115,7 @@ def main() -> int:
             # Coverage: seconds of the live show within one anchor gap of
             # an anchor, which is what a click can actually be mapped from.
             covered = sum(min(EVERY * 2, b[0] - a[0])
-                          for a, b in zip(found, found[1:]))
+                          for a, b in zip(found, found[1:], strict=False))
             lines.append(f"  {live.get('published_at', '')[:10]}  "
                          f"{len(found):4} anchors  {covered / length:4.0%} of the "
                          f"live show maps to YouTube  {live['title'][:44]}")

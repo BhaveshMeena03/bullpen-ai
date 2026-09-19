@@ -93,7 +93,7 @@ async def recent_posts(http, creds, handles: list[str], per_account: int,
                       {"usernames": ",".join(handles)})
     found = {u["username"].lower(): u for u in users.get("data", [])}
     missing = [h for h in handles if h.lower() not in found]
-    since = (datetime.datetime.now(datetime.timezone.utc)
+    since = (datetime.datetime.now(datetime.UTC)
              - datetime.timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
     posts, reads = [], 0
     for handle in handles:
@@ -121,8 +121,8 @@ def best_lines(hit, query: str, n: int = 3) -> list[str]:
     """The lines of a passage that share the most words with the post."""
     want = set(re.findall(r"[a-z0-9]{4,}", query.lower()))
     lines = _LINE.findall(getattr(hit, "text_ts", "") or "")
-    scored = sorted(lines, key=lambda l: -len(want & set(
-        re.findall(r"[a-z0-9]{4,}", l[1].lower()))))
+    scored = sorted(lines, key=lambda line: -len(want & set(
+        re.findall(r"[a-z0-9]{4,}", line[1].lower()))))
     return [f"[{stamp}] {said[:150]}" for stamp, said in scored[:n]]
 
 

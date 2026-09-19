@@ -159,7 +159,7 @@ def source_holds(answer: str, episodes: dict, hits) -> str | None:
     # clearer message. "2021 Lex Fridman" names a year that came back and
     # a show that came back, so the loose checks below both pass it.
     for year, key in _pairs(answer):
-        if not any(year in l and key in l.lower() for l in labels):
+        if not any(year in label and key in label.lower() for label in labels):
             return (f"names the {year} "
                     f"{'Joe Rogan' if key == 'rogan' else 'Lex Fridman'} "
                     f"recording, and no returned recording is that one")

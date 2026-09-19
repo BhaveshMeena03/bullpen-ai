@@ -110,9 +110,9 @@ def correct(answer: str, hits) -> tuple[str, list[str]]:
     # Pairs first: they are the specific claim, and demoting the pair
     # leaves no bare year behind for the looser sweep to act on twice.
     sweep(_YEAR_SHOW, lambda m: any(
-        m.group(1) in l and _key(m.group(2)) in l for l in labels))
+        m.group(1) in label and _key(m.group(2)) in label for label in labels))
     sweep(_SHOW_YEAR, lambda m: any(
-        m.group(2) in l and _key(m.group(1)) in l for l in labels))
-    sweep(_YEAR_ONLY, lambda m: any(m.group(1) in l for l in labels))
+        m.group(2) in label and _key(m.group(1)) in label for label in labels))
+    sweep(_YEAR_ONLY, lambda m: any(m.group(1) in label for label in labels))
 
     return answer, list(reversed(changes))

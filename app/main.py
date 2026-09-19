@@ -39,7 +39,6 @@ from fastapi.staticfiles import StaticFiles
 from voyageai import error as voyage_error
 
 from . import attribution, market, og_card, quotes, sources
-from .youtube_map import summary_moments, youtube_first
 from .agent import REFUSAL_MESSAGE, ConciergeAgent
 from .answer_cache import AnswerCache, make_key
 from .assets import aggregate as aggregate_assets
@@ -81,6 +80,7 @@ from .security import (
 )
 from .summaries import SummaryStore
 from .usage import UsageLedger, writable_path
+from .youtube_map import summary_moments, youtube_first
 
 logging.basicConfig(level=logging.INFO)
 
