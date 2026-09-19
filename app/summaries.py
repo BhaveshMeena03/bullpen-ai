@@ -172,7 +172,11 @@ class SummaryStore:
                               speakers: dict[str, str] | None = None) -> str:
         response = await self._anthropic.messages.create(
             model=self._settings.summary_model,
-            max_tokens=2000,
+            # Room to think as well as write. The model reasons before it
+            # answers and those tokens count against this limit, so at 2000
+            # a long broadcast spent the budget thinking and came back empty,
+            # or cut off after one sentence -- ep 20's upload did both.
+            max_tokens=8000,
             system=SUMMARY_SYSTEM,
             messages=[
                 {
@@ -187,6 +191,13 @@ class SummaryStore:
         if response.stop_reason == "refusal":
             raise RuntimeError(f"model refused to summarize {episode.episode_id}")
         summary = "".join(b.text for b in response.content if b.type == "text")
+        # A summary that hit the limit stops mid-sentence and still clears
+        # the length check below: one stored as 354 characters ending
+        # "the most interesting thread is a live on-air meme-coin trade".
+        if response.stop_reason == "max_tokens":
+            raise RuntimeError(
+                f"summary for {episode.episode_id} was cut off at the token "
+                f"limit ({len(summary.strip())} characters) — refusing to store it")
         # An empty summary stores cleanly and fails silently: the episode
         # looks summarised, and "summarize the latest episode" comes back as
         # a bare link with no text above it. That happened on the first

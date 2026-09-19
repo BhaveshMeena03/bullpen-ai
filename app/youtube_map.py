@@ -34,8 +34,14 @@ _PATH = Path(__file__).resolve().parent.parent / "data" / "youtube_map.json"
 # means speech between them did not match, which is what a cut looks like.
 _MAX_GAP = 30.0
 # And only if their offsets agree this closely. The copies are the same
-# recording, so within a stretch the offset does not drift.
-_SAME_OFFSET = 4.0
+# recording, so the offset does not truly drift, but YouTube's captions
+# stamp lines coarsely and it jitters by about five seconds either way:
+# through ep 20's trade it reads -63 to -74 with no cut anywhere. At 4 this
+# refused that whole stretch. A real cut jumps by tens of seconds or more
+# (110 on ep 12), so 12 still sees every one. Measured on 838 random
+# clicks: 75% map instead of 58%, and none lands somewhere that does not
+# say the same words.
+_SAME_OFFSET = 12.0
 
 
 @lru_cache(maxsize=1)
