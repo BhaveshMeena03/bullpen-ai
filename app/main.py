@@ -1600,7 +1600,12 @@ def _elon_payload(question: str, result) -> dict:
     runs eight and a half hours."""
     lengths = {e["episode_id"]: int(_runtime(e)) for e in _elon_episodes()}
     hits = []
-    for hit in (result.hits or [])[:6]:
+    # Every passage the answer was written from, not the first six. The
+    # model reads all of them (retrieval adds exact-name matches on top
+    # of the top six), so a trimmed list let an answer cite a moment the
+    # page never showed: 12 of 37 MCG answers did. Market Bubble never
+    # trimmed; these two now match it.
+    for hit in (result.hits or []):
         data = hit.model_dump() if hasattr(hit, "model_dump") else dict(hit)
         data["episode_seconds"] = lengths.get(data.get("episode_id"), 0)
         hits.append(data)
@@ -1685,7 +1690,12 @@ def _mcg_payload(question: str, result) -> dict:
     lengths = {e.get("id"): int(float(e.get("seconds") or 0))
                for e in _mcg_episodes()}
     hits = []
-    for hit in (result.hits or [])[:6]:
+    # Every passage the answer was written from, not the first six. The
+    # model reads all of them (retrieval adds exact-name matches on top
+    # of the top six), so a trimmed list let an answer cite a moment the
+    # page never showed: 12 of 37 MCG answers did. Market Bubble never
+    # trimmed; these two now match it.
+    for hit in (result.hits or []):
         data = hit.model_dump() if hasattr(hit, "model_dump") else dict(hit)
         data["episode_seconds"] = lengths.get(data.get("episode_id"), 0)
         hits.append(data)
@@ -1733,7 +1743,9 @@ def _archive_stream(index, query: str, top_k, lengths: dict,
             return
         hits = await index.retrieve(query, top_k)
         enriched = []
-        for hit in (hits or [])[:6]:
+        # All of them: the answer below is written from every hit, so the
+        # page has to show every hit or its citations point at nothing.
+        for hit in (hits or []):
             data = hit.model_dump() if hasattr(hit, "model_dump") else dict(hit)
             data["episode_seconds"] = lengths.get(data.get("episode_id"), 0)
             enriched.append(data)
