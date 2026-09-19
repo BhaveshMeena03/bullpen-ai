@@ -200,6 +200,8 @@ async def main() -> int:
     ap.add_argument("--only", choices=list(SETS))
     ap.add_argument("--pause", type=float, default=1.5)
     ap.add_argument("--out", default="/tmp/mcg_run.json")
+    ap.add_argument("--site", default=SITE,
+                    help="another deployment of the same endpoint, e.g. a local one")
     args = ap.parse_args()
     FRESH.extend(newest_titles())
 
@@ -212,7 +214,7 @@ async def main() -> int:
             for n, question in enumerate(questions, 1):
                 started = time.monotonic()
                 try:
-                    r = await http.post(SITE, json={"query": question})
+                    r = await http.post(args.site, json={"query": question})
                     r.raise_for_status()
                     body = r.json()
                 except Exception as exc:                    # noqa: BLE001
